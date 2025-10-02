@@ -1,47 +1,9 @@
+#include "lexer.h"
+
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
-
-typedef enum
-{
-    // Keywords
-    TOKEN_INT,
-    TOKEN_RETURN,
-
-    // Literals
-    TOKEN_NUMBER,
-    TOKEN_STRING,
-
-    // Delimiters
-    TOKEN_LPAREN,
-    TOKEN_RPAREN,
-    TOKEN_LBRACE,
-    TOKEN_RBRACE,
-    TOKEN_SEMICOLON,
-    
-    // Misc
-    TOKEN_IDENTIFIER,
-    TOKEN_EOF,
-    TOKEN_UNKNOWN
-} token_type_t;
-
-typedef struct
-{
-    token_type_t type;
-    char* value;
-    int line;
-    int column;
-} token_t;
-
-typedef struct
-{
-    const char* source;
-    size_t pos;
-    size_t length;
-    int line;
-    int column;
-} lexer_t;
 
 typedef struct
 {
@@ -49,14 +11,14 @@ typedef struct
     token_type_t type;
 } keyword_t;
 
-keyword_t lexer_keywords[] =
+static keyword_t lexer_keywords[] =
 {
     {"int", TOKEN_INT},
     {"return", TOKEN_RETURN},
     {NULL, TOKEN_UNKNOWN}
 };
 
-const char* token_type_str(token_type_t type)
+static const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
@@ -75,23 +37,14 @@ const char* token_type_str(token_type_t type)
     }
 }
 
-void lexer_init(lexer_t* lex, const char* source)
+static char lexer_peek(lexer_t* lexer)
 {
-    lex->source = source;
-    lex->pos = 0;
-    lex->length = strlen(source);
-    lex->line = 1;
-    lex->column = 1;
-}
-
-char lexer_peek(lexer_t* lex)
-{
-    if (lex->pos >= lex->length)
+    if (lexer->pos >= lexer->length)
         return '\0';
-    return lex->source[lex->pos];
+    return lexer->source[lexer->pos];
 }
 
-char lexer_advance(lexer_t* lex)
+static char lexer_advance(lexer_t* lex)
 {
     if (lex->pos >= lex->length)
         return '\0';
@@ -108,13 +61,13 @@ char lexer_advance(lexer_t* lex)
     return c;
 }
 
-void lexer_skip_whitespace(lexer_t* lex)
+static void lexer_skip_whitespace(lexer_t* lex)
 {
     while (isspace(lexer_peek(lex)))
         lexer_advance(lex);
 }
 
-token_t* token_create(token_type_t type, const char* value, int line, int col)
+static token_t* token_create(token_type_t type, const char* value, int line, int col)
 {
     token_t* tok = malloc(sizeof(*tok));
     tok->type = type;
@@ -124,7 +77,7 @@ token_t* token_create(token_type_t type, const char* value, int line, int col)
     return tok;
 }
 
-void token_free(token_t* tok)
+void token_destroy(token_t* tok)
 {
     if (tok != nullptr)
     {
@@ -133,7 +86,7 @@ void token_free(token_t* tok)
     }
 }
 
-token_type_t lookup_keyword(const char* id)
+static token_type_t lookup_keyword(const char* id)
 {
     for (int i = 0; lexer_keywords[i].keyword != NULL; ++i)
     {
@@ -144,93 +97,119 @@ token_type_t lookup_keyword(const char* id)
     return TOKEN_IDENTIFIER;
 }
 
-token_t* lex_identifier(lexer_t* lexer)
+static token_t* lex_identifier(lexer_t* lexer)
 {
     int start_line = lexer->line;
     int start_col = lexer->column;
     size_t start = lexer->pos;
-    
+
     while (isalnum(lexer_peek(lexer)) || lexer_peek(lexer) == '_')
     {
         lexer_advance(lexer);
     }
-    
+
     size_t length = lexer->pos - start;
     char* value = malloc(length + 1);
     strncpy(value, lexer->source + start, length);
     value[length] = '\0';
-    
+
     token_type_t type = lookup_keyword(value);
     token_t* tok = token_create(type, value, start_line, start_col);
     free(value);
     return tok;
 }
 
-token_t* lex_number(lexer_t* lexer)
+static token_t* lex_number(lexer_t* lexer)
 {
     int start_line = lexer->line;
     int start_col = lexer->column;
     size_t start = lexer->pos;
-    
+
     while (isdigit(lexer_peek(lexer)))
         lexer_advance(lexer);
-    
+
     size_t length = lexer->pos - start;
     char* value = malloc(length + 1);
     strncpy(value, lexer->source + start, length);
     value[length] = '\0';
-    
+
     token_t* tok = token_create(TOKEN_NUMBER, value, start_line, start_col);
     free(value);
     return tok;
 }
 
-token_t* lex_string(lexer_t* lexer)
+static token_t* lex_string(lexer_t* lexer)
 {
     int start_line = lexer->line;
     int start_col = lexer->column;
     lexer_advance(lexer); // Skip opening quote
     size_t start = lexer->pos;
-    
+
     while (lexer_peek(lexer) != '"' && lexer_peek(lexer) != '\0')
     {
         if (lexer_peek(lexer) == '\\')
             lexer_advance(lexer);
         lexer_advance(lexer);
     }
-    
+
     size_t length = lexer->pos - start;
     char* value = malloc(length + 1);
     strncpy(value, lexer->source + start, length);
     value[length] = '\0';
-    
+
     lexer_advance(lexer); // Skip closing quote
-    
+
     token_t* tok = token_create(TOKEN_STRING, value, start_line, start_col);
     free(value);
     return tok;
 }
 
-token_t* lex_next_token(lexer_t* lexer)
+lexer_t* lexer_create(const char* source)
 {
+    lexer_t* lexer = malloc(sizeof(*lexer));
+
+    lexer->source = source;
+    lexer->pos = 0;
+    lexer->length = strlen(source);
+    lexer->line = 1;
+    lexer->column = 1;
+
+    return lexer;
+}
+
+void lexer_destroy(lexer_t *lexer)
+{
+    if (lexer != nullptr)
+        free(lexer);
+}
+
+token_t* lexer_next_token(lexer_t* lexer)
+{
+    if (lexer->peeked_token != nullptr)
+    {
+        token_t* tok = lexer->peeked_token;
+        lexer->peeked_token = nullptr;
+        return tok;
+    }
+
     lexer_skip_whitespace(lexer);
-    
+
     if (lexer->pos >= lexer->length)
         return token_create(TOKEN_EOF, NULL, lexer->line, lexer->column);
-    
+
     char c = lexer_peek(lexer);
     int line = lexer->line;
     int col = lexer->column;
-    
+
     if (isalpha(c) || c == '_')
         return lex_identifier(lexer);
-    
+
     if (isdigit(c))
         return lex_number(lexer);
-    
+
     if (c == '"')
         return lex_string(lexer);
-    
+
     lexer_advance(lexer);
     switch (c)
     {
@@ -247,33 +226,30 @@ token_t* lex_next_token(lexer_t* lexer)
     }
 }
 
-int main()
+token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type)
 {
-    const char* source = 
-        "int main() {\n"
-        "  puts(\"Hello world\");\n"
-        "  return 0;\n"
-        "}\n";
-    
-    printf("Source code:\n%s\n", source);
-    printf("Tokens:\n");
-    printf("%-12s %-20s %s\n", "TYPE", "VALUE", "POSITION");
-    printf("%-12s %-20s %s\n", "----", "-----", "--------");
-    
-    lexer_t lexer;
-    lexer_init(&lexer, source);
-    
-    token_t* tok;
-    while ((tok = lex_next_token(&lexer))->type != TOKEN_EOF)
-    {
-        printf("%-12s %-20s Line %d, Col %d\n", 
-               token_type_str(tok->type),
-               tok->value ? tok->value : "",
-               tok->line,
-               tok->column);
-        token_free(tok);
-    }
-    token_free(tok);
-    
-    return 0;
+    token_t* token = lexer_next_token(lexer);
+    if (token->type == token_type)
+        return token;
+
+    printf("Error: Expected token %s, but found %s at Line %d, Col %d\n", token_type_str(token_type),
+        token_type_str(token->type), token->line, token->column);
+    free(token);
+    return nullptr;
+}
+
+bool lexer_consume_token(lexer_t* lexer, token_type_t token_type)
+{
+    token_t* token = lexer_next_token_iff(lexer, token_type);
+    token_destroy(token);
+    return token != nullptr;
+}
+
+token_t* lexer_peek_token(lexer_t* lexer)
+{
+    if (lexer->peeked_token != nullptr)
+        return lexer->peeked_token;
+
+    lexer->peeked_token = lexer_next_token(lexer);
+    return lexer->peeked_token;
 }
