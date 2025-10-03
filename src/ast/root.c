@@ -1,16 +1,16 @@
 #include "root.h"
 
 #include "ast/node.h"
+#include "ast/visitor.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 
-static void ast_root_print(ast_node_t* _self, int indentation);
-static void ast_root_destroy(ast_node_t* _self);
+static void ast_root_accept(void* self_, ast_visitor_t* visitor, void* out);
+static void ast_root_destroy(void* self_);
 
 static ast_node_vtable_t ast_root_vtable =
 {
-    .print = ast_root_print,
+    .accept = ast_root_accept,
     .destroy = ast_root_destroy
 };
 
@@ -24,19 +24,15 @@ ast_root_t* ast_root_create(ast_def_t* def)
     return root;
 }
 
-static void ast_root_print(ast_node_t* _self, int indentation)
+static void ast_root_accept(void* self_, ast_visitor_t* visitor, void* out)
 {
-    (void)indentation;
-    ast_root_t* self = (ast_root_t*)_self;
-
-    printf("Root\n");
-    if (self->tl_def != nullptr)
-        ast_node_print(AST_NODE(self->tl_def), AST_NODE_PRINT_INDENTATION_WIDTH);
+    ast_root_t* self = self_;
+    visitor->visit_root(visitor, self, out);
 }
 
-static void ast_root_destroy(ast_node_t* _self)
+static void ast_root_destroy(void* self_)
 {
-    ast_root_t* self = (ast_root_t*)_self;
+    ast_root_t* self = (ast_root_t*)self_;
 
     if (self != nullptr)
     {

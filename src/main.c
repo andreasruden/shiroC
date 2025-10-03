@@ -1,4 +1,5 @@
 #include "ast/node.h"
+#include "ast/printer.h"
 #include "lexer.h"
 #include "parser.h"
 
@@ -14,6 +15,8 @@ int main()
         return 1;
     }
 
-    ast_node_print(AST_NODE(root), 0);
+    ast_printer_t* printer = ast_printer_create();
+    ast_printer_print_ast(printer, AST_NODE(root));
+
     ast_node_destroy(AST_NODE(root));
 }

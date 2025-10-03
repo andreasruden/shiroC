@@ -1,16 +1,17 @@
 #include "compound_stmt.h"
+
 #include "ast/node.h"
 #include "ast/stmt/stmt.h"
+#include "ast/visitor.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 
-static void ast_compound_stmt_print(ast_node_t* _self, int indentation);
-static void ast_compound_stmt_destroy(ast_node_t* _self);
+static void ast_compound_stmt_accept(void* self_, ast_visitor_t* visitor, void* out);
+static void ast_compound_stmt_destroy(void* self_);
 
 static ast_node_vtable_t ast_compound_stmt_vtable =
 {
-    .print = ast_compound_stmt_print,
+    .accept = ast_compound_stmt_accept,
     .destroy = ast_compound_stmt_destroy
 };
 
@@ -24,17 +25,15 @@ ast_compound_stmt_t* ast_compound_stmt_create(ast_stmt_t* inner_stmt)
     return compound_stmt;
 }
 
-static void ast_compound_stmt_print(ast_node_t* _self, int indentation)
+static void ast_compound_stmt_accept(void* self_, ast_visitor_t* visitor, void* out)
 {
-    ast_compound_stmt_t* self = (ast_compound_stmt_t*)_self;
-
-    printf("%*sCompoundStmt\n", indentation, "");
-    ast_node_print(AST_NODE(self->inner_stmts), indentation + AST_NODE_PRINT_INDENTATION_WIDTH);
+    ast_compound_stmt_t* self = self_;
+    visitor->visit_compound_stmt(visitor, self, out);
 }
 
-static void ast_compound_stmt_destroy(ast_node_t* _self)
+static void ast_compound_stmt_destroy(void* self_)
 {
-    ast_compound_stmt_t* self = (ast_compound_stmt_t*)_self;
+    ast_compound_stmt_t* self = self_;
 
     if (self != nullptr)
     {

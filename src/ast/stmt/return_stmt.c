@@ -1,16 +1,17 @@
 #include "return_stmt.h"
+
 #include "ast/node.h"
 #include "ast/stmt/stmt.h"
+#include "ast/visitor.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 
-static void ast_return_stmt_print(ast_node_t* _self, int indentation);
-static void ast_return_stmt_destroy(ast_node_t* _self);
+static void ast_return_stmt_accept(void* self_, ast_visitor_t* visitor, void* out);
+static void ast_return_stmt_destroy(void* self_);
 
 static ast_node_vtable_t ast_return_stmt_vtable =
 {
-    .print = ast_return_stmt_print,
+    .accept = ast_return_stmt_accept,
     .destroy = ast_return_stmt_destroy
 };
 
@@ -24,17 +25,15 @@ ast_return_stmt_t* ast_return_stmt_create(ast_expr_t* value_expr)
     return return_stmt;
 }
 
-static void ast_return_stmt_print(ast_node_t* _self, int indentation)
+static void ast_return_stmt_accept(void* self_, ast_visitor_t* visitor, void* out)
 {
-    ast_return_stmt_t* self = (ast_return_stmt_t*)_self;
-
-    printf("%*sReturnStmt\n", indentation, "");
-    ast_node_print(AST_NODE(self->value_expr), indentation + AST_NODE_PRINT_INDENTATION_WIDTH);
+    ast_return_stmt_t* self = self_;
+    visitor->visit_return_stmt(visitor, self, out);
 }
 
-static void ast_return_stmt_destroy(ast_node_t* _self)
+static void ast_return_stmt_destroy(void* self_)
 {
-    ast_return_stmt_t* self = (ast_return_stmt_t*)_self;
+    ast_return_stmt_t* self = (ast_return_stmt_t*)self_;
 
     if (self != nullptr)
     {

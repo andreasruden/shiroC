@@ -1,16 +1,17 @@
 #include "fn_def.h"
-#include "ast/node.h"
 
-#include <stdio.h>
+#include "ast/node.h"
+#include "ast/visitor.h"
+
 #include <stdlib.h>
 #include <string.h>
 
-static void ast_fn_def_print(ast_node_t* _self, int indentation);
-static void ast_fn_def_destroy(ast_node_t* _self);
+static void ast_fn_def_accept(void* self_, ast_visitor_t* visitor, void* out);
+static void ast_fn_def_destroy(void* self_);
 
 static ast_node_vtable_t ast_fn_def_vtable =
 {
-    .print = ast_fn_def_print,
+    .accept = ast_fn_def_accept,
     .destroy = ast_fn_def_destroy
 };
 
@@ -25,17 +26,15 @@ ast_fn_def_t* ast_fn_def_create(const char* name, ast_compound_stmt_t* body)
     return fn_def;
 }
 
-static void ast_fn_def_print(ast_node_t* _self, int indentation)
+static void ast_fn_def_accept(void* self_, ast_visitor_t* visitor, void* out)
 {
-    ast_fn_def_t* self = (ast_fn_def_t*)_self;
-
-    printf("%*sFnDef (name=%s)\n", indentation, "", self->base.name);
-    ast_node_print(AST_NODE(self->body), indentation + AST_NODE_PRINT_INDENTATION_WIDTH);
+    ast_fn_def_t* self = self_;
+    visitor->visit_fn_def(visitor, self, out);
 }
 
-static void ast_fn_def_destroy(ast_node_t* _self)
+static void ast_fn_def_destroy(void* self_)
 {
-    ast_fn_def_t* self = (ast_fn_def_t*)_self;
+    ast_fn_def_t* self = self_;
 
     if (self != nullptr)
     {

@@ -1,0 +1,40 @@
+#ifndef AST_VISITOR__H
+#define AST_VISITOR__H
+
+#include "ast/node.h"
+#include "ast/root.h"
+#include "ast/def/fn_def.h"
+#include "ast/expr/int_lit.h"
+#include "ast/stmt/compound_stmt.h"
+#include "ast/stmt/return_stmt.h"
+
+/* Visitor for any AST node.
+
+The ast_visitor needs to be inherited from (put it at the start of a child struct),
+and then function pointers for node types that we want to visit need to be setup.
+Any node-type that is visited via a user-provided function pointer leaves traversal
+up to the user. If a node is visited, but the user has not provided any implementation,
+then the default is to visit every child.
+*/
+typedef struct ast_visitor ast_visitor_t;
+struct ast_visitor
+{
+    void (*visit_root)(void* self_, ast_root_t* root, void *out);
+
+    // Definitions
+    void (*visit_fn_def)(void* self_, ast_fn_def_t* fn_def, void *out);
+
+    // Expressions
+    void (*visit_int_lit)(void* self_, ast_int_lit_t* int_lit, void *out);
+
+    // Statements
+    void (*visit_compound_stmt)(void* self_, ast_compound_stmt_t* compound_stmt, void *out);
+    void (*visit_return_stmt)(void* self_, ast_return_stmt_t* return_stmt, void *out);
+};
+
+// Sets up default visitor implementations.
+void ast_visitor_init(ast_visitor_t* self);
+
+void ast_visitor_visit(void* self_, void* node_, void* out);
+
+#endif
