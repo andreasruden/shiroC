@@ -35,7 +35,7 @@ void parser_destroy(parser_t* parser)
     }
 }
 
-ast_int_lit_t* parse_int_lit(parser_t* parser)
+ast_expr_t* parse_int_lit(parser_t* parser)
 {
     token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_NUMBER);
     if (tok == nullptr)
@@ -49,11 +49,11 @@ ast_int_lit_t* parse_int_lit(parser_t* parser)
 ast_expr_t* parse_expr(parser_t* parser)
 {
     if (lexer_peek_token(parser->lexer)->type == TOKEN_NUMBER)
-        return (ast_expr_t*)parse_int_lit(parser);
+        return parse_int_lit(parser);
     return nullptr;
 }
 
-ast_return_stmt_t* parse_return_stmt(parser_t* parser)
+ast_stmt_t* parse_return_stmt(parser_t* parser)
 {
     if (!lexer_consume_token(parser->lexer, TOKEN_RETURN))
         return nullptr;
@@ -71,7 +71,7 @@ ast_return_stmt_t* parse_return_stmt(parser_t* parser)
     return ast_return_stmt_create(expr);
 }
 
-ast_compound_stmt_t* parse_compound_stmt(parser_t* parser)
+ast_stmt_t* parse_compound_stmt(parser_t* parser)
 {
     if (!lexer_consume_token(parser->lexer, TOKEN_LBRACE))
         return nullptr;
@@ -89,11 +89,11 @@ ast_compound_stmt_t* parse_compound_stmt(parser_t* parser)
 ast_stmt_t* parse_stmt(parser_t* parser)
 {
     if (lexer_peek_token(parser->lexer)->type == TOKEN_RETURN)
-        return (ast_stmt_t*)parse_return_stmt(parser);
+        return parse_return_stmt(parser);
     return nullptr;
 }
 
-ast_fn_def_t* parse_fn_def(parser_t* parser)
+ast_def_t* parse_fn_def(parser_t* parser)
 {
     if (!lexer_consume_token(parser->lexer, TOKEN_INT))
         return nullptr;
@@ -108,7 +108,7 @@ ast_fn_def_t* parse_fn_def(parser_t* parser)
     if (!lexer_consume_token(parser->lexer, TOKEN_RPAREN))
         return nullptr;
 
-    ast_compound_stmt_t* body = parse_compound_stmt(parser);
+    ast_stmt_t* body = parse_compound_stmt(parser);
     if (body == nullptr)
         return nullptr;
 
@@ -117,7 +117,7 @@ ast_fn_def_t* parse_fn_def(parser_t* parser)
 
 ast_def_t* parse_top_level_definition(parser_t* parser)
 {
-    return (ast_def_t*)parse_fn_def(parser);
+    return parse_fn_def(parser);
 }
 
 ast_root_t* parser_parse(parser_t* parser)

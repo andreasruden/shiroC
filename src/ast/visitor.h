@@ -19,22 +19,22 @@ then the default is to visit every child.
 typedef struct ast_visitor ast_visitor_t;
 struct ast_visitor
 {
-    void (*visit_root)(void* self_, ast_root_t* root, void *out);
+    void (*visit_root)(void* self_, ast_root_t* root, void *out_);
 
     // Definitions
-    void (*visit_fn_def)(void* self_, ast_fn_def_t* fn_def, void *out);
+    void (*visit_fn_def)(void* self_, ast_fn_def_t* fn_def, void *out_);
 
     // Expressions
-    void (*visit_int_lit)(void* self_, ast_int_lit_t* int_lit, void *out);
+    void (*visit_int_lit)(void* self_, ast_int_lit_t* int_lit, void *out_);
 
     // Statements
-    void (*visit_compound_stmt)(void* self_, ast_compound_stmt_t* compound_stmt, void *out);
-    void (*visit_return_stmt)(void* self_, ast_return_stmt_t* return_stmt, void *out);
+    void (*visit_compound_stmt)(void* self_, ast_compound_stmt_t* compound_stmt, void *out_);
+    void (*visit_return_stmt)(void* self_, ast_return_stmt_t* return_stmt, void *out_);
 };
 
 // Sets up default visitor implementations.
 void ast_visitor_init(ast_visitor_t* self);
 
-void ast_visitor_visit(void* self_, void* node_, void* out);
+void ast_visitor_visit(void* self_, void* node_, void* out_);
 
 #endif

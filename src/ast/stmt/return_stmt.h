@@ -10,6 +10,6 @@ typedef struct ast_return_stmt
     ast_expr_t* value_expr;
 } ast_return_stmt_t;
 
-ast_return_stmt_t* ast_return_stmt_create(ast_expr_t* value_expr);
+ast_stmt_t* ast_return_stmt_create(ast_expr_t* value_expr);
 
 #endif

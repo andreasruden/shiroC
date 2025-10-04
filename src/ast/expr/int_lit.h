@@ -9,6 +9,6 @@ typedef struct ast_int_lit
     int value;
 } ast_int_lit_t;
 
-ast_int_lit_t* ast_int_lit_create(int value);
+ast_expr_t* ast_int_lit_create(int value);
 
 #endif

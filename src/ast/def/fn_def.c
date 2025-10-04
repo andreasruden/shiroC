@@ -15,7 +15,7 @@ static ast_node_vtable_t ast_fn_def_vtable =
     .destroy = ast_fn_def_destroy
 };
 
-ast_fn_def_t* ast_fn_def_create(const char* name, ast_compound_stmt_t* body)
+ast_def_t* ast_fn_def_create(const char* name, ast_stmt_t* body)
 {
     ast_fn_def_t* fn_def = malloc(sizeof(*fn_def));
 
@@ -23,7 +23,7 @@ ast_fn_def_t* ast_fn_def_create(const char* name, ast_compound_stmt_t* body)
     fn_def->base.name = strdup(name);
     fn_def->body = body;
 
-    return fn_def;
+    return (ast_def_t*)fn_def;
 }
 
 static void ast_fn_def_accept(void* self_, ast_visitor_t* visitor, void* out)

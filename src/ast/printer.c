@@ -1,9 +1,10 @@
 #include "printer.h"
 
 #include "ast/def/fn_def.h"
+#include "common/containers/string.h"
+#include "common/util/ssprintf.h"
 #include "visitor.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 
 // TODO: Should have out as a string_t instead of writing directly to stdout
@@ -16,50 +17,50 @@ struct ast_printer
 
 static constexpr int PRINT_INDENTATION_WIDTH = 2;
 
-static void print_root(void* self_, ast_root_t* root, void* out)
+static void print_root(void* self_, ast_root_t* root, void* out_)
 {
-    (void)out;
+    string_t* out = out_;
     ast_printer_t* self = self_;
 
-    printf("Root\n");
+    string_append_cstr(out, "Root\n");
     self->indentation += PRINT_INDENTATION_WIDTH;
     ast_visitor_visit(self, root->tl_def, out);
 }
 
-static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out)
+static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 {
-    (void)out;
+    string_t* out = out_;
     ast_printer_t* self = self_;
 
-    printf("%*sFnDef (name=%s)\n", self->indentation, "", fn_def->base.name);
+    string_append_cstr(out, ssprintf("%*sFnDef (name=%s)\n", self->indentation, "", fn_def->base.name));
     self->indentation += PRINT_INDENTATION_WIDTH;
     ast_visitor_visit(self, fn_def->body, out);
 }
 
-static void print_int_lit(void* self_, ast_int_lit_t* int_lit, void* out)
+static void print_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
 {
-    (void)out;
+    string_t* out = out_;
     ast_printer_t* self = self_;
 
-    printf("%*sIntLit (value=%d)\n", self->indentation, "", int_lit->value);
+    string_append_cstr(out, ssprintf("%*sIntLit (value=%d)\n", self->indentation, "", int_lit->value));
 }
 
-static void print_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt, void* out)
+static void print_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt, void* out_)
 {
-    (void)out;
+    string_t* out = out_;
     ast_printer_t* self = self_;
 
-    printf("%*sCompoundStmt\n", self->indentation, "");
+    string_append_cstr(out, ssprintf("%*sCompoundStmt\n", self->indentation, ""));
     self->indentation += PRINT_INDENTATION_WIDTH;
     ast_visitor_visit(self, compound_stmt->inner_stmts, out);
 }
 
-static void print_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void* out)
+static void print_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void* out_)
 {
-    (void)out;
+    string_t* out = out_;
     ast_printer_t* self = self_;
 
-    printf("%*sReturnStmt\n", self->indentation, "");
+    string_append_cstr(out, ssprintf("%*sReturnStmt\n", self->indentation, ""));
     self->indentation += PRINT_INDENTATION_WIDTH;
     ast_visitor_visit(self, return_stmt->value_expr, out);
 }
@@ -91,8 +92,10 @@ void ast_printer_destroy(ast_printer_t* printer)
         free(printer);
 }
 
-void ast_printer_print_ast(ast_printer_t* printer, ast_node_t* node)
+char* ast_printer_print_ast(ast_printer_t* printer, ast_node_t* node)
 {
+    string_t out = STRING_INIT;
     printer->indentation = 0;
-    ast_visitor_visit(printer, node, nullptr);
+    ast_visitor_visit(printer, node, &out);
+    return string_release(&out);
 }

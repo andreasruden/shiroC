@@ -4,6 +4,7 @@
 #include "parser.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 int main()
 {
@@ -16,7 +17,9 @@ int main()
     }
 
     ast_printer_t* printer = ast_printer_create();
-    ast_printer_print_ast(printer, AST_NODE(root));
+    char* str = ast_printer_print_ast(printer, AST_NODE(root));
+    puts(str);
+    free(str);
 
     ast_node_destroy(AST_NODE(root));
 }

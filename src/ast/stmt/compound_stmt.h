@@ -9,6 +9,6 @@ typedef struct ast_compound_stmt
     ast_stmt_t* inner_stmts; // TODO: vec_t
 } ast_compound_stmt_t;
 
-ast_compound_stmt_t* ast_compound_stmt_create(ast_stmt_t* inner_stmt);
+ast_stmt_t* ast_compound_stmt_create(ast_stmt_t* inner_stmt);
 
 #endif

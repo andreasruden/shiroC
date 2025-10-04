@@ -15,14 +15,14 @@ static ast_node_vtable_t ast_return_stmt_vtable =
     .destroy = ast_return_stmt_destroy
 };
 
-ast_return_stmt_t* ast_return_stmt_create(ast_expr_t* value_expr)
+ast_stmt_t* ast_return_stmt_create(ast_expr_t* value_expr)
 {
     ast_return_stmt_t* return_stmt = malloc(sizeof(*return_stmt));
 
     AST_NODE(return_stmt)->vtable = &ast_return_stmt_vtable;
     return_stmt->value_expr = value_expr;
 
-    return return_stmt;
+    return (ast_stmt_t*)return_stmt;
 }
 
 static void ast_return_stmt_accept(void* self_, ast_visitor_t* visitor, void* out)
