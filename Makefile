@@ -27,6 +27,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/stmt/compound_stmt.c \
 	$(SRC_DIR)/ast/stmt/return_stmt.c \
 	$(SRC_DIR)/ast/stmt/stmt.c
+	$(SRC_DIR)/common/string.c
 COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMMON_SRCS))
 
 # Unit-tests source files
