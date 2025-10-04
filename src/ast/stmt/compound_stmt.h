@@ -13,4 +13,7 @@ typedef struct ast_compound_stmt
 // Note: Ownership of inner_stmts is transferred.
 ast_stmt_t* ast_compound_stmt_create(ptr_vec_t* inner_stmts);
 
+__attribute__((sentinel))
+ast_stmt_t* ast_compound_stmt_create_va(ast_stmt_t* first, ...);
+
 #endif

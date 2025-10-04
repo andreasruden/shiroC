@@ -8,7 +8,7 @@ UT_SRC_DIR = $(SRC_DIR)/tests/ut
 
 # Tools & Flags
 CC = gcc
-CFLAGS = -Wall -Wextra -Wpedantic -Werror=incompatible-pointer-types -Wconversion -Wshadow  \
+CFLAGS = -Wall -Wextra -Wpedantic -Werror=incompatible-pointer-types -Wsign-conversion -Wshadow  \
 		 -std=c23 -I$(SRC_DIR)
 DEBUGFLAGS = -g -O0
 LD = ld

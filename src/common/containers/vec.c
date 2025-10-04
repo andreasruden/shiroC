@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int VEC_INITIAL_CAPACITY = 8;
+static size_t VEC_INITIAL_CAPACITY = 8;
 static float VEC_GROWTH_FACTOR = 1.5f;
 
 void vec_deinit(vec_t* vec)
@@ -45,7 +45,7 @@ void vec_destroy(vec_t* vec)
 
 static void vec_grow(vec_t* vec)
 {
-    size_t new_capacity = vec->capacity == 0 ? VEC_INITIAL_CAPACITY : (int)(vec->capacity * VEC_GROWTH_FACTOR);
+    size_t new_capacity = vec->capacity == 0 ? VEC_INITIAL_CAPACITY : (size_t)(vec->capacity * VEC_GROWTH_FACTOR);
 
     void* new_mem = realloc(vec->mem, new_capacity * vec->elem_size);
     // TODO: panic if realloc returns nullptr

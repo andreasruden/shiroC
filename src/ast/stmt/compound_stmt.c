@@ -5,6 +5,7 @@
 #include "ast/visitor.h"
 #include "common/containers/ptr_vec.h"
 
+#include <stdarg.h>
 #include <stdlib.h>
 
 static void ast_compound_stmt_accept(void* self_, ast_visitor_t* visitor, void* out);
@@ -24,6 +25,22 @@ ast_stmt_t* ast_compound_stmt_create(ptr_vec_t* inner_stmts)
     ptr_vec_move(&compound_stmt->inner_stmts, inner_stmts);
 
     return (ast_stmt_t*)compound_stmt;
+}
+
+ast_stmt_t* ast_compound_stmt_create_va(ast_stmt_t* first, ...)
+{
+    ptr_vec_t stmts = PTR_VEC_INIT;
+    ptr_vec_append(&stmts, first);
+
+    va_list args;
+    va_start(args, first);
+    ast_stmt_t* def;
+    while ((def = va_arg(args, ast_stmt_t*)) != nullptr) {
+        ptr_vec_append(&stmts, def);
+    }
+    va_end(args);
+
+    return ast_compound_stmt_create(&stmts);
 }
 
 static void ast_compound_stmt_accept(void* self_, ast_visitor_t* visitor, void* out)

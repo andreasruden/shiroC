@@ -37,11 +37,13 @@ TEST(ut_parser_fixture_t, parse_basic_main_function)
     // TODO: Assert fix->parser has no warnings/errors
 
     // Construct an expected tree
-    ptr_vec_t body = PTR_VEC_INIT;
-    ptr_vec_append(&body, ast_return_stmt_create(ast_int_lit_create(0)));
-    ptr_vec_t tl_defs = PTR_VEC_INIT;
-    ptr_vec_append(&tl_defs, ast_fn_def_create("main", ast_compound_stmt_create(&body)));
-    ast_root_t* expected_tree = ast_root_create(&tl_defs);
+    ast_root_t* expected_tree = ast_root_create_va(
+        ast_fn_def_create("main",
+            ast_compound_stmt_create_va(
+                ast_return_stmt_create(
+                    ast_int_lit_create(0)),
+                nullptr)),
+        nullptr);
 
     // Assert that parse tree and expected tree are equal
     ast_printer_t* printer = ast_printer_create();
