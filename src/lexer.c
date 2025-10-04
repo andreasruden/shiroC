@@ -168,19 +168,34 @@ lexer_t* lexer_create(const char* source)
 {
     lexer_t* lexer = malloc(sizeof(*lexer));
 
-    lexer->source = source;
-    lexer->pos = 0;
+    *lexer = (lexer_t){
+        .source = source ? strdup(source) : nullptr,
+        .length = source ? strlen(source) : 0,
+        .line = 1,
+        .column = 1,
+    };
+
+    return lexer;
+}
+
+void lexer_set_source(lexer_t* lexer, const char* source)
+{
+    free(lexer->source);
+    lexer->source = strdup(source);
     lexer->length = strlen(source);
     lexer->line = 1;
     lexer->column = 1;
-
-    return lexer;
+    lexer->pos = 0;
+    lexer->peeked_token = nullptr;
 }
 
 void lexer_destroy(lexer_t *lexer)
 {
     if (lexer != nullptr)
+    {
+        free(lexer->source);
         free(lexer);
+    }
 }
 
 token_t* lexer_next_token(lexer_t* lexer)

@@ -36,7 +36,7 @@ typedef struct
 
 typedef struct lexer
 {
-    const char* source;
+    char* source;
     size_t pos;
     size_t length;
     int line;
@@ -47,6 +47,8 @@ typedef struct lexer
 lexer_t* lexer_create(const char* source);
 
 void lexer_destroy(lexer_t* lexer);
+
+void lexer_set_source(lexer_t* lexer, const char* source);
 
 token_t* lexer_next_token(lexer_t* lexer);
 

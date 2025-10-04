@@ -29,7 +29,10 @@ parser_t* parser_create(lexer_t* lexer)
 void parser_destroy(parser_t* parser)
 {
     if (parser != nullptr)
+    {
+        lexer_destroy(parser->lexer);
         free(parser);
+    }
 }
 
 ast_int_lit_t* parse_int_lit(parser_t* parser)
