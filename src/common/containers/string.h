@@ -38,6 +38,8 @@ const char* string_cstr(string_t* str);
 */
 char* string_release(string_t* str);
 
+size_t string_len(string_t* str);
+
 void string_append_cstr(string_t* str, const char* cstr);
 
 #endif

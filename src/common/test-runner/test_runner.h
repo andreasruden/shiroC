@@ -71,7 +71,7 @@ extern bool g_test_failed;
     } \
     void test_name##_impl(fixture_name* fix)
 
-#define get_fixture() ((fixture_t*)g_current_fixture)
+#define get_fixture() (g_current_fixture)
 
 static inline int str_compare(const char* a, const char* b) { return strcmp(a, b); }
 static inline int int_compare(int a, int b) { return (a > b) - (a < b); }
