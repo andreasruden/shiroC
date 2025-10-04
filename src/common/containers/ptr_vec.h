@@ -14,6 +14,7 @@ typedef struct ptr_vec
     .inner = VEC_INIT(void*) \
 }
 
+// FIXME: Needs to take a pointer to function to clean up entries!
 static inline void ptr_vec_deinit(ptr_vec_t* vec)
 {
     vec_deinit(&vec->inner);

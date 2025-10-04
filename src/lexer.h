@@ -19,6 +19,7 @@ typedef enum
     TOKEN_LBRACE,
     TOKEN_RBRACE,
     TOKEN_SEMICOLON,
+    TOKEN_COMMA,
 
     // Misc
     TOKEN_IDENTIFIER,

@@ -7,8 +7,6 @@
 
 #include <stdlib.h>
 
-// TODO: Should have out as a string_t instead of writing directly to stdout
-
 struct ast_printer
 {
     ast_visitor_t base;
@@ -25,7 +23,16 @@ static void print_root(void* self_, ast_root_t* root, void* out_)
     string_append_cstr(out, "Root\n");
     self->indentation += PRINT_INDENTATION_WIDTH;
     for (size_t i = 0; i < ptr_vec_size(&root->tl_defs); ++i)
-        ast_visitor_visit(self_, AST_NODE(ptr_vec_get(&root->tl_defs, i)), out_);
+        ast_visitor_visit(self_, ptr_vec_get(&root->tl_defs, i), out_);
+}
+
+static void print_param_decl(void* self_, ast_param_decl_t* param_decl, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sParamDecl '%s' '%s'\n", self->indentation, "", param_decl->type,
+        param_decl->name));
 }
 
 static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
@@ -33,9 +40,23 @@ static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     string_t* out = out_;
     ast_printer_t* self = self_;
 
-    string_append_cstr(out, ssprintf("%*sFnDef (name=%s)\n", self->indentation, "", fn_def->base.name));
+    string_append_cstr(out, ssprintf("%*sFnDef '%s'\n", self->indentation, "", fn_def->base.name));
     self->indentation += PRINT_INDENTATION_WIDTH;
     ast_visitor_visit(self, fn_def->body, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
+static void print_call_expr(void* self_, ast_call_expr_t* call_expr, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sCallExpr\n", self->indentation, ""));
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self_, call_expr->function, out_);
+    for (size_t i = 0; i < ptr_vec_size(&call_expr->arguments); ++i)
+        ast_visitor_visit(self, ptr_vec_get(&call_expr->arguments, i), out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
 static void print_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
@@ -43,7 +64,15 @@ static void print_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
     string_t* out = out_;
     ast_printer_t* self = self_;
 
-    string_append_cstr(out, ssprintf("%*sIntLit (value=%d)\n", self->indentation, "", int_lit->value));
+    string_append_cstr(out, ssprintf("%*sIntLit '%d'\n", self->indentation, "", int_lit->value));
+}
+
+static void print_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sRefExpr '%s'\n", self->indentation, "", ref_expr->name));
 }
 
 static void print_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt, void* out_)
@@ -55,6 +84,18 @@ static void print_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt,
     self->indentation += PRINT_INDENTATION_WIDTH;
     for (size_t i = 0; i < ptr_vec_size(&compound_stmt->inner_stmts); ++i)
         ast_visitor_visit(self, ptr_vec_get(&compound_stmt->inner_stmts, i), out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
+static void print_expr_stmt(void* self_, ast_expr_stmt_t* expr_stmt, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sExprStmt\n", self->indentation, ""));
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self, expr_stmt->expr, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
 static void print_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void* out_)
@@ -65,6 +106,7 @@ static void print_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void*
     string_append_cstr(out, ssprintf("%*sReturnStmt\n", self->indentation, ""));
     self->indentation += PRINT_INDENTATION_WIDTH;
     ast_visitor_visit(self, return_stmt->value_expr, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
 ast_printer_t* ast_printer_create()
@@ -75,12 +117,17 @@ ast_printer_t* ast_printer_create()
     *printer = (ast_printer_t){
         .base = (ast_visitor_t){
             .visit_root = print_root,
+            // Declarations
+            .visit_param_decl = print_param_decl,
             // Definitions
             .visit_fn_def = print_fn_def,
             // Expressions
+            .visit_call_expr = print_call_expr,
             .visit_int_lit = print_int_lit,
+            .visit_ref_expr = print_ref_expr,
             // Statements
             .visit_compound_stmt = print_compound_stmt,
+            .visit_expr_stmt = print_expr_stmt,
             .visit_return_stmt = print_return_stmt,
         },
     };

@@ -1,11 +1,15 @@
 #ifndef AST_VISITOR__H
 #define AST_VISITOR__H
 
+#include "ast/decl/param_decl.h"
+#include "ast/expr/call_expr.h"
+#include "ast/expr/ref_expr.h"
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/def/fn_def.h"
 #include "ast/expr/int_lit.h"
 #include "ast/stmt/compound_stmt.h"
+#include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/return_stmt.h"
 
 /* Visitor for any AST node.
@@ -21,14 +25,20 @@ struct ast_visitor
 {
     void (*visit_root)(void* self_, ast_root_t* root, void *out_);
 
+    // Declarations
+    void (*visit_param_decl)(void* self, ast_param_decl_t* fn_def, void *out_);
+
     // Definitions
     void (*visit_fn_def)(void* self_, ast_fn_def_t* fn_def, void *out_);
 
     // Expressions
+    void (*visit_call_expr)(void* self_, ast_call_expr_t* call_expr, void *out_);
     void (*visit_int_lit)(void* self_, ast_int_lit_t* int_lit, void *out_);
+    void (*visit_ref_expr)(void* self_, ast_ref_expr_t* ref_expr, void *out_);
 
     // Statements
     void (*visit_compound_stmt)(void* self_, ast_compound_stmt_t* compound_stmt, void *out_);
+    void (*visit_expr_stmt)(void* self_, ast_expr_stmt_t* expr_stmt, void *out_);
     void (*visit_return_stmt)(void* self_, ast_return_stmt_t* return_stmt, void *out_);
 };
 

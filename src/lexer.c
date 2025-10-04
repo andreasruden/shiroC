@@ -233,6 +233,7 @@ token_t* lexer_next_token(lexer_t* lexer)
         case '{': return token_create(TOKEN_LBRACE, "{", line, col);
         case '}': return token_create(TOKEN_RBRACE, "}", line, col);
         case ';': return token_create(TOKEN_SEMICOLON, ";", line, col);
+        case ',': return token_create(TOKEN_COMMA, ",", line, col);
         default:
         {
             char val[2] = {c, '\0'};

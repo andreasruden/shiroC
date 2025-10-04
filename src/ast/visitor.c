@@ -4,12 +4,27 @@
 static void ast_visitor_visit_root(void* self_, ast_root_t* root, void* out_)
 {
     for (size_t i = 0; i < ptr_vec_size(&root->tl_defs); ++i)
-        ast_visitor_visit(self_, AST_NODE(ptr_vec_get(&root->tl_defs, i)), out_);
+        ast_visitor_visit(self_, ptr_vec_get(&root->tl_defs, i), out_);
+}
+
+static void ast_visitor_visit_param_decl(void* self_, ast_param_decl_t* param_decl, void* out_)
+{
+    (void)self_;
+    (void)param_decl;
+    (void)out_;
 }
 
 static void ast_visitor_visit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 {
-    ast_visitor_visit(self_, AST_NODE(fn_def->body), out_);
+    ast_visitor_visit(self_, fn_def->body, out_);
+}
+
+static void ast_visitor_visit_call_expr(void* self_, ast_call_expr_t* call_expr, void* out_)
+{
+    ast_visitor_visit(self_, call_expr->function, out_);
+
+    for (size_t i = 0; i < ptr_vec_size(&call_expr->arguments); ++i)
+        ast_visitor_visit(self_, ptr_vec_get(&call_expr->arguments, i), out_);
 }
 
 static void ast_visitor_visit_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
@@ -19,27 +34,44 @@ static void ast_visitor_visit_int_lit(void* self_, ast_int_lit_t* int_lit, void*
     (void)out_;
 }
 
+static void ast_visitor_visit_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
+{
+    (void)self_;
+    (void)ref_expr;
+    (void)out_;
+}
+
 static void ast_visitor_visit_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt, void* out_)
 {
     for (size_t i = 0; i < ptr_vec_size(&compound_stmt->inner_stmts); ++i)
         ast_visitor_visit(self_, ptr_vec_get(&compound_stmt->inner_stmts, i), out_);
 }
 
+static void ast_visitor_visit_expr_stmt(void* self_, ast_expr_stmt_t* expr_stmt, void* out_)
+{
+    ast_visitor_visit(self_, expr_stmt->expr, out_);
+}
+
 static void ast_visitor_visit_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void* out_)
 {
-    ast_visitor_visit(self_, AST_NODE(return_stmt->value_expr), out_);
+    ast_visitor_visit(self_, return_stmt->value_expr, out_);
 }
 
 void ast_visitor_init(ast_visitor_t* visitor)
 {
     *visitor = (ast_visitor_t){
         .visit_root = ast_visitor_visit_root,
+        // Declarations
+        .visit_param_decl = ast_visitor_visit_param_decl,
         // Definitions
         .visit_fn_def = ast_visitor_visit_fn_def,
         // Expressions
+        .visit_call_expr = ast_visitor_visit_call_expr,
         .visit_int_lit = ast_visitor_visit_int_lit,
+        .visit_ref_expr = ast_visitor_visit_ref_expr,
         // Statements
         .visit_compound_stmt = ast_visitor_visit_compound_stmt,
+        .visit_expr_stmt = ast_visitor_visit_expr_stmt,
         .visit_return_stmt = ast_visitor_visit_return_stmt,
     };
 }

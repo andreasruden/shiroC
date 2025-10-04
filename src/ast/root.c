@@ -18,7 +18,7 @@ static ast_node_vtable_t ast_root_vtable =
 
 ast_root_t* ast_root_create(ptr_vec_t* defs)
 {
-    ast_root_t* root = malloc(sizeof(*root));
+    ast_root_t* root = calloc(1, sizeof(*root));
 
     root->base.vtable = &ast_root_vtable;
     ptr_vec_move(&root->tl_defs, defs);
