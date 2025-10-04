@@ -3,7 +3,8 @@
 
 static void ast_visitor_visit_root(void* self_, ast_root_t* root, void* out_)
 {
-    ast_visitor_visit(self_, AST_NODE(root->tl_def), out_);
+    for (size_t i = 0; i < ptr_vec_size(&root->tl_defs); ++i)
+        ast_visitor_visit(self_, AST_NODE(ptr_vec_get(&root->tl_defs, i)), out_);
 }
 
 static void ast_visitor_visit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
@@ -20,7 +21,8 @@ static void ast_visitor_visit_int_lit(void* self_, ast_int_lit_t* int_lit, void*
 
 static void ast_visitor_visit_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt, void* out_)
 {
-    ast_visitor_visit(self_, AST_NODE(compound_stmt->inner_stmts), out_);
+    for (size_t i = 0; i < ptr_vec_size(&compound_stmt->inner_stmts); ++i)
+        ast_visitor_visit(self_, ptr_vec_get(&compound_stmt->inner_stmts, i), out_);
 }
 
 static void ast_visitor_visit_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void* out_)

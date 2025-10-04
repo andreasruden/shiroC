@@ -1,13 +1,16 @@
+#include "parser.h"
+
 #include "ast/def/fn_def.h"
 #include "ast/expr/int_lit.h"
 #include "ast/printer.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/return_stmt.h"
+#include "common/containers/ptr_vec.h"
 #include "lexer.h"
 #include "test_runner.h"
 
-#include "parser.h"
+#include <stdarg.h>
 
 TEST_FIXTURE(ut_parser_fixture_t)
 {
@@ -34,11 +37,11 @@ TEST(ut_parser_fixture_t, parse_basic_main_function)
     // TODO: Assert fix->parser has no warnings/errors
 
     // Construct an expected tree
-    ast_root_t* expected_tree = ast_root_create(
-        ast_fn_def_create("main",
-            ast_compound_stmt_create(
-                ast_return_stmt_create(
-                    ast_int_lit_create(0)))));
+    ptr_vec_t body = PTR_VEC_INIT;
+    ptr_vec_append(&body, ast_return_stmt_create(ast_int_lit_create(0)));
+    ptr_vec_t tl_defs = PTR_VEC_INIT;
+    ptr_vec_append(&tl_defs, ast_fn_def_create("main", ast_compound_stmt_create(&body)));
+    ast_root_t* expected_tree = ast_root_create(&tl_defs);
 
     // Assert that parse tree and expected tree are equal
     ast_printer_t* printer = ast_printer_create();

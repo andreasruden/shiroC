@@ -24,7 +24,8 @@ static void print_root(void* self_, ast_root_t* root, void* out_)
 
     string_append_cstr(out, "Root\n");
     self->indentation += PRINT_INDENTATION_WIDTH;
-    ast_visitor_visit(self, root->tl_def, out);
+    for (size_t i = 0; i < ptr_vec_size(&root->tl_defs); ++i)
+        ast_visitor_visit(self_, AST_NODE(ptr_vec_get(&root->tl_defs, i)), out_);
 }
 
 static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
@@ -52,7 +53,8 @@ static void print_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt,
 
     string_append_cstr(out, ssprintf("%*sCompoundStmt\n", self->indentation, ""));
     self->indentation += PRINT_INDENTATION_WIDTH;
-    ast_visitor_visit(self, compound_stmt->inner_stmts, out);
+    for (size_t i = 0; i < ptr_vec_size(&compound_stmt->inner_stmts); ++i)
+        ast_visitor_visit(self, ptr_vec_get(&compound_stmt->inner_stmts, i), out);
 }
 
 static void print_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void* out_)

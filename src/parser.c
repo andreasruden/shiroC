@@ -8,6 +8,7 @@
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/return_stmt.h"
+#include "common/containers/ptr_vec.h"
 #include "lexer.h"
 
 #include <stdlib.h>
@@ -76,14 +77,25 @@ ast_stmt_t* parse_compound_stmt(parser_t* parser)
     if (!lexer_consume_token(parser->lexer, TOKEN_LBRACE))
         return nullptr;
 
-    ast_stmt_t* inner_stmt = parse_stmt(parser);
-    if (inner_stmt == nullptr)
-        return nullptr;
+    ptr_vec_t inner_stmts = PTR_VEC_INIT;
+    while (lexer_peek_token(parser->lexer)->type != TOKEN_RBRACE)
+    {
+        ast_stmt_t* inner_stmt = parse_stmt(parser);
+        if (inner_stmt == nullptr)
+        {
+            ptr_vec_deinit(&inner_stmts);
+            return nullptr;
+        }
+        ptr_vec_append(&inner_stmts, inner_stmt);
+    }
 
     if (!lexer_consume_token(parser->lexer, TOKEN_RBRACE))
+    {
+        ptr_vec_deinit(&inner_stmts);
         return nullptr;
+    }
 
-    return ast_compound_stmt_create(inner_stmt);
+    return ast_compound_stmt_create(&inner_stmts);
 }
 
 ast_stmt_t* parse_stmt(parser_t* parser)
@@ -122,9 +134,10 @@ ast_def_t* parse_top_level_definition(parser_t* parser)
 
 ast_root_t* parser_parse(parser_t* parser)
 {
-    ast_def_t* node = parse_top_level_definition(parser);
-    if (node == nullptr)
-        return nullptr;
+    ptr_vec_t tl_defs = PTR_VEC_INIT;
+    ast_def_t* tl_def;
+    while ((tl_def = parse_top_level_definition(parser)) != nullptr)
+        ptr_vec_append(&tl_defs, tl_def);
 
-    return ast_root_create(node);
+    return ast_root_create(&tl_defs);
 }

@@ -8,7 +8,8 @@ UT_SRC_DIR = $(SRC_DIR)/tests/ut
 
 # Tools & Flags
 CC = gcc
-CFLAGS = -Wall -Wextra -pedantic -std=c23 -I$(SRC_DIR)
+CFLAGS = -Wall -Wextra -Wpedantic -Werror=incompatible-pointer-types -Wconversion -Wshadow  \
+		 -std=c23 -I$(SRC_DIR)
 DEBUGFLAGS = -g -O0
 LD = ld
 
@@ -27,7 +28,8 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/stmt/compound_stmt.c \
 	$(SRC_DIR)/ast/stmt/return_stmt.c \
 	$(SRC_DIR)/ast/stmt/stmt.c \
-	$(SRC_DIR)/common/containers/string.c
+	$(SRC_DIR)/common/containers/string.c \
+	$(SRC_DIR)/common/containers/vec.c
 COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMMON_SRCS))
 
 # Unit-tests source files
