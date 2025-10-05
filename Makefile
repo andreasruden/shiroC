@@ -15,6 +15,7 @@ LD = ld
 
 # Common source files
 COMMON_SRCS = \
+	$(SRC_DIR)/compiler_error.c \
     $(SRC_DIR)/lexer.c \
     $(SRC_DIR)/parser.c \
     $(SRC_DIR)/ast/node.c \

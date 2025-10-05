@@ -30,7 +30,8 @@ ast_stmt_t* ast_compound_stmt_create(ptr_vec_t* inner_stmts)
 ast_stmt_t* ast_compound_stmt_create_va(ast_stmt_t* first, ...)
 {
     ptr_vec_t stmts = PTR_VEC_INIT;
-    ptr_vec_append(&stmts, first);
+    if (first != nullptr)
+        ptr_vec_append(&stmts, first);
 
     va_list args;
     va_start(args, first);
@@ -40,6 +41,12 @@ ast_stmt_t* ast_compound_stmt_create_va(ast_stmt_t* first, ...)
     }
     va_end(args);
 
+    return ast_compound_stmt_create(&stmts);
+}
+
+ast_stmt_t* ast_compound_stmt_create_empty()
+{
+    ptr_vec_t stmts = PTR_VEC_INIT;
     return ast_compound_stmt_create(&stmts);
 }
 

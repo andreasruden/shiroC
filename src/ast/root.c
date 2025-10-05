@@ -30,7 +30,8 @@ __attribute__((sentinel))
 ast_root_t* ast_root_create_va(ast_def_t* first, ...)
 {
     ptr_vec_t body = PTR_VEC_INIT;
-    ptr_vec_append(&body, first);
+    if (first != nullptr)
+        ptr_vec_append(&body, first);
 
     va_list args;
     va_start(args, first);

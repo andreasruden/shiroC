@@ -1,6 +1,5 @@
 #include "ast/node.h"
 #include "ast/printer.h"
-#include "lexer.h"
 #include "parser.h"
 
 #include <stdio.h>
@@ -8,7 +7,8 @@
 
 int main()
 {
-    parser_t* parser = parser_create(lexer_create("int main() { return 0; }"));
+    parser_t* parser = parser_create();
+    parser_set_source(parser, "hardcoded", "int main() { return 0; }");
     ast_root_t* root = parser_parse(parser);
     if (root == nullptr)
     {

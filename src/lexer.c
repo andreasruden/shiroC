@@ -1,5 +1,9 @@
 #include "lexer.h"
 
+#include "common/containers/ptr_vec.h"
+#include "compiler_error.h"
+#include "common/util/ssprintf.h"
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,16 +26,16 @@ static const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
-        case TOKEN_INT: return "INT";
-        case TOKEN_RETURN: return "RETURN";
-        case TOKEN_IDENTIFIER: return "IDENTIFIER";
-        case TOKEN_NUMBER: return "NUMBER";
-        case TOKEN_STRING: return "STRING";
-        case TOKEN_LPAREN: return "LPAREN";
-        case TOKEN_RPAREN: return "RPAREN";
-        case TOKEN_LBRACE: return "LBRACE";
-        case TOKEN_RBRACE: return "RBRACE";
-        case TOKEN_SEMICOLON: return "SEMICOLON";
+        case TOKEN_INT: return "int";
+        case TOKEN_RETURN: return "return";
+        case TOKEN_IDENTIFIER: return "identifier";
+        case TOKEN_NUMBER: return "number";
+        case TOKEN_STRING: return "string-literal";
+        case TOKEN_LPAREN: return "(";
+        case TOKEN_RPAREN: return ")";
+        case TOKEN_LBRACE: return "{";
+        case TOKEN_RBRACE: return "}";
+        case TOKEN_SEMICOLON: return ";";
         case TOKEN_EOF: return "EOF";
         default: return "UNKNOWN";
     }
@@ -67,13 +71,19 @@ static void lexer_skip_whitespace(lexer_t* lex)
         lexer_advance(lex);
 }
 
-static token_t* token_create(token_type_t type, const char* value, int line, int col)
+static token_t* token_create(lexer_t* lexer, token_type_t type, const char* value, int line, int col)
 {
     token_t* tok = malloc(sizeof(*tok));
-    tok->type = type;
-    tok->value = value ? strdup(value) : NULL;
-    tok->line = line;
-    tok->column = col;
+
+    *tok = (token_t){
+        .type = type,
+        .value = value ? strdup(value) : nullptr,
+        .line = line,
+        .column = col,
+    };
+
+    ptr_vec_append(&lexer->created_tokens, tok);
+
     return tok;
 }
 
@@ -104,9 +114,7 @@ static token_t* lex_identifier(lexer_t* lexer)
     size_t start = lexer->pos;
 
     while (isalnum(lexer_peek(lexer)) || lexer_peek(lexer) == '_')
-    {
         lexer_advance(lexer);
-    }
 
     size_t length = lexer->pos - start;
     char* value = malloc(length + 1);
@@ -114,7 +122,7 @@ static token_t* lex_identifier(lexer_t* lexer)
     value[length] = '\0';
 
     token_type_t type = lookup_keyword(value);
-    token_t* tok = token_create(type, value, start_line, start_col);
+    token_t* tok = token_create(lexer, type, value, start_line, start_col);
     free(value);
     return tok;
 }
@@ -133,7 +141,7 @@ static token_t* lex_number(lexer_t* lexer)
     strncpy(value, lexer->source + start, length);
     value[length] = '\0';
 
-    token_t* tok = token_create(TOKEN_NUMBER, value, start_line, start_col);
+    token_t* tok = token_create(lexer, TOKEN_NUMBER, value, start_line, start_col);
     free(value);
     return tok;
 }
@@ -159,41 +167,35 @@ static token_t* lex_string(lexer_t* lexer)
 
     lexer_advance(lexer); // Skip closing quote
 
-    token_t* tok = token_create(TOKEN_STRING, value, start_line, start_col);
+    token_t* tok = token_create(lexer, TOKEN_STRING, value, start_line, start_col);
     free(value);
     return tok;
 }
 
-lexer_t* lexer_create(const char* source)
+lexer_t* lexer_create(const char* filename, const char* source, ptr_vec_t* error_output)
 {
     lexer_t* lexer = malloc(sizeof(*lexer));
 
     *lexer = (lexer_t){
-        .source = source ? strdup(source) : nullptr,
-        .length = source ? strlen(source) : 0,
+        .source = strdup(source),
+        .length = strlen(source),
+        .filename = strdup(filename),
         .line = 1,
         .column = 1,
+        .error_output = error_output,
+        .created_tokens = PTR_VEC_INIT,
     };
 
     return lexer;
-}
-
-void lexer_set_source(lexer_t* lexer, const char* source)
-{
-    free(lexer->source);
-    lexer->source = strdup(source);
-    lexer->length = strlen(source);
-    lexer->line = 1;
-    lexer->column = 1;
-    lexer->pos = 0;
-    lexer->peeked_token = nullptr;
 }
 
 void lexer_destroy(lexer_t *lexer)
 {
     if (lexer != nullptr)
     {
+        ptr_vec_deinit(&lexer->created_tokens); // FIXME: needs to call token_destroy for each
         free(lexer->source);
+        free(lexer->filename);
         free(lexer);
     }
 }
@@ -210,7 +212,7 @@ token_t* lexer_next_token(lexer_t* lexer)
     lexer_skip_whitespace(lexer);
 
     if (lexer->pos >= lexer->length)
-        return token_create(TOKEN_EOF, NULL, lexer->line, lexer->column);
+        return token_create(lexer, TOKEN_EOF, NULL, lexer->line, lexer->column);
 
     char c = lexer_peek(lexer);
     int line = lexer->line;
@@ -228,29 +230,41 @@ token_t* lexer_next_token(lexer_t* lexer)
     lexer_advance(lexer);
     switch (c)
     {
-        case '(': return token_create(TOKEN_LPAREN, "(", line, col);
-        case ')': return token_create(TOKEN_RPAREN, ")", line, col);
-        case '{': return token_create(TOKEN_LBRACE, "{", line, col);
-        case '}': return token_create(TOKEN_RBRACE, "}", line, col);
-        case ';': return token_create(TOKEN_SEMICOLON, ";", line, col);
-        case ',': return token_create(TOKEN_COMMA, ",", line, col);
+        case '(': return token_create(lexer, TOKEN_LPAREN, "(", line, col);
+        case ')': return token_create(lexer, TOKEN_RPAREN, ")", line, col);
+        case '{': return token_create(lexer, TOKEN_LBRACE, "{", line, col);
+        case '}': return token_create(lexer, TOKEN_RBRACE, "}", line, col);
+        case ';': return token_create(lexer, TOKEN_SEMICOLON, ";", line, col);
+        case ',': return token_create(lexer, TOKEN_COMMA, ",", line, col);
         default:
         {
             char val[2] = {c, '\0'};
-            return token_create(TOKEN_UNKNOWN, val, line, col);
+            return token_create(lexer, TOKEN_UNKNOWN, val, line, col);
         }
     }
 }
 
 token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type)
 {
-    token_t* token = lexer_next_token(lexer);
-    if (token->type == token_type)
-        return token;
+    const int line = lexer->line;
+    const int column = lexer->column;
 
-    printf("Error: Expected token %s, but found %s at Line %d, Col %d\n", token_type_str(token_type),
-        token_type_str(token->type), token->line, token->column);
-    free(token);
+    const token_type_t next_tok_type = lexer_peek_token(lexer)->type;
+    if (next_tok_type == token_type)
+        return lexer_next_token(lexer);
+
+    if (lexer->error_output == nullptr)
+    {
+        printf("Error: Expected token %s, but found %s in File %s at Line %d, Col %d\n", token_type_str(token_type),
+            token_type_str(next_tok_type), lexer->filename, line, column);
+    }
+    else
+    {
+        compiler_error_t* error = compiler_error_create(false, lexer->ast_node,
+            ssprintf("expected '%s'", token_type_str(token_type)), lexer->filename, line, column);
+        ptr_vec_append(lexer->error_output, error);
+    }
+
     return nullptr;
 }
 
@@ -261,6 +275,14 @@ bool lexer_consume_token(lexer_t* lexer, token_type_t token_type)
     return token != nullptr;
 }
 
+bool lexer_consume_token_for_node(lexer_t* lexer, token_type_t token_type, void* ast_node)
+{
+    lexer_set_ast_node(lexer, ast_node);
+    const bool res = lexer_consume_token(lexer, token_type);
+    lexer_set_ast_node(lexer, nullptr);
+    return res;
+}
+
 token_t* lexer_peek_token(lexer_t* lexer)
 {
     if (lexer->peeked_token != nullptr)
@@ -268,4 +290,9 @@ token_t* lexer_peek_token(lexer_t* lexer)
 
     lexer->peeked_token = lexer_next_token(lexer);
     return lexer->peeked_token;
+}
+
+void lexer_set_ast_node(lexer_t* lexer, void* ast_node)
+{
+    lexer->ast_node = ast_node;
 }
