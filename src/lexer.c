@@ -22,7 +22,7 @@ static keyword_t lexer_keywords[] =
     {NULL, TOKEN_UNKNOWN}
 };
 
-static const char* token_type_str(token_type_t type)
+const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
@@ -36,6 +36,19 @@ static const char* token_type_str(token_type_t type)
         case TOKEN_LBRACE: return "{";
         case TOKEN_RBRACE: return "}";
         case TOKEN_SEMICOLON: return ";";
+        case TOKEN_STAR: return "*";
+        case TOKEN_DIV: return "/";
+        case TOKEN_MODULO: return "%";
+        case TOKEN_PLUS: return "+";
+        case TOKEN_MINUS: return "-";
+        case TOKEN_LT: return "<";
+        case TOKEN_LTE: return "<=";
+        case TOKEN_GT: return ">";
+        case TOKEN_GTE: return ">=";
+        case TOKEN_EQ: return "==";
+        case TOKEN_NEQ: return "!=";
+        case TOKEN_ASSIGN: return "=";
+        case TOKEN_NOT: return "!";
         case TOKEN_EOF: return "EOF";
         default: return "UNKNOWN";
     }
@@ -48,19 +61,19 @@ static char lexer_peek(lexer_t* lexer)
     return lexer->source[lexer->pos];
 }
 
-static char lexer_advance(lexer_t* lex)
+static char lexer_advance(lexer_t* lexer)
 {
-    if (lex->pos >= lex->length)
+    if (lexer->pos >= lexer->length)
         return '\0';
 
-    char c = lex->source[lex->pos++];
+    char c = lexer->source[lexer->pos++];
     if (c == '\n')
     {
-        ++lex->line;
-        lex->column = 1;
+        ++lexer->line;
+        lexer->column = 1;
     }
     else
-        ++lex->column;
+        ++lexer->column;
 
     return c;
 }
@@ -200,23 +213,69 @@ void lexer_destroy(lexer_t *lexer)
     }
 }
 
-token_t* lexer_next_token(lexer_t* lexer)
+token_t* lex_symbol(lexer_t* lexer)
 {
-    if (lexer->peeked_token != nullptr)
-    {
-        token_t* tok = lexer->peeked_token;
-        lexer->peeked_token = nullptr;
-        return tok;
-    }
+    const char c = lexer_peek(lexer);
+    const int line = lexer->line;
+    const int col = lexer->column;
+    lexer_advance(lexer);
 
+    switch (c)
+    {
+        case '(': return token_create(lexer, TOKEN_LPAREN, "(", line, col);
+        case ')': return token_create(lexer, TOKEN_RPAREN, ")", line, col);
+        case '{': return token_create(lexer, TOKEN_LBRACE, "{", line, col);
+        case '}': return token_create(lexer, TOKEN_RBRACE, "}", line, col);
+        case ';': return token_create(lexer, TOKEN_SEMICOLON, ";", line, col);
+        case ',': return token_create(lexer, TOKEN_COMMA, ",", line, col);
+        case '+': return token_create(lexer, TOKEN_PLUS, "+", line, col);
+        case '-': return token_create(lexer, TOKEN_MINUS, "-", line, col);
+        case '*': return token_create(lexer, TOKEN_STAR, "*", line, col);
+        case '/': return token_create(lexer, TOKEN_DIV, "/", line, col);
+        case '%': return token_create(lexer, TOKEN_MODULO, "%", line, col);
+        case '=':
+            if (lexer_peek(lexer) == '=') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_EQ, "==", line, col);
+            }
+            return token_create(lexer, TOKEN_ASSIGN, "=", line, col);
+
+        case '!':
+            if (lexer_peek(lexer) == '=') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_NEQ, "!=", line, col);
+            }
+            return token_create(lexer, TOKEN_NOT, "!", line, col);
+
+        case '<':
+            if (lexer_peek(lexer) == '=') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_LTE, "<=", line, col);
+            }
+            return token_create(lexer, TOKEN_LT, "<", line, col);
+
+        case '>':
+            if (lexer_peek(lexer) == '=') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_GTE, ">=", line, col);
+            }
+            return token_create(lexer, TOKEN_GT, ">", line, col);
+        default:
+        {
+            char val[2] = {c, '\0'};
+            return token_create(lexer, TOKEN_UNKNOWN, val, line, col);
+        }
+    }
+}
+
+static token_t* lex_next_token(lexer_t* lexer)
+{
     lexer_skip_whitespace(lexer);
 
     if (lexer->pos >= lexer->length)
         return token_create(lexer, TOKEN_EOF, NULL, lexer->line, lexer->column);
 
-    char c = lexer_peek(lexer);
-    int line = lexer->line;
-    int col = lexer->column;
+    const char c = lexer_peek(lexer);
 
     if (isalpha(c) || c == '_')
         return lex_identifier(lexer);
@@ -227,32 +286,44 @@ token_t* lexer_next_token(lexer_t* lexer)
     if (c == '"')
         return lex_string(lexer);
 
-    lexer_advance(lexer);
-    switch (c)
+    return lex_symbol(lexer);
+}
+
+token_t* lexer_next_token(lexer_t* lexer)
+{
+    token_t* tok;
+    if (lexer->peeked_token == nullptr)
     {
-        case '(': return token_create(lexer, TOKEN_LPAREN, "(", line, col);
-        case ')': return token_create(lexer, TOKEN_RPAREN, ")", line, col);
-        case '{': return token_create(lexer, TOKEN_LBRACE, "{", line, col);
-        case '}': return token_create(lexer, TOKEN_RBRACE, "}", line, col);
-        case ';': return token_create(lexer, TOKEN_SEMICOLON, ";", line, col);
-        case ',': return token_create(lexer, TOKEN_COMMA, ",", line, col);
-        default:
-        {
-            char val[2] = {c, '\0'};
-            return token_create(lexer, TOKEN_UNKNOWN, val, line, col);
-        }
+        tok = lex_next_token(lexer);
     }
+    else
+    {
+        tok = lexer->peeked_token;
+        lexer->peeked_token = nullptr;
+    }
+
+    lexer->last_consumed_end_line = lexer->line;
+    lexer->last_consumed_end_column = lexer->column;
+    return tok;
+}
+
+token_t* lexer_peek_token(lexer_t* lexer)
+{
+    if (lexer->peeked_token != nullptr)
+        return lexer->peeked_token;
+
+    lexer->peeked_token = lex_next_token(lexer);
+    return lexer->peeked_token;
 }
 
 token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type)
 {
-    const int line = lexer->line;
-    const int column = lexer->column;
-
     const token_type_t next_tok_type = lexer_peek_token(lexer)->type;
     if (next_tok_type == token_type)
         return lexer_next_token(lexer);
 
+    const int line = lexer->last_consumed_end_line;
+    const int column = lexer->last_consumed_end_column;
     if (lexer->error_output == nullptr)
     {
         printf("Error: Expected token %s, but found %s in File %s at Line %d, Col %d\n", token_type_str(token_type),
@@ -283,16 +354,59 @@ bool lexer_consume_token_for_node(lexer_t* lexer, token_type_t token_type, void*
     return res;
 }
 
-token_t* lexer_peek_token(lexer_t* lexer)
-{
-    if (lexer->peeked_token != nullptr)
-        return lexer->peeked_token;
-
-    lexer->peeked_token = lexer_next_token(lexer);
-    return lexer->peeked_token;
-}
-
 void lexer_set_ast_node(lexer_t* lexer, void* ast_node)
 {
     lexer->ast_node = ast_node;
+}
+
+int token_type_get_precedence(token_type_t token_type)
+{
+    switch (token_type)
+    {
+        case TOKEN_STAR:
+        case TOKEN_DIV:
+        case TOKEN_MODULO:
+            return 5;
+
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+            return 4;
+
+        case TOKEN_LT:
+        case TOKEN_LTE:
+        case TOKEN_GT:
+        case TOKEN_GTE:
+            return 3;
+
+        case TOKEN_EQ:
+        case TOKEN_NEQ:
+            return 2;
+
+        case TOKEN_ASSIGN:  // right-associative
+            return 1;
+
+        default:
+            return 0;
+    }
+}
+
+bool token_type_is_bin_op(token_type_t token_type)
+{
+    switch (token_type)
+    {
+        case TOKEN_STAR:
+        case TOKEN_DIV:
+        case TOKEN_MODULO:
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+        case TOKEN_LT:
+        case TOKEN_LTE:
+        case TOKEN_GT:
+        case TOKEN_GTE:
+        case TOKEN_EQ:
+        case TOKEN_NEQ:
+            return true;
+        default:
+            return false;
+    }
 }

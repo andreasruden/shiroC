@@ -19,6 +19,12 @@ static void ast_visitor_visit_fn_def(void* self_, ast_fn_def_t* fn_def, void* ou
     ast_visitor_visit(self_, fn_def->body, out_);
 }
 
+static void ast_visitor_visit_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
+{
+    ast_visitor_visit(self_, bin_op->lhs, out_);
+    ast_visitor_visit(self_, bin_op->rhs, out_);
+}
+
 static void ast_visitor_visit_call_expr(void* self_, ast_call_expr_t* call_expr, void* out_)
 {
     ast_visitor_visit(self_, call_expr->function, out_);
@@ -32,6 +38,11 @@ static void ast_visitor_visit_int_lit(void* self_, ast_int_lit_t* int_lit, void*
     (void)self_;
     (void)int_lit;
     (void)out_;
+}
+
+static void ast_visitor_visit_paren_expr(void* self_, ast_paren_expr_t* paren_expr, void* out_)
+{
+    ast_visitor_visit(self_, paren_expr->expr, out_);
 }
 
 static void ast_visitor_visit_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
@@ -66,8 +77,10 @@ void ast_visitor_init(ast_visitor_t* visitor)
         // Definitions
         .visit_fn_def = ast_visitor_visit_fn_def,
         // Expressions
+        .visit_bin_op = ast_visitor_visit_bin_op,
         .visit_call_expr = ast_visitor_visit_call_expr,
         .visit_int_lit = ast_visitor_visit_int_lit,
+        .visit_paren_expr = ast_visitor_visit_paren_expr,
         .visit_ref_expr = ast_visitor_visit_ref_expr,
         // Statements
         .visit_compound_stmt = ast_visitor_visit_compound_stmt,

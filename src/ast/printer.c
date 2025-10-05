@@ -46,6 +46,18 @@ static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sBinOp '%s'\n", self->indentation, "", token_type_str(bin_op->op)));
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self, bin_op->lhs, out);
+    ast_visitor_visit(self, bin_op->rhs, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 static void print_call_expr(void* self_, ast_call_expr_t* call_expr, void* out_)
 {
     string_t* out = out_;
@@ -65,6 +77,17 @@ static void print_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
     ast_printer_t* self = self_;
 
     string_append_cstr(out, ssprintf("%*sIntLit '%d'\n", self->indentation, "", int_lit->value));
+}
+
+static void print_paren_expr(void* self_, ast_paren_expr_t* paren_expr, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sParenExpr\n", self->indentation, ""));
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self_, paren_expr->expr, out_);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
 static void print_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
@@ -122,8 +145,10 @@ ast_printer_t* ast_printer_create()
             // Definitions
             .visit_fn_def = print_fn_def,
             // Expressions
+            .visit_bin_op = print_bin_op,
             .visit_call_expr = print_call_expr,
             .visit_int_lit = print_int_lit,
+            .visit_paren_expr = print_paren_expr,
             .visit_ref_expr = print_ref_expr,
             // Statements
             .visit_compound_stmt = print_compound_stmt,

@@ -29,6 +29,8 @@ ptr_vec_t* parser_errors(parser_t* parser);
 // This calls parser_reset() before parsing.
 ast_root_t* parser_parse(parser_t* parser);
 
+ast_expr_t* parser_parse_primary_expr(parser_t* parser);
+
 ast_expr_t* parser_parse_expr(parser_t* parser);
 
 ast_stmt_t* parser_parse_stmt(parser_t* parser);

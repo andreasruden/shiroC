@@ -3,9 +3,11 @@
 #include "ast/decl/param_decl.h"
 #include "ast/def/def.h"
 #include "ast/def/fn_def.h"
+#include "ast/expr/bin_op.h"
 #include "ast/expr/call_expr.h"
 #include "ast/expr/expr.h"
 #include "ast/expr/int_lit.h"
+#include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/node.h"
 #include "ast/root.h"
@@ -58,7 +60,7 @@ ast_expr_t* parse_call_expr(parser_t* parser, const char* name)
     token_type_t type;
     while ((type = lexer_peek_token(parser->lexer)->type) != TOKEN_EOF && type != TOKEN_RPAREN)
     {
-        ast_expr_t* arg = parser_parse_expr(parser);
+        ast_expr_t* arg = parser_parse_primary_expr(parser);
         if (arg == nullptr)
             goto cleanup;
         ptr_vec_append(&args, arg);
@@ -95,7 +97,22 @@ cleanup:
     return expr;
 }
 
-ast_expr_t* parser_parse_expr(parser_t* parser)
+ast_expr_t* parse_paren_expr(parser_t* parser)
+{
+    if (!lexer_consume_token(parser->lexer, TOKEN_LPAREN))
+        return nullptr;
+
+    ast_expr_t* expr = parser_parse_expr(parser);
+    if (expr == nullptr)
+        return nullptr;
+
+    if (!lexer_consume_token(parser->lexer, TOKEN_RPAREN))
+        return expr; // emit error but yield inner expression
+
+    return ast_paren_expr_create(expr);
+}
+
+ast_expr_t* parser_parse_primary_expr(parser_t* parser)
 {
     switch (lexer_peek_token(parser->lexer)->type)
     {
@@ -103,10 +120,46 @@ ast_expr_t* parser_parse_expr(parser_t* parser)
             return parse_int_lit(parser);
         case TOKEN_IDENTIFIER:
             return parse_identifier_expr(parser);
+        case TOKEN_LPAREN:
+            return parse_paren_expr(parser);
         default:
             break;
     }
     return nullptr;
+}
+
+// Use precedence climbing to efficiently parse expressions
+ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_precedence)
+{
+    ast_expr_t* lhs = parser_parse_primary_expr(parser);
+    if (lhs == nullptr)
+        return nullptr;
+
+    token_t* tok;
+    while (token_type_is_bin_op((tok = lexer_peek_token(parser->lexer))->type))
+    {
+        int precedence = token_type_get_precedence(tok->type);
+        if (precedence < min_precedence)
+            break;
+
+        lexer_next_token(parser->lexer);  // consume token
+
+        ast_expr_t* rhs = parser_parse_expr_climb_precedence(parser, precedence + 1);
+        if (rhs == nullptr)
+        {
+            ast_node_destroy(AST_NODE(lhs));
+            return nullptr;
+        }
+
+        lhs = ast_bin_op_create(tok->type, lhs, rhs);
+    }
+
+    return lhs;
+}
+
+ast_expr_t* parser_parse_expr(parser_t* parser)
+{
+    return parser_parse_expr_climb_precedence(parser, 0);
 }
 
 ast_stmt_t* parse_return_stmt(parser_t* parser)

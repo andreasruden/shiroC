@@ -23,6 +23,23 @@ typedef enum
     TOKEN_SEMICOLON,
     TOKEN_COMMA,
 
+    // Unary & Binary Operators
+    TOKEN_PLUS,
+    TOKEN_MINUS,
+    TOKEN_STAR,
+    TOKEN_NOT,
+
+    // Binary Operators
+    TOKEN_DIV,
+    TOKEN_MODULO,
+    TOKEN_EQ,
+    TOKEN_NEQ,
+    TOKEN_LT,
+    TOKEN_LTE,
+    TOKEN_GT,
+    TOKEN_GTE,
+    TOKEN_ASSIGN,
+
     // Misc
     TOKEN_IDENTIFIER,
     TOKEN_EOF,
@@ -45,6 +62,8 @@ typedef struct lexer
     size_t pos;
     size_t length;
     token_t* peeked_token;
+    int last_consumed_end_line;
+    int last_consumed_end_column;
     char* filename;
     ptr_vec_t* error_output;
     ast_node_t* ast_node;
@@ -71,5 +90,11 @@ bool lexer_consume_token_for_node(lexer_t* lexer, token_type_t token_type, void*
 // When a lexer error is encountered, the last set ast_node will be automatically appended
 // to that error.
 void lexer_set_ast_node(lexer_t* lexer, void* ast_node);
+
+int token_type_get_precedence(token_type_t token_type);
+
+bool token_type_is_bin_op(token_type_t token_type);
+
+const char* token_type_str(token_type_t type);
 
 #endif
