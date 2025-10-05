@@ -39,8 +39,8 @@ static void ast_bin_op_destroy(void* self_)
         return;
 
     if (self->lhs != nullptr)
-        ast_node_destroy((ast_node_t*)self->lhs);
+        ast_node_destroy(self->lhs);
     if (self->rhs != nullptr)
-        ast_node_destroy((ast_node_t*)self->rhs);
+        ast_node_destroy(self->rhs);
     free(self);
 }

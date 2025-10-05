@@ -35,6 +35,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/stmt/expr_stmt.c \
 	$(SRC_DIR)/ast/stmt/return_stmt.c \
 	$(SRC_DIR)/ast/stmt/stmt.c \
+	$(SRC_DIR)/common/containers/ptr_vec.c \
 	$(SRC_DIR)/common/containers/string.c \
 	$(SRC_DIR)/common/containers/vec.c
 COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMMON_SRCS))
@@ -87,6 +88,21 @@ tests: $(UT_TARGETS)
 		echo ""; \
 		echo "Running $$test..."; \
 		./$$test || exit 1; \
+	done
+
+valgrind-tests: $(UT_TARGETS)
+	@for test in $(UT_TARGETS); do \
+		echo ""; \
+		echo "Running $$test with valgrind..."; \
+		valgrind --leak-check=full \
+	         --show-leak-kinds=all \
+	         --errors-for-leak-kinds=all \
+	         --error-exitcode=1 \
+	         --track-origins=yes \
+	         --read-var-info=yes \
+	         --expensive-definedness-checks=yes \
+			 --exit-on-first-error=yes \
+	         ./$$test || exit 1; \
 	done
 
 .PHONY: clean

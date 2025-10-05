@@ -1,57 +1,39 @@
 #ifndef CONTAINERS_PTR_VEC__H
 #define CONTAINERS_PTR_VEC__H
 
-#include "vec.h"
-
+#include <stdint.h>
 #include <stdlib.h>
+
+typedef void (*ptr_vec_elem_destructor_fn)(void* elem);
 
 typedef struct ptr_vec
 {
-    vec_t inner;
+    void* mem;
+    size_t length;
+    size_t capacity;
 } ptr_vec_t;
 
-#define PTR_VEC_INIT (ptr_vec_t){ \
-    .inner = VEC_INIT(void*) \
-}
+#define PTR_VEC_INIT (ptr_vec_t){}
 
-// FIXME: Needs to take a pointer to function to clean up entries!
-static inline void ptr_vec_deinit(ptr_vec_t* vec)
-{
-    vec_deinit(&vec->inner);
-}
+void ptr_vec_deinit(ptr_vec_t* vec, ptr_vec_elem_destructor_fn destructor_fn);
 
-static inline ptr_vec_t* ptr_vec_create(void)
-{
-    ptr_vec_t* vec = (ptr_vec_t*)malloc(sizeof(ptr_vec_t));
-    // TODO: panic if nullptr
-    vec->inner = VEC_INIT(void*);
-    return vec;
-}
+ptr_vec_t* ptr_vec_create();
 
-static inline void ptr_vec_destroy(ptr_vec_t* vec)
-{
-    ptr_vec_deinit(vec);
-    free(vec);
-}
+void ptr_vec_destroy(ptr_vec_t* vec, ptr_vec_elem_destructor_fn destructor_fn);
 
-static inline void ptr_vec_append(ptr_vec_t* vec, void* ptr)
+void ptr_vec_append(ptr_vec_t* vec, void* ptr);
+
+void ptr_vec_move(ptr_vec_t* dst, ptr_vec_t* src);
+
+static inline size_t ptr_vec_size(ptr_vec_t* vec)
 {
-    vec_append(&vec->inner, &ptr);
+    return vec->length;
 }
 
 static inline void* ptr_vec_get(ptr_vec_t* vec, size_t index)
 {
-    return *(void**)vec_get(&vec->inner, index);
-}
-
-static inline size_t ptr_vec_size(ptr_vec_t* vec)
-{
-    return vec_size(&vec->inner);
-}
-
-static inline void ptr_vec_move(ptr_vec_t* dst, ptr_vec_t* src)
-{
-    vec_move(&dst->inner, &src->inner);
+    // TODO: panic if index >= length
+    return *(void**)((uint8_t*)vec->mem + (index * sizeof(void*)));
 }
 
 #endif

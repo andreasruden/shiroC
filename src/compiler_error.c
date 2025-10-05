@@ -29,3 +29,9 @@ void compiler_error_destroy(compiler_error_t* error)
     free(error->source_file);
     free(error);
 }
+
+void compiler_error_destroy_void(void* error)
+{
+    compiler_error_t* compiler_error = error;
+    compiler_error_destroy(compiler_error);
+}

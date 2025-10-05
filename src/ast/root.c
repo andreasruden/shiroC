@@ -57,7 +57,6 @@ static void ast_root_destroy(void* self_)
     if (self == nullptr)
         return;
 
-    for (size_t i = 0; i < ptr_vec_size(&self->tl_defs); ++i)
-        ast_node_destroy(AST_NODE(ptr_vec_get(&self->tl_defs, i)));
+    ptr_vec_deinit(&self->tl_defs, ast_node_destroy);
     free(self);
 }

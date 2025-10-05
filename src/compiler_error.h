@@ -19,4 +19,6 @@ compiler_error_t* compiler_error_create(bool warning, ast_node_t* offender, cons
 
 void compiler_error_destroy(compiler_error_t* error);
 
+void compiler_error_destroy_void(void* error);
+
 #endif

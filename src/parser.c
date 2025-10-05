@@ -15,6 +15,7 @@
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/return_stmt.h"
 #include "common/containers/ptr_vec.h"
+#include "compiler_error.h"
 #include "lexer.h"
 
 #include <stdlib.h>
@@ -35,6 +36,7 @@ void parser_destroy(parser_t* parser)
     if (parser != nullptr)
     {
         lexer_destroy(parser->lexer);
+        ptr_vec_deinit(&parser->errors, compiler_error_destroy_void);
         free(parser);
     }
 }
@@ -76,7 +78,7 @@ ast_expr_t* parse_call_expr(parser_t* parser, const char* name)
     call = ast_call_expr_create(ast_ref_expr_create(name), &args);
 
 cleanup:
-    ptr_vec_deinit(&args);
+    ptr_vec_deinit(&args, ast_node_destroy);
     return call;
 }
 
@@ -147,7 +149,7 @@ ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_precede
         ast_expr_t* rhs = parser_parse_expr_climb_precedence(parser, precedence + 1);
         if (rhs == nullptr)
         {
-            ast_node_destroy(AST_NODE(lhs));
+            ast_node_destroy(lhs);
             return nullptr;
         }
 
@@ -193,7 +195,7 @@ ast_stmt_t* parse_compound_stmt(parser_t* parser)
 
     if (!lexer_consume_token(parser->lexer, TOKEN_RBRACE))
     {
-        ptr_vec_deinit(&inner_stmts); // FIXME: destroy
+        ptr_vec_deinit(&inner_stmts, ast_node_destroy);
         return nullptr;
     }
 
@@ -279,7 +281,7 @@ ast_def_t* parse_fn_def(parser_t* parser)
     fn_def = ast_fn_def_create(id->value, &params, body);
 
 cleanup:
-    ptr_vec_deinit(&params);
+    ptr_vec_deinit(&params, ast_node_destroy);
     return fn_def;
 }
 
@@ -325,7 +327,7 @@ void parser_set_source(parser_t* parser, const char* filename, const char* sourc
 void parser_reset(parser_t* parser)
 {
     lexer_destroy(parser->lexer);
-    ptr_vec_deinit(&parser->errors); // FIXME: needs to call destroy fn
+    ptr_vec_deinit(&parser->errors, compiler_error_destroy_void);
     parser->errors = PTR_VEC_INIT;
 }
 

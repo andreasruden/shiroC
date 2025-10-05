@@ -64,8 +64,6 @@ static void ast_compound_stmt_destroy(void* self_)
         return;
 
     ast_stmt_deconstruct((ast_stmt_t*)self);
-    for (size_t i = 0; i < ptr_vec_size(&self->inner_stmts); ++i)
-        ast_node_destroy(AST_NODE(ptr_vec_get(&self->inner_stmts, i)));
-    ptr_vec_deinit(&self->inner_stmts);
+    ptr_vec_deinit(&self->inner_stmts, ast_node_destroy);
     free(self);
 }

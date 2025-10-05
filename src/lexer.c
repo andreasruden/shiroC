@@ -100,8 +100,9 @@ static token_t* token_create(lexer_t* lexer, token_type_t type, const char* valu
     return tok;
 }
 
-void token_destroy(token_t* tok)
+void token_destroy(void* tok_)
 {
+    token_t* tok = tok_;
     if (tok != nullptr)
     {
         free(tok->value);
@@ -206,7 +207,7 @@ void lexer_destroy(lexer_t *lexer)
 {
     if (lexer != nullptr)
     {
-        ptr_vec_deinit(&lexer->created_tokens); // FIXME: needs to call token_destroy for each
+        ptr_vec_deinit(&lexer->created_tokens, token_destroy);
         free(lexer->source);
         free(lexer->filename);
         free(lexer);
@@ -342,7 +343,6 @@ token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type)
 bool lexer_consume_token(lexer_t* lexer, token_type_t token_type)
 {
     token_t* token = lexer_next_token_iff(lexer, token_type);
-    token_destroy(token);
     return token != nullptr;
 }
 

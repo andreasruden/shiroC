@@ -1,6 +1,7 @@
 #include "call_expr.h"
 
 #include "ast/expr/expr.h"
+#include "ast/node.h"
 #include "ast/visitor.h"
 #include "common/containers/ptr_vec.h"
 
@@ -54,6 +55,8 @@ static void ast_call_expr_destroy(void* self_)
     if (self != nullptr)
     {
         ast_expr_deconstruct((ast_expr_t*)self);
+        ast_node_destroy(self->function);
+        ptr_vec_deinit(&self->arguments, ast_node_destroy);
         free(self);
     }
 }

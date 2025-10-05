@@ -19,6 +19,6 @@ struct ast_node
 
 #define AST_NODE(ptr) ((ast_node_t*)(ptr))
 
-void ast_node_destroy(ast_node_t* node);
+void ast_node_destroy(void* node);
 
 #endif

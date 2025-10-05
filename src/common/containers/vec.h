@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef void (*vec_elem_destructor_fn)(void* elem);
+
 typedef struct vec \
 {
     void* mem;
@@ -16,11 +18,11 @@ typedef struct vec \
         .elem_size = sizeof(type) \
     }
 
-void vec_deinit(vec_t* vec);
+void vec_deinit(vec_t* vec, vec_elem_destructor_fn elem_destructor);
 
 vec_t* vec_create(size_t elem_size);
 
-void vec_destroy(vec_t* vec);
+void vec_destroy(vec_t* vec, vec_elem_destructor_fn elem_destructor);
 
 void vec_append(vec_t* vec, void* elem);
 

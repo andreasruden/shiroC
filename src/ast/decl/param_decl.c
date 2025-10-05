@@ -35,10 +35,10 @@ static void ast_param_decl_destroy(void* self_)
 {
     ast_param_decl_t* self = self_;
 
-    if (self != nullptr)
-    {
-        free(self->type);
-        free(self->name);
-        free(self);
-    }
+    if (self == nullptr)
+        return;
+
+    free(self->type);
+    free(self->name);
+    free(self);
 }

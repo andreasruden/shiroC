@@ -56,7 +56,8 @@ static void ast_fn_def_destroy(void* self_)
     if (self != nullptr)
     {
         ast_def_deconstruct((ast_def_t*)self);
-        ast_node_destroy(AST_NODE(self->body));
+        ptr_vec_deinit(&self->params, ast_node_destroy);
+        ast_node_destroy(self->body);
         free(self);
     }
 }

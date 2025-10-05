@@ -5,6 +5,7 @@
 #include "ast/expr/int_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
+#include "ast/node.h"
 #include "ast/printer.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
@@ -53,7 +54,7 @@ TEST(ut_parser_fixture_t, parse_basic_main_function)
     ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
-    ast_root_t* expected_tree = ast_root_create_va(
+    ast_root_t* expected = ast_root_create_va(
         ast_fn_def_create_va("main",
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
@@ -61,7 +62,9 @@ TEST(ut_parser_fixture_t, parse_basic_main_function)
                 nullptr), nullptr),
         nullptr);
 
-    ASSERT_TREES_EQUAL(expected_tree, root);
+    ASSERT_TREES_EQUAL(expected, root);
+    ast_node_destroy(root);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
@@ -74,7 +77,7 @@ TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
     ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
-    ast_root_t* expected_tree = ast_root_create_va(
+    ast_root_t* expected = ast_root_create_va(
         ast_fn_def_create_va("fn2",
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
@@ -100,7 +103,9 @@ TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
             nullptr),
         nullptr);
 
-    ASSERT_TREES_EQUAL(expected_tree, root);
+    ASSERT_TREES_EQUAL(expected, root);
+    ast_node_destroy(root);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, full_parse_with_simple_syntax_error)
@@ -122,7 +127,7 @@ TEST(ut_parser_fixture_t, full_parse_with_simple_syntax_error)
     // TODO: Check that offender is type ast_return_stmt*
 
     // Construct the expected tree
-    ast_root_t* expected_tree = ast_root_create_va(
+    ast_root_t* expected = ast_root_create_va(
         ast_fn_def_create_va("fn",
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
@@ -137,7 +142,9 @@ TEST(ut_parser_fixture_t, full_parse_with_simple_syntax_error)
             nullptr),
         nullptr);
 
-    ASSERT_TREES_EQUAL(expected_tree, root);
+    ASSERT_TREES_EQUAL(expected, root);
+    ast_node_destroy(root);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, partial_parse_with_structural_error)
@@ -160,7 +167,7 @@ TEST(ut_parser_fixture_t, partial_parse_with_structural_error)
     // TODO: Check that offender is type ast_fn_def_t*
 
     // Construct the expected tree
-    ast_root_t* expected_tree = ast_root_create_va(
+    ast_root_t* expected = ast_root_create_va(
         ast_fn_def_create_va("fn",
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
@@ -175,7 +182,9 @@ TEST(ut_parser_fixture_t, partial_parse_with_structural_error)
             nullptr),
         nullptr);
 
-    ASSERT_TREES_EQUAL(expected_tree, root);
+    ASSERT_TREES_EQUAL(expected, root);
+    ast_node_destroy(root);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_basic_bin_op)
@@ -186,9 +195,11 @@ TEST(ut_parser_fixture_t, parse_basic_bin_op)
     ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
 
     // Construct the expected expression
-    ast_expr_t* expected_expr = ast_bin_op_create( TOKEN_EQ, ast_ref_expr_create("var1"), ast_ref_expr_create("var2"));
+    ast_expr_t* expected = ast_bin_op_create( TOKEN_EQ, ast_ref_expr_create("var1"), ast_ref_expr_create("var2"));
 
-    ASSERT_TREES_EQUAL(expected_expr, expr);
+    ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_left_associative_same_precedence)
@@ -206,6 +217,8 @@ TEST(ut_parser_fixture_t, parse_left_associative_same_precedence)
         ast_ref_expr_create("c"));
 
     ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_precedence_mul_before_add)
@@ -223,6 +236,8 @@ TEST(ut_parser_fixture_t, parse_precedence_mul_before_add)
             ast_ref_expr_create("c")));
 
     ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_precedence_add_then_mul)
@@ -240,6 +255,8 @@ TEST(ut_parser_fixture_t, parse_precedence_add_then_mul)
         ast_ref_expr_create("c"));
 
     ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_multiple_precedence_levels)
@@ -259,6 +276,8 @@ TEST(ut_parser_fixture_t, parse_multiple_precedence_levels)
         ast_ref_expr_create("d"));
 
     ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_parentheses_override_precedence)
@@ -277,6 +296,8 @@ TEST(ut_parser_fixture_t, parse_parentheses_override_precedence)
         ast_ref_expr_create("c"));
 
     ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_nested_parentheses)
@@ -298,6 +319,8 @@ TEST(ut_parser_fixture_t, parse_nested_parentheses)
         ast_ref_expr_create("d"));
 
     ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_comparison_with_arithmetic)
@@ -317,6 +340,8 @@ TEST(ut_parser_fixture_t, parse_comparison_with_arithmetic)
             ast_ref_expr_create("d")));
 
     ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_complex_mixed_precedence)
@@ -340,6 +365,8 @@ TEST(ut_parser_fixture_t, parse_complex_mixed_precedence)
                 ast_ref_expr_create("f"))));
 
     ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_chained_division)
@@ -357,6 +384,8 @@ TEST(ut_parser_fixture_t, parse_chained_division)
         ast_ref_expr_create("c"));
 
     ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }
 
 TEST(ut_parser_fixture_t, parse_mixed_add_subtract)
@@ -376,4 +405,6 @@ TEST(ut_parser_fixture_t, parse_mixed_add_subtract)
         ast_ref_expr_create("d"));
 
     ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
 }

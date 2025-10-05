@@ -21,5 +21,5 @@ int main()
     puts(str);
     free(str);
 
-    ast_node_destroy(AST_NODE(root));
+    ast_node_destroy(root);
 }

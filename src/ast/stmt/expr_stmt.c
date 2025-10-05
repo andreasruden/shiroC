@@ -38,7 +38,7 @@ static void ast_expr_stmt_destroy(void* self_)
     if (self != nullptr)
     {
         ast_stmt_deconstruct((ast_stmt_t*)self);
-        ast_node_destroy(AST_NODE(self->expr));
+        ast_node_destroy(self->expr);
         free(self);
     }
 }
