@@ -19,6 +19,7 @@ static keyword_t lexer_keywords[] =
 {
     {"int", TOKEN_INT},
     {"return", TOKEN_RETURN},
+    {"var", TOKEN_VAR},
     {NULL, TOKEN_UNKNOWN}
 };
 
@@ -228,6 +229,7 @@ token_t* lex_symbol(lexer_t* lexer)
         case '{': return token_create(lexer, TOKEN_LBRACE, "{", line, col);
         case '}': return token_create(lexer, TOKEN_RBRACE, "}", line, col);
         case ';': return token_create(lexer, TOKEN_SEMICOLON, ";", line, col);
+        case ':': return token_create(lexer, TOKEN_COLON, ":", line, col);
         case ',': return token_create(lexer, TOKEN_COMMA, ",", line, col);
         case '+': return token_create(lexer, TOKEN_PLUS, "+", line, col);
         case '-': return token_create(lexer, TOKEN_MINUS, "-", line, col);
@@ -332,7 +334,7 @@ token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type)
     }
     else
     {
-        compiler_error_t* error = compiler_error_create(false, lexer->ast_node,
+        compiler_error_t* error = compiler_error_create(false, nullptr,
             ssprintf("expected '%s'", token_type_str(token_type)), lexer->filename, line, column);
         ptr_vec_append(lexer->error_output, error);
     }
@@ -344,19 +346,6 @@ bool lexer_consume_token(lexer_t* lexer, token_type_t token_type)
 {
     token_t* token = lexer_next_token_iff(lexer, token_type);
     return token != nullptr;
-}
-
-bool lexer_consume_token_for_node(lexer_t* lexer, token_type_t token_type, void* ast_node)
-{
-    lexer_set_ast_node(lexer, ast_node);
-    const bool res = lexer_consume_token(lexer, token_type);
-    lexer_set_ast_node(lexer, nullptr);
-    return res;
-}
-
-void lexer_set_ast_node(lexer_t* lexer, void* ast_node)
-{
-    lexer->ast_node = ast_node;
 }
 
 int token_type_get_precedence(token_type_t token_type)

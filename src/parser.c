@@ -1,6 +1,7 @@
 #include "parser.h"
 
 #include "ast/decl/param_decl.h"
+#include "ast/decl/var_decl.h"
 #include "ast/def/def.h"
 #include "ast/def/fn_def.h"
 #include "ast/expr/bin_op.h"
@@ -12,6 +13,7 @@
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
+#include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/return_stmt.h"
 #include "common/containers/ptr_vec.h"
@@ -19,6 +21,7 @@
 #include "lexer.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 parser_t* parser_create()
 {
@@ -39,6 +42,13 @@ void parser_destroy(parser_t* parser)
         ptr_vec_deinit(&parser->errors, compiler_error_destroy_void);
         free(parser);
     }
+}
+
+static void* parser_error(parser_t* parser, void* ast_node, const char* description)
+{
+    compiler_error_t* error = compiler_error_create(false, ast_node, description, parser->lexer->filename, 0, 0);
+    ptr_vec_append(&parser->errors, error);
+    return ast_node;
 }
 
 ast_expr_t* parse_int_lit(parser_t* parser)
@@ -174,7 +184,7 @@ ast_stmt_t* parse_return_stmt(parser_t* parser)
         return nullptr;
 
     ast_stmt_t* stmt = ast_return_stmt_create(expr);
-    lexer_consume_token_for_node(parser->lexer, TOKEN_SEMICOLON, stmt); // this emits error, but keep stmt
+    lexer_consume_token(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
     return stmt;
 }
 
@@ -184,12 +194,16 @@ ast_stmt_t* parse_compound_stmt(parser_t* parser)
         return nullptr;
 
     ptr_vec_t inner_stmts = PTR_VEC_INIT;
-    token_type_t type;
-    while ((type = lexer_peek_token(parser->lexer)->type) != TOKEN_EOF && type != TOKEN_RBRACE)
+    token_t* tok;
+    while ((tok = lexer_peek_token(parser->lexer))->type != TOKEN_EOF && tok->type != TOKEN_RBRACE)
     {
         ast_stmt_t* inner_stmt = parser_parse_stmt(parser);
         if (inner_stmt == nullptr)
-            continue; // don't add faulty sub-statement, but don't abort
+        {
+            if (tok == lexer_peek_token(parser->lexer))
+                lexer_next_token(parser->lexer);  // consume faulty token
+            continue;  // don't add faulty sub-statement, but don't abort
+        }
         ptr_vec_append(&inner_stmts, inner_stmt);
     }
 
@@ -202,6 +216,53 @@ ast_stmt_t* parse_compound_stmt(parser_t* parser)
     return ast_compound_stmt_create(&inner_stmts);
 }
 
+ast_decl_t* parse_var_decl(parser_t* parser)
+{
+    if (!lexer_consume_token(parser->lexer, TOKEN_VAR))
+        return nullptr;
+
+    token_t* name = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
+    if (name == nullptr)
+        return nullptr;
+
+    ast_var_decl_t* var_decl = ast_var_decl_create_mandatory(name->value);
+
+    // Optional type specification
+    if (lexer_peek_token(parser->lexer)->type == TOKEN_COLON)
+    {
+        lexer_next_token(parser->lexer);
+        // TODO: Handle user-defined types, pointers, etc
+        if (lexer_consume_token(parser->lexer, TOKEN_INT))
+            var_decl->type = strdup("int");
+    }
+
+    // Optional initialization expression
+    ast_expr_t* init_expr = nullptr;
+    if (lexer_peek_token(parser->lexer)->type == TOKEN_ASSIGN)
+    {
+        lexer_next_token(parser->lexer);
+        init_expr = parser_parse_expr(parser);
+        var_decl->init_expr = init_expr;
+    }
+
+    if (var_decl->type == nullptr && var_decl->init_expr == nullptr)
+        parser_error(parser, var_decl, "variable declaration must have either a type annotation or an initializer");
+    else if (var_decl->type != nullptr && var_decl->init_expr != nullptr)
+        parser_error(parser, var_decl, "variable declaration cannot have both a type annotation and an initializer");
+
+    return (ast_decl_t*)var_decl;
+}
+
+ast_stmt_t* parse_decl_stmt(parser_t* parser)
+{
+    ast_decl_t* decl = parse_var_decl(parser);
+    if (decl == nullptr)
+        return nullptr;
+    ast_stmt_t* stmt = ast_decl_stmt_create(decl);
+    lexer_consume_token(parser->lexer, TOKEN_SEMICOLON); // do not fail stmt
+    return stmt;
+}
+
 ast_stmt_t* parse_expr_stmt(parser_t* parser)
 {
     ast_expr_t* expr = parser_parse_expr(parser);
@@ -209,7 +270,7 @@ ast_stmt_t* parse_expr_stmt(parser_t* parser)
         return nullptr;
 
     ast_stmt_t* stmt = ast_expr_stmt_create(expr);
-    lexer_consume_token_for_node(parser->lexer, TOKEN_SEMICOLON, stmt); // this emits error, but keep stmt
+    lexer_consume_token(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
     return stmt;
 }
 
@@ -221,17 +282,19 @@ ast_stmt_t* parser_parse_stmt(parser_t* parser)
             return parse_return_stmt(parser);
         case TOKEN_LBRACE:
             return parse_compound_stmt(parser);
+        case TOKEN_VAR:
+            return parse_decl_stmt(parser);
         default:
             return parse_expr_stmt(parser);
     }
 }
 
-ast_param_decl_t* parse_param_decl(parser_t* parser)
+ast_decl_t* parse_param_decl(parser_t* parser)
 {
     token_t* type_tok = lexer_next_token(parser->lexer);
     token_t* name_tok = lexer_next_token(parser->lexer);
 
-    ast_param_decl_t* decl = nullptr;
+    ast_decl_t* decl = nullptr;
     if (type_tok->type != TOKEN_INT && type_tok->type != TOKEN_IDENTIFIER)
         goto cleanup;
     if (name_tok->type != TOKEN_IDENTIFIER)
@@ -261,7 +324,7 @@ ast_def_t* parse_fn_def(parser_t* parser)
     token_type_t type;
     while ((type = lexer_peek_token(parser->lexer)->type) != TOKEN_EOF && type != TOKEN_RPAREN)
     {
-        ast_param_decl_t* param = parse_param_decl(parser);
+        ast_decl_t* param = parse_param_decl(parser);
         if (param == nullptr)
             goto cleanup;
         ptr_vec_append(&params, param);

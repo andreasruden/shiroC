@@ -35,6 +35,21 @@ static void print_param_decl(void* self_, ast_param_decl_t* param_decl, void* ou
         param_decl->name));
 }
 
+static void print_var_decl(void* self_, ast_var_decl_t* var_decl, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sVarDecl '%s'", self->indentation, "", var_decl->name));
+    if (var_decl->type == nullptr)
+        string_append_cstr(out, "\n");
+    else
+        string_append_cstr(out, ssprintf(" '%s'", var_decl->type));
+    string_append_cstr(out, "\n");
+    if (var_decl->init_expr != nullptr)
+        ast_visitor_visit(self, var_decl->init_expr, out);
+}
+
 static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 {
     string_t* out = out_;
@@ -110,6 +125,17 @@ static void print_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt,
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_decl_stmt(void* self_, ast_decl_stmt_t* decl_stmt, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sDeclStmt\n", self->indentation, ""));
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self, decl_stmt->decl, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 static void print_expr_stmt(void* self_, ast_expr_stmt_t* expr_stmt, void* out_)
 {
     string_t* out = out_;
@@ -142,6 +168,7 @@ ast_printer_t* ast_printer_create()
             .visit_root = print_root,
             // Declarations
             .visit_param_decl = print_param_decl,
+            .visit_var_decl = print_var_decl,
             // Definitions
             .visit_fn_def = print_fn_def,
             // Expressions
@@ -152,6 +179,7 @@ ast_printer_t* ast_printer_create()
             .visit_ref_expr = print_ref_expr,
             // Statements
             .visit_compound_stmt = print_compound_stmt,
+            .visit_decl_stmt = print_decl_stmt,
             .visit_expr_stmt = print_expr_stmt,
             .visit_return_stmt = print_return_stmt,
         },

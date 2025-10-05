@@ -14,6 +14,12 @@ static void ast_visitor_visit_param_decl(void* self_, ast_param_decl_t* param_de
     (void)out_;
 }
 
+static void ast_visitor_visit_var_decl(void* self_, ast_var_decl_t* var_decl, void* out_)
+{
+    if (var_decl->init_expr != nullptr)
+        ast_visitor_visit(self_, var_decl->init_expr, out_);
+}
+
 static void ast_visitor_visit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 {
     ast_visitor_visit(self_, fn_def->body, out_);
@@ -58,6 +64,11 @@ static void ast_visitor_visit_compound_stmt(void* self_, ast_compound_stmt_t* co
         ast_visitor_visit(self_, ptr_vec_get(&compound_stmt->inner_stmts, i), out_);
 }
 
+static void ast_visitor_visit_decl_stmt(void* self_, ast_decl_stmt_t* decl_stmt, void* out_)
+{
+    ast_visitor_visit(self_, decl_stmt->decl, out_);
+}
+
 static void ast_visitor_visit_expr_stmt(void* self_, ast_expr_stmt_t* expr_stmt, void* out_)
 {
     ast_visitor_visit(self_, expr_stmt->expr, out_);
@@ -74,6 +85,7 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_root = ast_visitor_visit_root,
         // Declarations
         .visit_param_decl = ast_visitor_visit_param_decl,
+        .visit_var_decl = ast_visitor_visit_var_decl,
         // Definitions
         .visit_fn_def = ast_visitor_visit_fn_def,
         // Expressions
@@ -84,6 +96,7 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_ref_expr = ast_visitor_visit_ref_expr,
         // Statements
         .visit_compound_stmt = ast_visitor_visit_compound_stmt,
+        .visit_decl_stmt = ast_visitor_visit_decl_stmt,
         .visit_expr_stmt = ast_visitor_visit_expr_stmt,
         .visit_return_stmt = ast_visitor_visit_return_stmt,
     };

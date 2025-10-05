@@ -2,6 +2,7 @@
 #define AST_VISITOR__H
 
 #include "ast/decl/param_decl.h"
+#include "ast/decl/var_decl.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/call_expr.h"
 #include "ast/expr/paren_expr.h"
@@ -11,6 +12,7 @@
 #include "ast/def/fn_def.h"
 #include "ast/expr/int_lit.h"
 #include "ast/stmt/compound_stmt.h"
+#include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/return_stmt.h"
 
@@ -29,6 +31,7 @@ struct ast_visitor
 
     // Declarations
     void (*visit_param_decl)(void* self, ast_param_decl_t* fn_def, void *out_);
+    void (*visit_var_decl)(void* self_, ast_var_decl_t* var_decl, void *out_);
 
     // Definitions
     void (*visit_fn_def)(void* self_, ast_fn_def_t* fn_def, void *out_);
@@ -42,6 +45,7 @@ struct ast_visitor
 
     // Statements
     void (*visit_compound_stmt)(void* self_, ast_compound_stmt_t* compound_stmt, void *out_);
+    void (*visit_decl_stmt)(void* self_, ast_decl_stmt_t* decl_stmt, void *out_);
     void (*visit_expr_stmt)(void* self_, ast_expr_stmt_t* expr_stmt, void *out_);
     void (*visit_return_stmt)(void* self_, ast_return_stmt_t* return_stmt, void *out_);
 };

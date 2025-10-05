@@ -23,6 +23,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/root.c \
 	$(SRC_DIR)/ast/visitor.c \
 	$(SRC_DIR)/ast/decl/param_decl.c \
+	$(SRC_DIR)/ast/decl/var_decl.c \
 	$(SRC_DIR)/ast/def/def.c \
     $(SRC_DIR)/ast/def/fn_def.c \
 	$(SRC_DIR)/ast/expr/bin_op.c \
@@ -32,6 +33,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/expr/paren_expr.c \
 	$(SRC_DIR)/ast/expr/ref_expr.c \
 	$(SRC_DIR)/ast/stmt/compound_stmt.c \
+	$(SRC_DIR)/ast/stmt/decl_stmt.c \
 	$(SRC_DIR)/ast/stmt/expr_stmt.c \
 	$(SRC_DIR)/ast/stmt/return_stmt.c \
 	$(SRC_DIR)/ast/stmt/stmt.c \

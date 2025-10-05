@@ -15,10 +15,12 @@ static ast_node_vtable_t ast_int_lit_vtable =
 
 ast_expr_t* ast_int_lit_create(int value)
 {
-    ast_int_lit_t* int_lit = calloc(1, sizeof(*int_lit));
+    ast_int_lit_t* int_lit = malloc(sizeof(*int_lit));
 
+    *int_lit = (ast_int_lit_t){
+        .value = value,
+    };
     AST_NODE(int_lit)->vtable = &ast_int_lit_vtable;
-    int_lit->value = value;
 
     return (ast_expr_t*)int_lit;
 }

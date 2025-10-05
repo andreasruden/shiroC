@@ -1,6 +1,7 @@
 #ifndef PARSER__H
 #define PARSER__H
 
+#include "ast/decl/decl.h"
 #include "ast/expr/expr.h"
 #include "ast/stmt/stmt.h"
 #include "ast/root.h"

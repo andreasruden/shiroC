@@ -1,4 +1,5 @@
 #include "ast/decl/param_decl.h"
+#include "ast/decl/var_decl.h"
 #include "ast/def/fn_def.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/call_expr.h"
@@ -9,6 +10,7 @@
 #include "ast/printer.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
+#include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/return_stmt.h"
 #include "compiler_error.h"
@@ -123,8 +125,7 @@ TEST(ut_parser_fixture_t, full_parse_with_simple_syntax_error)
     ASSERT_EQ(2, err->line);
     ASSERT_EQ(11, err->column);
     ASSERT_EQ("expected ';'", err->description);
-    ASSERT_NEQ(nullptr, err->offender);
-    // TODO: Check that offender is type ast_return_stmt*
+    ASSERT_EQ(nullptr, err->offender);
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
@@ -406,5 +407,67 @@ TEST(ut_parser_fixture_t, parse_mixed_add_subtract)
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expr);
+    ast_node_destroy(expected);
+}
+
+TEST(ut_parser_fixture_t, parse_decl_stmt_no_init)
+{
+    parser_set_source(fix->parser, "test", "var x: int;");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_decl_stmt_create(
+        ast_var_decl_create("x", "int", nullptr));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(stmt);
+    ast_node_destroy(expected);
+}
+
+TEST(ut_parser_fixture_t, parse_decl_stmt_with_init)
+{
+    parser_set_source(fix->parser, "test", "var x = 42;");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_decl_stmt_create(
+        ast_var_decl_create("x", nullptr, ast_int_lit_create(42)));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(stmt);
+    ast_node_destroy(expected);
+}
+
+TEST(ut_parser_fixture_t, parse_var_decls_with_no_type)
+{
+    parser_set_source(fix->parser, "test", "var x;");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(1, ptr_vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_decl_stmt_create(ast_var_decl_create("x", nullptr, nullptr));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(stmt);
+    ast_node_destroy(expected);
+}
+
+TEST(ut_parser_fixture_t, parse_var_decls_force_type_inference)
+{
+    parser_set_source(fix->parser, "test", "var x: int = 42;");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(1, ptr_vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_decl_stmt_create(ast_var_decl_create("x", "int", ast_int_lit_create(42)));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(stmt);
     ast_node_destroy(expected);
 }

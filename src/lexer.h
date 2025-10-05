@@ -10,6 +10,7 @@ typedef enum
     // Keywords
     TOKEN_INT,
     TOKEN_RETURN,
+    TOKEN_VAR,
 
     // Literals
     TOKEN_NUMBER,
@@ -21,6 +22,7 @@ typedef enum
     TOKEN_LBRACE,
     TOKEN_RBRACE,
     TOKEN_SEMICOLON,
+    TOKEN_COLON,
     TOKEN_COMMA,
 
     // Unary & Binary Operators
@@ -66,7 +68,6 @@ typedef struct lexer
     int last_consumed_end_column;
     char* filename;
     ptr_vec_t* error_output;
-    ast_node_t* ast_node;
     ptr_vec_t created_tokens;
 } lexer_t;
 
@@ -83,13 +84,6 @@ token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type);
 token_t* lexer_peek_token(lexer_t* lexer);
 
 bool lexer_consume_token(lexer_t* lexer, token_type_t token_type);
-
-// Same as calling lexer_consume_token between setting and unsetting the ast_node.
-bool lexer_consume_token_for_node(lexer_t* lexer, token_type_t token_type, void* ast_node);
-
-// When a lexer error is encountered, the last set ast_node will be automatically appended
-// to that error.
-void lexer_set_ast_node(lexer_t* lexer, void* ast_node);
 
 int token_type_get_precedence(token_type_t token_type);
 
