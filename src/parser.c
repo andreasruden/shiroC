@@ -51,7 +51,7 @@ static void* parser_error(parser_t* parser, void* ast_node, const char* descript
     return ast_node;
 }
 
-ast_expr_t* parse_int_lit(parser_t* parser)
+static ast_expr_t* parse_int_lit(parser_t* parser)
 {
     token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_NUMBER);
     if (tok == nullptr)
@@ -61,12 +61,12 @@ ast_expr_t* parse_int_lit(parser_t* parser)
     return ast_int_lit_create(value);
 }
 
-ast_expr_t* parse_call_expr(parser_t* parser, const char* name)
+static ast_expr_t* parse_call_expr(parser_t* parser, const char* name)
 {
     ast_expr_t* call = nullptr;
     ptr_vec_t args = PTR_VEC_INIT;
 
-    if (!lexer_consume_token(parser->lexer, TOKEN_LPAREN))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LPAREN))
         goto cleanup;
 
     token_type_t type;
@@ -79,10 +79,10 @@ ast_expr_t* parse_call_expr(parser_t* parser, const char* name)
 
         if (lexer_peek_token(parser->lexer)->type != TOKEN_COMMA)
             break;
-        lexer_consume_token(parser->lexer, TOKEN_COMMA);
+        lexer_next_token_iff(parser->lexer, TOKEN_COMMA);
     }
 
-    if (!lexer_consume_token(parser->lexer, TOKEN_RPAREN))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_RPAREN))
         goto cleanup;
 
     call = ast_call_expr_create(ast_ref_expr_create(name), &args);
@@ -92,7 +92,7 @@ cleanup:
     return call;
 }
 
-ast_expr_t* parse_identifier_expr(parser_t* parser)
+static ast_expr_t* parse_identifier_expr(parser_t* parser)
 {
     ast_expr_t* expr = nullptr;
 
@@ -109,16 +109,16 @@ cleanup:
     return expr;
 }
 
-ast_expr_t* parse_paren_expr(parser_t* parser)
+static ast_expr_t* parse_paren_expr(parser_t* parser)
 {
-    if (!lexer_consume_token(parser->lexer, TOKEN_LPAREN))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LPAREN))
         return nullptr;
 
     ast_expr_t* expr = parser_parse_expr(parser);
     if (expr == nullptr)
         return nullptr;
 
-    if (!lexer_consume_token(parser->lexer, TOKEN_RPAREN))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_RPAREN))
         return expr; // emit error but yield inner expression
 
     return ast_paren_expr_create(expr);
@@ -141,7 +141,7 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
 }
 
 // Use precedence climbing to efficiently parse expressions
-ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_precedence)
+static ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_precedence)
 {
     ast_expr_t* lhs = parser_parse_primary_expr(parser);
     if (lhs == nullptr)
@@ -174,9 +174,9 @@ ast_expr_t* parser_parse_expr(parser_t* parser)
     return parser_parse_expr_climb_precedence(parser, 0);
 }
 
-ast_stmt_t* parse_return_stmt(parser_t* parser)
+static ast_stmt_t* parse_return_stmt(parser_t* parser)
 {
-    if (!lexer_consume_token(parser->lexer, TOKEN_RETURN))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_RETURN))
         return nullptr;
 
     ast_expr_t* expr = parser_parse_expr(parser);
@@ -184,13 +184,13 @@ ast_stmt_t* parse_return_stmt(parser_t* parser)
         return nullptr;
 
     ast_stmt_t* stmt = ast_return_stmt_create(expr);
-    lexer_consume_token(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
+    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
     return stmt;
 }
 
-ast_stmt_t* parse_compound_stmt(parser_t* parser)
+static ast_stmt_t* parse_compound_stmt(parser_t* parser)
 {
-    if (!lexer_consume_token(parser->lexer, TOKEN_LBRACE))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACE))
         return nullptr;
 
     ptr_vec_t inner_stmts = PTR_VEC_INIT;
@@ -207,7 +207,7 @@ ast_stmt_t* parse_compound_stmt(parser_t* parser)
         ptr_vec_append(&inner_stmts, inner_stmt);
     }
 
-    if (!lexer_consume_token(parser->lexer, TOKEN_RBRACE))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACE))
     {
         ptr_vec_deinit(&inner_stmts, ast_node_destroy);
         return nullptr;
@@ -216,9 +216,9 @@ ast_stmt_t* parse_compound_stmt(parser_t* parser)
     return ast_compound_stmt_create(&inner_stmts);
 }
 
-ast_decl_t* parse_var_decl(parser_t* parser)
+static ast_decl_t* parse_var_decl(parser_t* parser)
 {
-    if (!lexer_consume_token(parser->lexer, TOKEN_VAR))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_VAR))
         return nullptr;
 
     token_t* name = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
@@ -232,7 +232,7 @@ ast_decl_t* parse_var_decl(parser_t* parser)
     {
         lexer_next_token(parser->lexer);
         // TODO: Handle user-defined types, pointers, etc
-        if (lexer_consume_token(parser->lexer, TOKEN_INT))
+        if (lexer_next_token_iff(parser->lexer, TOKEN_INT))
             var_decl->type = strdup("int");
     }
 
@@ -253,24 +253,24 @@ ast_decl_t* parse_var_decl(parser_t* parser)
     return (ast_decl_t*)var_decl;
 }
 
-ast_stmt_t* parse_decl_stmt(parser_t* parser)
+static ast_stmt_t* parse_decl_stmt(parser_t* parser)
 {
     ast_decl_t* decl = parse_var_decl(parser);
     if (decl == nullptr)
         return nullptr;
     ast_stmt_t* stmt = ast_decl_stmt_create(decl);
-    lexer_consume_token(parser->lexer, TOKEN_SEMICOLON); // do not fail stmt
+    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // do not fail stmt
     return stmt;
 }
 
-ast_stmt_t* parse_expr_stmt(parser_t* parser)
+static ast_stmt_t* parse_expr_stmt(parser_t* parser)
 {
     ast_expr_t* expr = parser_parse_expr(parser);
     if (expr == nullptr)
         return nullptr;
 
     ast_stmt_t* stmt = ast_expr_stmt_create(expr);
-    lexer_consume_token(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
+    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
     return stmt;
 }
 
@@ -289,7 +289,7 @@ ast_stmt_t* parser_parse_stmt(parser_t* parser)
     }
 }
 
-ast_decl_t* parse_param_decl(parser_t* parser)
+static ast_decl_t* parse_param_decl(parser_t* parser)
 {
     token_t* type_tok = lexer_next_token(parser->lexer);
     token_t* name_tok = lexer_next_token(parser->lexer);
@@ -305,20 +305,20 @@ cleanup:
     return decl;
 }
 
-ast_def_t* parse_fn_def(parser_t* parser)
+static ast_def_t* parse_fn_def(parser_t* parser)
 {
     token_t* id = nullptr;
     ptr_vec_t params = PTR_VEC_INIT;
     ast_def_t* fn_def = nullptr;
 
-    if (!lexer_consume_token(parser->lexer, TOKEN_INT))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_INT))
         goto cleanup;
 
     id = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
     if (id == nullptr)
         goto cleanup;
 
-    if (!lexer_consume_token(parser->lexer, TOKEN_LPAREN))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LPAREN))
         goto cleanup;
 
     token_type_t type;
@@ -331,10 +331,10 @@ ast_def_t* parse_fn_def(parser_t* parser)
 
         if (lexer_peek_token(parser->lexer)->type != TOKEN_COMMA)
             break;
-        lexer_consume_token(parser->lexer, TOKEN_COMMA);
+        lexer_next_token_iff(parser->lexer, TOKEN_COMMA);
     }
 
-    if (!lexer_consume_token(parser->lexer, TOKEN_RPAREN))
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_RPAREN))
         goto cleanup;
 
     ast_stmt_t* body = parse_compound_stmt(parser);
@@ -348,7 +348,7 @@ cleanup:
     return fn_def;
 }
 
-ast_def_t* parse_top_level_definition(parser_t* parser)
+static ast_def_t* parse_top_level_definition(parser_t* parser)
 {
     switch (lexer_peek_token(parser->lexer)->type)
     {

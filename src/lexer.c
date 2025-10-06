@@ -101,7 +101,7 @@ static token_t* token_create(lexer_t* lexer, token_type_t type, const char* valu
     return tok;
 }
 
-void token_destroy(void* tok_)
+static void token_destroy(void* tok_)
 {
     token_t* tok = tok_;
     if (tok != nullptr)
@@ -215,7 +215,7 @@ void lexer_destroy(lexer_t *lexer)
     }
 }
 
-token_t* lex_symbol(lexer_t* lexer)
+static token_t* lex_symbol(lexer_t* lexer)
 {
     const char c = lexer_peek(lexer);
     const int line = lexer->line;
@@ -340,12 +340,6 @@ token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type)
     }
 
     return nullptr;
-}
-
-bool lexer_consume_token(lexer_t* lexer, token_type_t token_type)
-{
-    token_t* token = lexer_next_token_iff(lexer, token_type);
-    return token != nullptr;
 }
 
 int token_type_get_precedence(token_type_t token_type)

@@ -83,8 +83,6 @@ token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type);
 
 token_t* lexer_peek_token(lexer_t* lexer);
 
-bool lexer_consume_token(lexer_t* lexer, token_type_t token_type);
-
 int token_type_get_precedence(token_type_t token_type);
 
 bool token_type_is_bin_op(token_type_t token_type);
