@@ -335,7 +335,7 @@ token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type)
     }
     else
     {
-        compiler_error_t* error = compiler_error_create(false, nullptr,
+        compiler_error_t* error = compiler_error_create_for_source(false,
             ssprintf("expected '%s'", token_type_str(token_type)), lexer->filename, line, column);
         ptr_vec_append(lexer->error_output, error);
     }

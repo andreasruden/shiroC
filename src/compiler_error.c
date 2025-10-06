@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-compiler_error_t* compiler_error_create(bool warning, ast_node_t* offender, const char* description,
+static compiler_error_t* compiler_error_create(bool warning, const char* description, ast_node_t* offender,
     const char* source_file, int line, int column)
 {
     compiler_error_t* error = malloc(sizeof(*error));
@@ -12,12 +12,24 @@ compiler_error_t* compiler_error_create(bool warning, ast_node_t* offender, cons
         .is_warning = warning,
         .offender = offender,
         .description = strdup(description),
-        .source_file = strdup(source_file),
+        .source_file = source_file ? strdup(source_file) : nullptr,
         .line = line,
         .column = column,
     };
 
     return error;
+}
+
+compiler_error_t* compiler_error_create_for_source(bool warning, const char* description,
+    const char* source_file, int line, int column)
+{
+    return compiler_error_create(warning, description, nullptr, source_file, line, column);
+}
+
+compiler_error_t* compiler_error_create_for_ast(bool warning, const char* description,
+    ast_node_t* offender)
+{
+    return compiler_error_create(warning, description, offender, nullptr, 0, 0);
 }
 
 void compiler_error_destroy(compiler_error_t* error)

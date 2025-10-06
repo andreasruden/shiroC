@@ -46,7 +46,7 @@ void parser_destroy(parser_t* parser)
 
 static void* parser_error(parser_t* parser, void* ast_node, const char* description)
 {
-    compiler_error_t* error = compiler_error_create(false, ast_node, description, parser->lexer->filename, 0, 0);
+    compiler_error_t* error = compiler_error_create_for_ast(false, description, ast_node);
     ptr_vec_append(&parser->errors, error);
     return ast_node;
 }
