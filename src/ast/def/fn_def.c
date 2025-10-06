@@ -52,12 +52,11 @@ static void ast_fn_def_accept(void* self_, ast_visitor_t* visitor, void* out)
 static void ast_fn_def_destroy(void* self_)
 {
     ast_fn_def_t* self = self_;
+    if (self == nullptr)
+        return;
 
-    if (self != nullptr)
-    {
-        ast_def_deconstruct((ast_def_t*)self);
-        ptr_vec_deinit(&self->params, ast_node_destroy);
-        ast_node_destroy(self->body);
-        free(self);
-    }
+    ast_def_deconstruct((ast_def_t*)self);
+    ptr_vec_deinit(&self->params, ast_node_destroy);
+    ast_node_destroy(self->body);
+    free(self);
 }

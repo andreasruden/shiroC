@@ -33,11 +33,10 @@ static void ast_ref_expr_accept(void* self_, ast_visitor_t* visitor, void* out)
 static void ast_ref_expr_destroy(void* self_)
 {
     ast_ref_expr_t* self = self_;
+    if (self == nullptr)
+        return;
 
-    if (self != nullptr)
-    {
-        ast_expr_deconstruct((ast_expr_t*)self);
-        free(self->name);
-        free(self);
-    }
+    ast_expr_deconstruct((ast_expr_t*)self);
+    free(self->name);
+    free(self);
 }

@@ -11,4 +11,6 @@ void ast_printer_destroy(ast_printer_t* printer);
 
 char* ast_printer_print_ast(ast_printer_t* printer, ast_node_t* node);
 
+void ast_printer_set_show_source_loc(ast_printer_t* printer, bool show);
+
 #endif

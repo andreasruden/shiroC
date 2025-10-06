@@ -11,7 +11,7 @@ typedef struct ast_decl
 // Deconstruct data held in abstract class. Should be called by children inheriting from this class.
 static inline void ast_decl_deconstruct(ast_decl_t* decl)
 {
-    (void)decl;
+    ast_node_deconstruct((ast_node_t*)decl);
 }
 
 #endif

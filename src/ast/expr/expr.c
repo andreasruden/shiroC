@@ -2,5 +2,5 @@
 
 void ast_expr_deconstruct(ast_expr_t* expr)
 {
-    (void)expr;
+    ast_node_deconstruct((ast_node_t*)expr);
 }

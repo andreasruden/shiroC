@@ -48,7 +48,6 @@ static void ast_var_decl_accept(void* self_, ast_visitor_t* visitor, void* out)
 static void ast_var_decl_destroy(void* self_)
 {
     ast_var_decl_t* self = self_;
-
     if (self == nullptr)
         return;
 

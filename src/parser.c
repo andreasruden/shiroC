@@ -51,6 +51,24 @@ static void* parser_error(parser_t* parser, void* ast_node, const char* descript
     return ast_node;
 }
 
+static void parser_set_source_tok_to_current(parser_t* parser, void* node, token_t* begin)
+{
+    source_location_t start_loc, end_loc;
+    lexer_get_token_location(parser->lexer, begin, &start_loc);
+    lexer_get_current_location(parser->lexer, &end_loc);
+    ast_node_set_source(node, &start_loc, &end_loc);
+}
+
+// Helper to create an ast_ref_expr_t* with source location filled in
+static ast_expr_t* parser_create_ref_expr(parser_t* parser, token_t* id)
+{
+    ast_expr_t* expr = ast_ref_expr_create(id->value);
+    lexer_get_token_location(parser->lexer, id, &AST_NODE(expr)->source_begin);
+    lexer_get_token_location(parser->lexer, id, &AST_NODE(expr)->source_end);
+    AST_NODE(expr)->source_end.column += (int)strlen(id->value);
+    return expr;
+}
+
 static ast_expr_t* parse_int_lit(parser_t* parser)
 {
     token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_NUMBER);
@@ -58,10 +76,13 @@ static ast_expr_t* parse_int_lit(parser_t* parser)
         return nullptr;
 
     int value = atoi(tok->value);
-    return ast_int_lit_create(value);
+    ast_expr_t* expr = ast_int_lit_create(value);
+    parser_set_source_tok_to_current(parser, expr, tok);
+
+    return expr;
 }
 
-static ast_expr_t* parse_call_expr(parser_t* parser, const char* name)
+static ast_expr_t* parse_call_expr(parser_t* parser, token_t* id)
 {
     ast_expr_t* call = nullptr;
     ptr_vec_t args = PTR_VEC_INIT;
@@ -85,7 +106,8 @@ static ast_expr_t* parse_call_expr(parser_t* parser, const char* name)
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RPAREN))
         goto cleanup;
 
-    call = ast_call_expr_create(ast_ref_expr_create(name), &args);
+    call = ast_call_expr_create(parser_create_ref_expr(parser, id), &args);
+    parser_set_source_tok_to_current(parser, call, id);
 
 cleanup:
     ptr_vec_deinit(&args, ast_node_destroy);
@@ -101,9 +123,9 @@ static ast_expr_t* parse_identifier_expr(parser_t* parser)
         goto cleanup;
 
     if (lexer_peek_token(parser->lexer)->type == TOKEN_LPAREN)
-        expr = parse_call_expr(parser, id->value);
+        expr = parse_call_expr(parser, id);
     else
-        expr = ast_ref_expr_create(id->value);
+        expr = parser_create_ref_expr(parser, id);
 
 cleanup:
     return expr;
@@ -111,7 +133,8 @@ cleanup:
 
 static ast_expr_t* parse_paren_expr(parser_t* parser)
 {
-    if (!lexer_next_token_iff(parser->lexer, TOKEN_LPAREN))
+    token_t* tok_lparen = lexer_next_token_iff(parser->lexer, TOKEN_LPAREN);
+    if (tok_lparen == nullptr)
         return nullptr;
 
     ast_expr_t* expr = parser_parse_expr(parser);
@@ -121,7 +144,10 @@ static ast_expr_t* parse_paren_expr(parser_t* parser)
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RPAREN))
         return expr; // emit error but yield inner expression
 
-    return ast_paren_expr_create(expr);
+    ast_expr_t* paren_expr = ast_paren_expr_create(expr);
+    parser_set_source_tok_to_current(parser, paren_expr, tok_lparen);
+
+    return paren_expr;
 }
 
 ast_expr_t* parser_parse_primary_expr(parser_t* parser)
@@ -143,6 +169,8 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
 // Use precedence climbing to efficiently parse expressions
 static ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_precedence)
 {
+    token_t* first_tok = lexer_peek_token(parser->lexer);
+
     ast_expr_t* lhs = parser_parse_primary_expr(parser);
     if (lhs == nullptr)
         return nullptr;
@@ -164,6 +192,7 @@ static ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_
         }
 
         lhs = ast_bin_op_create(tok->type, lhs, rhs);
+        parser_set_source_tok_to_current(parser, lhs, first_tok);
     }
 
     return lhs;
@@ -176,7 +205,8 @@ ast_expr_t* parser_parse_expr(parser_t* parser)
 
 static ast_stmt_t* parse_return_stmt(parser_t* parser)
 {
-    if (!lexer_next_token_iff(parser->lexer, TOKEN_RETURN))
+    token_t* tok_return = lexer_next_token_iff(parser->lexer, TOKEN_RETURN);
+    if (tok_return == nullptr)
         return nullptr;
 
     ast_expr_t* expr = parser_parse_expr(parser);
@@ -185,12 +215,16 @@ static ast_stmt_t* parse_return_stmt(parser_t* parser)
 
     ast_stmt_t* stmt = ast_return_stmt_create(expr);
     lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
+
+    parser_set_source_tok_to_current(parser, stmt, tok_return);
+
     return stmt;
 }
 
 static ast_stmt_t* parse_compound_stmt(parser_t* parser)
 {
-    if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACE))
+    token_t* tok_lbrace = lexer_next_token_iff(parser->lexer, TOKEN_LBRACE);
+    if (tok_lbrace == nullptr)
         return nullptr;
 
     ptr_vec_t inner_stmts = PTR_VEC_INIT;
@@ -213,12 +247,16 @@ static ast_stmt_t* parse_compound_stmt(parser_t* parser)
         return nullptr;
     }
 
-    return ast_compound_stmt_create(&inner_stmts);
+    ast_stmt_t* stmt = ast_compound_stmt_create(&inner_stmts);
+    parser_set_source_tok_to_current(parser, stmt, tok_lbrace);
+
+    return stmt;
 }
 
 static ast_decl_t* parse_var_decl(parser_t* parser)
 {
-    if (!lexer_next_token_iff(parser->lexer, TOKEN_VAR))
+    token_t* tok_var = lexer_next_token_iff(parser->lexer, TOKEN_VAR);
+    if (tok_var == nullptr)
         return nullptr;
 
     token_t* name = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
@@ -250,6 +288,8 @@ static ast_decl_t* parse_var_decl(parser_t* parser)
     else if (var_decl->type != nullptr && var_decl->init_expr != nullptr)
         parser_error(parser, var_decl, "variable declaration cannot have both a type annotation and an initializer");
 
+    parser_set_source_tok_to_current(parser, var_decl, tok_var);
+
     return (ast_decl_t*)var_decl;
 }
 
@@ -258,8 +298,14 @@ static ast_stmt_t* parse_decl_stmt(parser_t* parser)
     ast_decl_t* decl = parse_var_decl(parser);
     if (decl == nullptr)
         return nullptr;
+
     ast_stmt_t* stmt = ast_decl_stmt_create(decl);
     lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // do not fail stmt
+
+    source_location_t end_loc;
+    lexer_get_current_location(parser->lexer, &end_loc);
+    ast_node_set_source_from(stmt, decl, &end_loc);
+
     return stmt;
 }
 
@@ -271,6 +317,11 @@ static ast_stmt_t* parse_expr_stmt(parser_t* parser)
 
     ast_stmt_t* stmt = ast_expr_stmt_create(expr);
     lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
+
+    source_location_t end_loc;
+    lexer_get_current_location(parser->lexer, &end_loc);
+    ast_node_set_source_from(stmt, expr, &end_loc);
+
     return stmt;
 }
 
@@ -299,7 +350,9 @@ static ast_decl_t* parse_param_decl(parser_t* parser)
         goto cleanup;
     if (name_tok->type != TOKEN_IDENTIFIER)
         goto cleanup;
+
     decl = ast_param_decl_create(type_tok->value, name_tok->value);
+    parser_set_source_tok_to_current(parser, decl, type_tok);
 
 cleanup:
     return decl;
@@ -311,7 +364,8 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     ptr_vec_t params = PTR_VEC_INIT;
     ast_def_t* fn_def = nullptr;
 
-    if (!lexer_next_token_iff(parser->lexer, TOKEN_INT))
+    token_t* tok_int = lexer_next_token_iff(parser->lexer, TOKEN_INT);
+    if (!tok_int)
         goto cleanup;
 
     id = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
@@ -342,6 +396,7 @@ static ast_def_t* parse_fn_def(parser_t* parser)
         goto cleanup;
 
     fn_def = ast_fn_def_create(id->value, &params, body);
+    parser_set_source_tok_to_current(parser, fn_def, tok_int);
 
 cleanup:
     ptr_vec_deinit(&params, ast_node_destroy);
@@ -378,6 +433,7 @@ ast_root_t* parser_parse(parser_t* parser)
             ptr_vec_append(&tl_defs, tl_def);
     }
 
+    // We're currently not setting source for root, but it also seems kind of pointless
     return ast_root_create(&tl_defs);
 }
 

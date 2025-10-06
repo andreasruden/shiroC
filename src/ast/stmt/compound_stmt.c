@@ -59,7 +59,6 @@ static void ast_compound_stmt_accept(void* self_, ast_visitor_t* visitor, void* 
 static void ast_compound_stmt_destroy(void* self_)
 {
     ast_compound_stmt_t* self = self_;
-
     if (self == nullptr)
         return;
 

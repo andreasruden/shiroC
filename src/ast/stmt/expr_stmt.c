@@ -34,11 +34,10 @@ static void ast_expr_stmt_accept(void* self_, ast_visitor_t* visitor, void* out)
 static void ast_expr_stmt_destroy(void* self_)
 {
     ast_expr_stmt_t* self = (ast_expr_stmt_t*)self_;
+    if (self == nullptr)
+        return;
 
-    if (self != nullptr)
-    {
-        ast_stmt_deconstruct((ast_stmt_t*)self);
-        ast_node_destroy(self->expr);
-        free(self);
-    }
+    ast_stmt_deconstruct((ast_stmt_t*)self);
+    ast_node_destroy(self->expr);
+    free(self);
 }

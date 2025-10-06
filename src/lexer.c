@@ -1,5 +1,6 @@
 #include "lexer.h"
 
+#include "ast/node.h"
 #include "common/containers/ptr_vec.h"
 #include "compiler_error.h"
 #include "common/util/ssprintf.h"
@@ -392,4 +393,14 @@ bool token_type_is_bin_op(token_type_t token_type)
         default:
             return false;
     }
+}
+
+void lexer_get_token_location(lexer_t* lexer, token_t* token, source_location_t* out)
+{
+    set_source_location(out, lexer->filename, token->line, token->column);
+}
+
+void lexer_get_current_location(lexer_t* lexer, source_location_t* out)
+{
+    set_source_location(out, lexer->filename, lexer->last_consumed_end_line, lexer->last_consumed_end_column);
 }

@@ -53,10 +53,10 @@ static void ast_root_accept(void* self_, ast_visitor_t* visitor, void* out)
 static void ast_root_destroy(void* self_)
 {
     ast_root_t* self = (ast_root_t*)self_;
-
     if (self == nullptr)
         return;
 
+    ast_node_deconstruct((ast_node_t*)self);
     ptr_vec_deinit(&self->tl_defs, ast_node_destroy);
     free(self);
 }

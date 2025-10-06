@@ -34,10 +34,9 @@ static void ast_int_lit_accept(void* self_, ast_visitor_t* visitor, void* out)
 static void ast_int_lit_destroy(void* self_)
 {
     ast_int_lit_t* self = self_;
+    if (self == nullptr)
+        return;
 
-    if (self != nullptr)
-    {
-        ast_expr_deconstruct((ast_expr_t*)self);
-        free(self);
-    }
+    ast_expr_deconstruct((ast_expr_t*)self);
+    free(self);
 }

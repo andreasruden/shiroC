@@ -471,3 +471,37 @@ TEST(ut_parser_fixture_t, parse_var_decls_force_type_inference)
     ast_node_destroy(stmt);
     ast_node_destroy(expected);
 }
+
+TEST(ut_parser_fixture_t, parse_and_verify_source_locations)
+{
+    parser_set_source(fix->parser, "test",
+        "int main(int argc) {\n"
+        "  var some_val = 23 * 10;\n"
+        "  fn(some_val);\n"
+        "}");
+
+    ast_root_t* snippet = parser_parse(fix->parser);
+    ASSERT_NEQ(nullptr, snippet);
+    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+
+    ast_printer_t* printer = ast_printer_create(); \
+    ast_printer_set_show_source_loc(printer, true);
+    char* printed_snippet = ast_printer_print_ast(printer, AST_NODE(snippet));
+    const char* expected_code =
+        "Root\n"
+        "  FnDef 'main' <test:1:1, test:4:2>\n"
+        "    CompoundStmt <test:1:20, test:4:2>\n"
+        "      DeclStmt <test:2:3, test:2:26>\n"
+        "        VarDecl 'some_val' <test:2:3, test:2:25>\n"
+        "          BinOp '*' <test:2:18, test:2:25>\n"
+        "            IntLit '23' <test:2:18, test:2:20>\n"
+        "            IntLit '10' <test:2:23, test:2:25>\n"
+        "      ExprStmt <test:3:3, test:3:16>\n"
+        "        CallExpr <test:3:3, test:3:15>\n"
+        "          RefExpr 'fn' <test:3:3, test:3:5>\n"
+        "          RefExpr 'some_val' <test:3:6, test:3:14>\n";
+    ASSERT_EQ(expected_code, printed_snippet);
+    ast_node_destroy(snippet);
+    ast_printer_destroy(printer);
+    free(printed_snippet);
+}

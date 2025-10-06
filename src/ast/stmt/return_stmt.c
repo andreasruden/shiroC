@@ -35,10 +35,10 @@ static void ast_return_stmt_destroy(void* self_)
 {
     ast_return_stmt_t* self = (ast_return_stmt_t*)self_;
 
-    if (self != nullptr)
-    {
-        ast_stmt_deconstruct((ast_stmt_t*)self);
-        ast_node_destroy(self->value_expr);
-        free(self);
-    }
+    if (self == nullptr)
+        return;
+
+    ast_stmt_deconstruct((ast_stmt_t*)self);
+    ast_node_destroy(self->value_expr);
+    free(self);
 }

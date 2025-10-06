@@ -34,10 +34,10 @@ static void ast_bin_op_accept(void* self_, ast_visitor_t* visitor, void* out_)
 static void ast_bin_op_destroy(void* self_)
 {
     ast_bin_op_t* self = self_;
-
     if (self == nullptr)
         return;
 
+    ast_expr_deconstruct((ast_expr_t*)self);
     if (self->lhs != nullptr)
         ast_node_destroy(self->lhs);
     if (self->rhs != nullptr)

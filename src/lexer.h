@@ -89,4 +89,8 @@ bool token_type_is_bin_op(token_type_t token_type);
 
 const char* token_type_str(token_type_t type);
 
+void lexer_get_token_location(lexer_t* lexer, token_t* token, source_location_t* out);
+
+void lexer_get_current_location(lexer_t* lexer, source_location_t* out);
+
 #endif
