@@ -14,6 +14,7 @@ typedef enum
     TOKEN_INT,
     TOKEN_RETURN,
     TOKEN_VAR,
+    TOKEN_WHILE,
 
     // Literals
     TOKEN_NUMBER,

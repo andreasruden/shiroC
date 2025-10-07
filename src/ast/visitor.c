@@ -87,6 +87,12 @@ static void ast_visitor_visit_return_stmt(void* self_, ast_return_stmt_t* return
     ast_visitor_visit(self_, return_stmt->value_expr, out_);
 }
 
+static void ast_visitor_visit_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* out_)
+{
+    ast_visitor_visit(self_, while_stmt->condition, out_);
+    ast_visitor_visit(self_, while_stmt->body, out_);
+}
+
 void ast_visitor_init(ast_visitor_t* visitor)
 {
     *visitor = (ast_visitor_t){
@@ -108,6 +114,7 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_expr_stmt = ast_visitor_visit_expr_stmt,
         .visit_if_stmt = ast_visitor_visit_if_stmt,
         .visit_return_stmt = ast_visitor_visit_return_stmt,
+        .visit_while_stmt = ast_visitor_visit_while_stmt,
     };
 }
 

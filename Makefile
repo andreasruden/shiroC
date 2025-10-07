@@ -38,6 +38,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/stmt/if_stmt.c \
 	$(SRC_DIR)/ast/stmt/return_stmt.c \
 	$(SRC_DIR)/ast/stmt/stmt.c \
+	$(SRC_DIR)/ast/stmt/while_stmt.c \
 	$(SRC_DIR)/common/containers/ptr_vec.c \
 	$(SRC_DIR)/common/containers/string.c \
 	$(SRC_DIR)/common/containers/vec.c

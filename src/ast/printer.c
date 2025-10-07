@@ -226,6 +226,21 @@ static void print_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void*
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sWhileStmt", self->indentation, ""));
+    print_source_location(self, while_stmt, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self, while_stmt->condition, out);
+    ast_visitor_visit(self, while_stmt->body, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 ast_printer_t* ast_printer_create()
 {
     ast_printer_t* printer = malloc(sizeof(*printer));
@@ -251,6 +266,7 @@ ast_printer_t* ast_printer_create()
             .visit_expr_stmt = print_expr_stmt,
             .visit_if_stmt = print_if_stmt,
             .visit_return_stmt = print_return_stmt,
+            .visit_while_stmt = print_while_stmt,
         },
     };
 

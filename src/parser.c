@@ -18,6 +18,7 @@
 #include "ast/stmt/if_stmt.h"
 #include "ast/stmt/return_stmt.h"
 #include "ast/stmt/stmt.h"
+#include "ast/stmt/while_stmt.h"
 #include "common/containers/ptr_vec.h"
 #include "compiler_error.h"
 #include "lexer.h"
@@ -224,6 +225,40 @@ static ast_stmt_t* parse_return_stmt(parser_t* parser)
     return stmt;
 }
 
+static ast_stmt_t* parse_while_stmt(parser_t* parser)
+{
+    ast_expr_t* condition = nullptr;
+    ast_stmt_t* body = nullptr;
+
+    token_t* tok_while = lexer_next_token_iff(parser->lexer, TOKEN_WHILE);
+    if (tok_while == nullptr)
+        goto error;
+
+    lexer_next_token_iff(parser->lexer, TOKEN_LPAREN); // emits error
+
+    condition = parser_parse_expr(parser);
+    if (condition == nullptr)
+        goto error;
+
+    lexer_next_token_iff(parser->lexer, TOKEN_RPAREN); // emits error
+
+    if (lexer_peek_token(parser->lexer)->type != TOKEN_LBRACE)
+        lexer_emit_error_for_token(parser->lexer, lexer_peek_token(parser->lexer), TOKEN_LBRACE);
+
+    body = parser_parse_stmt(parser);
+    if (body == nullptr)
+        goto error;
+
+    ast_stmt_t* stmt = ast_while_stmt_create(condition, body);
+    parser_set_source_tok_to_current(parser, stmt, tok_while);
+    return stmt;
+
+error:
+    ast_node_destroy(condition);
+    ast_node_destroy(body);
+    return nullptr;
+}
+
 static ast_stmt_t* parse_compound_stmt(parser_t* parser)
 {
     token_t* tok_lbrace = lexer_next_token_iff(parser->lexer, TOKEN_LBRACE);
@@ -386,6 +421,8 @@ ast_stmt_t* parser_parse_stmt(parser_t* parser)
             return parse_decl_stmt(parser);
         case TOKEN_IF:
             return parse_if_stmt(parser);
+        case TOKEN_WHILE:
+            return parse_while_stmt(parser);
         default:
             return parse_expr_stmt(parser);
     }

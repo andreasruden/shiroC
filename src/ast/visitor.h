@@ -16,6 +16,7 @@
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/if_stmt.h"
 #include "ast/stmt/return_stmt.h"
+#include "ast/stmt/while_stmt.h"
 
 /* Visitor for any AST node.
 
@@ -50,6 +51,7 @@ struct ast_visitor
     void (*visit_expr_stmt)(void* self_, ast_expr_stmt_t* expr_stmt, void *out_);
     void (*visit_if_stmt)(void* self_, ast_if_stmt_t* if_stmt, void *out_);
     void (*visit_return_stmt)(void* self_, ast_return_stmt_t* return_stmt, void *out_);
+    void (*visit_while_stmt)(void* self_, ast_while_stmt_t* while_stmt, void *out_);
 };
 
 // Sets up default visitor implementations.

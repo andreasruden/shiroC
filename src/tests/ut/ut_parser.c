@@ -14,6 +14,7 @@
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/if_stmt.h"
 #include "ast/stmt/return_stmt.h"
+#include "ast/stmt/while_stmt.h"
 #include "compiler_error.h"
 #include "lexer.h"
 #include "parser.h"
@@ -664,4 +665,55 @@ TEST(ut_parser_fixture_t, parse_assignment_with_expression)
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expected);
     ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_while_stmt_simple)
+{
+    parser_set_source(fix->parser, "test",
+        "while (flag) {\n"
+        "    var y = 5;\n"
+        "}");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_while_stmt_create(
+        ast_ref_expr_create("flag"),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(
+                ast_var_decl_create("y", nullptr, ast_int_lit_create(5))),
+            nullptr));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
+}
+
+TEST(ut_parser_fixture_t, parse_while_stmt_syntax_errors_but_valid_ast)
+{
+    parser_set_source(fix->parser, "test",
+        "while i > 5\n"
+        "  call_fn();");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+
+    // Should produce a valid AST despite syntax errors
+    ASSERT_NEQ(nullptr, stmt);
+    // ASSERT_EQ(AST_STMT_WHILE, stmt->kind); FIXME: Should have some kind field on ast, probably
+    ASSERT_LT(2, ptr_vec_size(parser_errors(fix->parser)));
+
+    // Verify AST structure is intact
+    ast_while_stmt_t* while_stmt = (ast_while_stmt_t*)stmt;
+
+    // Condition should be parsed (i > 5)
+    ASSERT_NEQ(nullptr, while_stmt->condition);
+    // ASSERT_EQ(AST_EXPR_BINARY, while_stmt->condition->kind); FIXME:
+
+    // Body should exist
+    ASSERT_NEQ(nullptr, while_stmt->body);
+    // ASSERT_EQ(AST_STMT_EXPR, AST_KIND(while_stmt->body)); FIXME:
+    // ASSERT_EQ(AST_CALL_EXPR, AST_KIND(while_stmt->body->expr)); FIXME:
+
+    ast_node_destroy(stmt);
 }

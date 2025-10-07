@@ -24,6 +24,7 @@ static keyword_t lexer_keywords[] =
     {"int", TOKEN_INT},
     {"return", TOKEN_RETURN},
     {"var", TOKEN_VAR},
+    {"while", TOKEN_WHILE},
     {NULL, TOKEN_UNKNOWN}
 };
 
