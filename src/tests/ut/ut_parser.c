@@ -12,6 +12,7 @@
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
+#include "ast/stmt/if_stmt.h"
 #include "ast/stmt/return_stmt.h"
 #include "compiler_error.h"
 #include "lexer.h"
@@ -509,4 +510,104 @@ TEST(ut_parser_fixture_t, parse_and_verify_source_locations)
     ast_node_destroy(snippet);
     ast_printer_destroy(printer);
     free(printed_snippet);
+}
+
+TEST(ut_parser_fixture_t, parse_if_stmt_with_else)
+{
+    parser_set_source(fix->parser, "test",
+        "if (x > 5) {\n"
+        "    var y = 10;\n"
+        "} else {\n"
+        "    var z = 20;\n"
+        "}");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_if_stmt_create(
+        ast_bin_op_create(TOKEN_GT,
+            ast_ref_expr_create("x"),
+            ast_int_lit_create(5)),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(
+                ast_var_decl_create("y", nullptr, ast_int_lit_create(10))),
+            nullptr),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(
+                ast_var_decl_create("z", nullptr, ast_int_lit_create(20))),
+            nullptr));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
+}
+
+TEST(ut_parser_fixture_t, parse_if_stmt_no_else)
+{
+    parser_set_source(fix->parser, "test",
+        "if (flag) {\n"
+        "    var x = 1;\n"
+        "}");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_if_stmt_create(
+        ast_ref_expr_create("flag"),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(
+                ast_var_decl_create("x", nullptr, ast_int_lit_create(1))),
+            nullptr),
+        nullptr);  // No else branch
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
+}
+
+TEST(ut_parser_fixture_t, parse_if_stmt_else_if_chain)
+{
+    parser_set_source(fix->parser, "test",
+        "if (x > 10) {\n"
+        "    var a = 1;\n"
+        "} else if (x > 5) {\n"
+        "    var b = 2;\n"
+        "} else {\n"
+        "    var c = 3;\n"
+        "}");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+
+    // Build inner if (the "else if" part)
+    ast_stmt_t* inner_if = ast_if_stmt_create(
+        ast_bin_op_create(TOKEN_GT,
+            ast_ref_expr_create("x"),
+            ast_int_lit_create(5)),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(
+                ast_var_decl_create("b", nullptr, ast_int_lit_create(2))),
+            nullptr),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(
+                ast_var_decl_create("c", nullptr, ast_int_lit_create(3))),
+            nullptr));
+
+    // Build outer if
+    ast_stmt_t* expected = ast_if_stmt_create(
+        ast_bin_op_create(TOKEN_GT,
+            ast_ref_expr_create("x"),
+            ast_int_lit_create(10)),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(
+                ast_var_decl_create("a", nullptr, ast_int_lit_create(1))),
+            nullptr),
+        inner_if);  // else branch is another if statement
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
 }

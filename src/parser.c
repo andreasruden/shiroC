@@ -15,7 +15,9 @@
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
+#include "ast/stmt/if_stmt.h"
 #include "ast/stmt/return_stmt.h"
+#include "ast/stmt/stmt.h"
 #include "common/containers/ptr_vec.h"
 #include "compiler_error.h"
 #include "lexer.h"
@@ -325,6 +327,52 @@ static ast_stmt_t* parse_expr_stmt(parser_t* parser)
     return stmt;
 }
 
+static ast_stmt_t* parse_if_stmt(parser_t* parser)
+{
+    ast_expr_t* condition = nullptr;
+    ast_stmt_t* then_branch = nullptr;
+    ast_stmt_t* else_branch = nullptr;
+
+    token_t* tok_if = lexer_next_token_iff(parser->lexer, TOKEN_IF);
+    if (tok_if == nullptr)
+        goto error;
+
+    lexer_next_token_iff(parser->lexer, TOKEN_LPAREN); // emit error, but continue
+
+    condition = parser_parse_expr(parser);
+    if (condition == nullptr)
+        goto error;
+
+    lexer_next_token_iff(parser->lexer, TOKEN_RPAREN); // emit error, but continue
+
+    if (lexer_peek_token(parser->lexer)->type != TOKEN_LBRACE)
+        lexer_emit_error_for_token(parser->lexer, lexer_peek_token(parser->lexer), TOKEN_LBRACE);
+
+    then_branch = parser_parse_stmt(parser);
+    if (then_branch == nullptr)
+        goto error;
+
+    if (lexer_peek_token(parser->lexer)->type == TOKEN_ELSE)
+    {
+        lexer_next_token(parser->lexer);
+        if (lexer_peek_token(parser->lexer)->type == TOKEN_IF)
+            else_branch = parse_if_stmt(parser);
+        else
+            else_branch = parser_parse_stmt(parser);
+
+        if (else_branch == nullptr)
+            goto error;
+    }
+
+    return ast_if_stmt_create(condition, then_branch, else_branch);
+
+error:
+    ast_node_destroy(condition);
+    ast_node_destroy(then_branch);
+    ast_node_destroy(else_branch);
+    return nullptr;
+}
+
 ast_stmt_t* parser_parse_stmt(parser_t* parser)
 {
     switch (lexer_peek_token(parser->lexer)->type)
@@ -335,6 +383,8 @@ ast_stmt_t* parser_parse_stmt(parser_t* parser)
             return parse_compound_stmt(parser);
         case TOKEN_VAR:
             return parse_decl_stmt(parser);
+        case TOKEN_IF:
+            return parse_if_stmt(parser);
         default:
             return parse_expr_stmt(parser);
     }

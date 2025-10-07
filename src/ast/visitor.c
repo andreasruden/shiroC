@@ -74,6 +74,14 @@ static void ast_visitor_visit_expr_stmt(void* self_, ast_expr_stmt_t* expr_stmt,
     ast_visitor_visit(self_, expr_stmt->expr, out_);
 }
 
+static void ast_visitor_visit_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
+{
+    ast_visitor_visit(self_, if_stmt->condition, out_);
+    ast_visitor_visit(self_, if_stmt->then_branch, out_);
+    if (if_stmt->else_branch != nullptr)
+        ast_visitor_visit(self_, if_stmt->else_branch, out_);
+}
+
 static void ast_visitor_visit_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void* out_)
 {
     ast_visitor_visit(self_, return_stmt->value_expr, out_);
@@ -98,6 +106,7 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_compound_stmt = ast_visitor_visit_compound_stmt,
         .visit_decl_stmt = ast_visitor_visit_decl_stmt,
         .visit_expr_stmt = ast_visitor_visit_expr_stmt,
+        .visit_if_stmt = ast_visitor_visit_if_stmt,
         .visit_return_stmt = ast_visitor_visit_return_stmt,
     };
 }

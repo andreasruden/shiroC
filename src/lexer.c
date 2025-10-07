@@ -18,7 +18,9 @@ typedef struct
 
 static keyword_t lexer_keywords[] =
 {
+    {"else", TOKEN_ELSE},
     {"fn", TOKEN_FN},
+    {"if", TOKEN_IF},
     {"int", TOKEN_INT},
     {"return", TOKEN_RETURN},
     {"var", TOKEN_VAR},
@@ -329,25 +331,30 @@ token_t* lexer_peek_token(lexer_t* lexer)
     return lexer->peeked_token;
 }
 
-token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type)
+void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t expected)
 {
-    const token_type_t next_tok_type = lexer_peek_token(lexer)->type;
-    if (next_tok_type == token_type)
-        return lexer_next_token(lexer);
-
     const int line = lexer->last_consumed_end_line;
     const int column = lexer->last_consumed_end_column;
     if (lexer->error_output == nullptr)
     {
-        printf("Error: Expected token %s, but found %s in File %s at Line %d, Col %d\n", token_type_str(token_type),
-            token_type_str(next_tok_type), lexer->filename, line, column);
+        printf("Error: Expected token %s, but found %s in File %s at Line %d, Col %d\n", token_type_str(expected),
+            token_type_str(actual->type), lexer->filename, line, column);
     }
     else
     {
         compiler_error_t* error = compiler_error_create_for_source(false,
-            ssprintf("expected '%s'", token_type_str(token_type)), lexer->filename, line, column);
+            ssprintf("expected '%s'", token_type_str(expected)), lexer->filename, line, column);
         ptr_vec_append(lexer->error_output, error);
     }
+}
+
+token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type)
+{
+    token_t* next_tok = lexer_peek_token(lexer);
+    if (next_tok->type == token_type)
+        return lexer_next_token(lexer);
+
+    lexer_emit_error_for_token(lexer, next_tok, token_type);
 
     return nullptr;
 }

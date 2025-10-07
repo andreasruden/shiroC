@@ -8,7 +8,9 @@
 typedef enum
 {
     // Keywords
+    TOKEN_ELSE,
     TOKEN_FN,
+    TOKEN_IF,
     TOKEN_INT,
     TOKEN_RETURN,
     TOKEN_VAR,
@@ -80,6 +82,8 @@ lexer_t* lexer_create(const char* filename, const char* source, ptr_vec_t* error
 void lexer_destroy(lexer_t* lexer);
 
 token_t* lexer_next_token(lexer_t* lexer);
+
+void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t expected);
 
 token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type);
 
