@@ -235,15 +235,43 @@ static token_t* lex_symbol(lexer_t* lexer)
         case ';': return token_create(lexer, TOKEN_SEMICOLON, ";", line, col);
         case ':': return token_create(lexer, TOKEN_COLON, ":", line, col);
         case ',': return token_create(lexer, TOKEN_COMMA, ",", line, col);
-        case '+': return token_create(lexer, TOKEN_PLUS, "+", line, col);
-        case '*': return token_create(lexer, TOKEN_STAR, "*", line, col);
-        case '/': return token_create(lexer, TOKEN_DIV, "/", line, col);
-        case '%': return token_create(lexer, TOKEN_MODULO, "%", line, col);
+
+        case '+':
+            if (lexer_peek(lexer) == '=') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_PLUS_ASSIGN, "+=", line, col);
+            }
+            return token_create(lexer, TOKEN_PLUS, "+", line, col);
+
+        case '*':
+            if (lexer_peek(lexer) == '=') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_MUL_ASSIGN, "*=", line, col);
+            }
+            return token_create(lexer, TOKEN_STAR, "*", line, col);
+
+        case '/':;
+            if (lexer_peek(lexer) == '=') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_DIV_ASSIGN, "/=", line, col);
+            }
+            return token_create(lexer, TOKEN_DIV, "/", line, col);
+
+        case '%':
+            if (lexer_peek(lexer) == '=') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_MODULO_ASSIGN, "%=", line, col);
+            }
+            return token_create(lexer, TOKEN_MODULO, "%", line, col);
 
         case '-':
             if (lexer_peek(lexer) == '>') {
                 lexer_advance(lexer);
                 return token_create(lexer, TOKEN_ARROW, "->", line, col);
+            }
+            else if (lexer_peek(lexer) == '=') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_MINUS_ASSIGN, "-=", line, col);
             }
             return token_create(lexer, TOKEN_MINUS, "-", line, col);
 
@@ -382,7 +410,13 @@ int token_type_get_precedence(token_type_t token_type)
         case TOKEN_NEQ:
             return 2;
 
-        case TOKEN_ASSIGN:  // right-associative
+        // assignment is right-associative
+        case TOKEN_ASSIGN:
+        case TOKEN_PLUS_ASSIGN:
+        case TOKEN_MINUS_ASSIGN:
+        case TOKEN_MUL_ASSIGN:
+        case TOKEN_DIV_ASSIGN:
+        case TOKEN_MODULO_ASSIGN:
             return 1;
 
         default:
@@ -405,10 +439,33 @@ bool token_type_is_bin_op(token_type_t token_type)
         case TOKEN_GTE:
         case TOKEN_EQ:
         case TOKEN_NEQ:
+        case TOKEN_ASSIGN:
+        case TOKEN_PLUS_ASSIGN:
+        case TOKEN_MINUS_ASSIGN:
+        case TOKEN_MUL_ASSIGN:
+        case TOKEN_DIV_ASSIGN:
+        case TOKEN_MODULO_ASSIGN:
             return true;
         default:
             return false;
     }
+}
+
+bool token_type_is_right_associative(token_type_t token_type)
+{
+    switch (token_type)
+    {
+        case TOKEN_ASSIGN:
+        case TOKEN_PLUS_ASSIGN:
+        case TOKEN_MINUS_ASSIGN:
+        case TOKEN_MUL_ASSIGN:
+        case TOKEN_DIV_ASSIGN:
+        case TOKEN_MODULO_ASSIGN:
+            return true;
+        default:
+            break;
+    }
+    return false;
 }
 
 void lexer_get_token_location(lexer_t* lexer, token_t* token, source_location_t* out)

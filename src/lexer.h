@@ -45,6 +45,11 @@ typedef enum
     TOKEN_GT,
     TOKEN_GTE,
     TOKEN_ASSIGN,
+    TOKEN_PLUS_ASSIGN,
+    TOKEN_MINUS_ASSIGN,
+    TOKEN_MUL_ASSIGN,
+    TOKEN_DIV_ASSIGN,
+    TOKEN_MODULO_ASSIGN,
 
     // Misc
     TOKEN_IDENTIFIER,
@@ -92,6 +97,8 @@ token_t* lexer_peek_token(lexer_t* lexer);
 int token_type_get_precedence(token_type_t token_type);
 
 bool token_type_is_bin_op(token_type_t token_type);
+
+bool token_type_is_right_associative(token_type_t token_type);
 
 const char* token_type_str(token_type_t type);
 

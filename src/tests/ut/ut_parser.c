@@ -611,3 +611,57 @@ TEST(ut_parser_fixture_t, parse_if_stmt_else_if_chain)
     ast_node_destroy(expected);
     ast_node_destroy(stmt);
 }
+
+TEST(ut_parser_fixture_t, parse_simple_assignment)
+{
+    parser_set_source(fix->parser, "test", "x = 5");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+
+    ast_expr_t* expected = ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("x"), ast_int_lit_create(5));
+
+    ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expected);
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_chained_assignment)
+{
+    parser_set_source(fix->parser, "test", "x += y *= 10");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+
+    // Should parse as: x += (y /= 10)
+    ast_expr_t* expected = ast_bin_op_create(TOKEN_PLUS_ASSIGN,
+        ast_ref_expr_create("x"),
+        ast_bin_op_create(TOKEN_MUL_ASSIGN,
+            ast_ref_expr_create("y"),
+            ast_int_lit_create(10)));
+
+    ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expected);
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_assignment_with_expression)
+{
+    parser_set_source(fix->parser, "test", "x = a + b * c");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+
+    // Should parse as: x = (a + (b * c))
+    ast_expr_t* expected = ast_bin_op_create(TOKEN_ASSIGN,
+        ast_ref_expr_create("x"),
+        ast_bin_op_create(TOKEN_PLUS,
+            ast_ref_expr_create("a"),
+            ast_bin_op_create(TOKEN_STAR,
+                ast_ref_expr_create("b"),
+                ast_ref_expr_create("c"))));
+
+    ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expected);
+    ast_node_destroy(expr);
+}

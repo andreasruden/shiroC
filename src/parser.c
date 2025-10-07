@@ -186,7 +186,8 @@ static ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_
 
         lexer_next_token(parser->lexer);  // consume token
 
-        ast_expr_t* rhs = parser_parse_expr_climb_precedence(parser, precedence + 1);
+        ast_expr_t* rhs = parser_parse_expr_climb_precedence(parser,
+            token_type_is_right_associative(tok->type) ? precedence : precedence + 1);
         if (rhs == nullptr)
         {
             ast_node_destroy(lhs);
