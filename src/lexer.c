@@ -18,6 +18,7 @@ typedef struct
 
 static keyword_t lexer_keywords[] =
 {
+    {"fn", TOKEN_FN},
     {"int", TOKEN_INT},
     {"return", TOKEN_RETURN},
     {"var", TOKEN_VAR},
@@ -233,10 +234,17 @@ static token_t* lex_symbol(lexer_t* lexer)
         case ':': return token_create(lexer, TOKEN_COLON, ":", line, col);
         case ',': return token_create(lexer, TOKEN_COMMA, ",", line, col);
         case '+': return token_create(lexer, TOKEN_PLUS, "+", line, col);
-        case '-': return token_create(lexer, TOKEN_MINUS, "-", line, col);
         case '*': return token_create(lexer, TOKEN_STAR, "*", line, col);
         case '/': return token_create(lexer, TOKEN_DIV, "/", line, col);
         case '%': return token_create(lexer, TOKEN_MODULO, "%", line, col);
+
+        case '-':
+            if (lexer_peek(lexer) == '>') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_ARROW, "->", line, col);
+            }
+            return token_create(lexer, TOKEN_MINUS, "-", line, col);
+
         case '=':
             if (lexer_peek(lexer) == '=') {
                 lexer_advance(lexer);
@@ -264,6 +272,7 @@ static token_t* lex_symbol(lexer_t* lexer)
                 return token_create(lexer, TOKEN_GTE, ">=", line, col);
             }
             return token_create(lexer, TOKEN_GT, ">", line, col);
+
         default:
         {
             char val[2] = {c, '\0'};

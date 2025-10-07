@@ -363,9 +363,10 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     token_t* id = nullptr;
     ptr_vec_t params = PTR_VEC_INIT;
     ast_def_t* fn_def = nullptr;
+    const char* ret_type = nullptr;
 
-    token_t* tok_int = lexer_next_token_iff(parser->lexer, TOKEN_INT);
-    if (!tok_int)
+    token_t* tok_fn = lexer_next_token_iff(parser->lexer, TOKEN_FN);
+    if (!tok_fn)
         goto cleanup;
 
     id = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
@@ -375,6 +376,7 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     if (!lexer_next_token_iff(parser->lexer, TOKEN_LPAREN))
         goto cleanup;
 
+    // Parameters
     token_type_t type;
     while ((type = lexer_peek_token(parser->lexer)->type) != TOKEN_EOF && type != TOKEN_RPAREN)
     {
@@ -391,12 +393,22 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RPAREN))
         goto cleanup;
 
+    // Optional return type
+    if (lexer_peek_token(parser->lexer)->type == TOKEN_ARROW)
+    {
+        lexer_next_token(parser->lexer);
+        // TODO: Handle more types
+        if (lexer_next_token_iff(parser->lexer, TOKEN_INT))  // accept error
+            ret_type = "int";
+    }
+
+    // Body
     ast_stmt_t* body = parse_compound_stmt(parser);
     if (body == nullptr)
         goto cleanup;
 
-    fn_def = ast_fn_def_create(id->value, &params, body);
-    parser_set_source_tok_to_current(parser, fn_def, tok_int);
+    fn_def = ast_fn_def_create(id->value, &params, ret_type, body);
+    parser_set_source_tok_to_current(parser, fn_def, tok_fn);
 
 cleanup:
     ptr_vec_deinit(&params, ast_node_destroy);
@@ -407,7 +419,7 @@ static ast_def_t* parse_top_level_definition(parser_t* parser)
 {
     switch (lexer_peek_token(parser->lexer)->type)
     {
-        case TOKEN_INT:
+        case TOKEN_FN:
             return parse_fn_def(parser);
         default:
             break;

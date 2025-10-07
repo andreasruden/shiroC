@@ -50,14 +50,14 @@ TEST_TEARDOWN(ut_parser_fixture_t)
 TEST(ut_parser_fixture_t, parse_basic_main_function)
 {
     // Parse source code
-    parser_set_source(fix->parser, "test", "int main() { return 0; }");
+    parser_set_source(fix->parser, "test", "fn main() -> int { return 0; }");
     ast_root_t* root = parser_parse(fix->parser);
     ASSERT_NEQ(nullptr, root);
     ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
-        ast_fn_def_create_va("main",
+        ast_fn_def_create_va("main", "int",
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_int_lit_create(0)),
@@ -72,15 +72,15 @@ TEST(ut_parser_fixture_t, parse_basic_main_function)
 TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
 {
     // Parse source code
-    parser_set_source(fix->parser, "test", "int fn2(int arg1, int arg2) { return arg2; } "
-        "int fn(int arg) { fn2(arg, arg); fn2(arg, 5); }");
+    parser_set_source(fix->parser, "test", "fn foo2(int arg1, int arg2) -> int { return arg2; } "
+        "fn foo(int arg) { foo2(arg, arg); foo2(arg, 5); }");
     ast_root_t* root = parser_parse(fix->parser);
     ASSERT_NEQ(nullptr, root);
     ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
-        ast_fn_def_create_va("fn2",
+        ast_fn_def_create_va("foo2", "int",
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_ref_expr_create("arg2")),
@@ -88,15 +88,15 @@ TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
             ast_param_decl_create("int", "arg1"),
             ast_param_decl_create("int", "arg2"),
             nullptr),
-        ast_fn_def_create_va("fn",
+        ast_fn_def_create_va("foo", nullptr,
             ast_compound_stmt_create_va(
                 ast_expr_stmt_create(
-                    ast_call_expr_create_va(ast_ref_expr_create("fn2"),
+                    ast_call_expr_create_va(ast_ref_expr_create("foo2"),
                         ast_ref_expr_create("arg"),
                         ast_ref_expr_create("arg"),
                         nullptr)),
                 ast_expr_stmt_create(
-                    ast_call_expr_create_va(ast_ref_expr_create("fn2"),
+                    ast_call_expr_create_va(ast_ref_expr_create("foo2"),
                         ast_ref_expr_create("arg"),
                         ast_int_lit_create(5),
                         nullptr)),
@@ -112,7 +112,7 @@ TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
 
 TEST(ut_parser_fixture_t, full_parse_with_simple_syntax_error)
 {
-    parser_set_source(fix->parser, "test", "int fn()\n{ return 0 }\nint fn2()\n{ return 10; }");
+    parser_set_source(fix->parser, "test", "fn foo() -> int\n{ return 0 }\nfn foo2() -> int\n{ return 10; }");
     ast_root_t* root = parser_parse(fix->parser);
     ASSERT_NEQ(nullptr, root);
 
@@ -129,13 +129,13 @@ TEST(ut_parser_fixture_t, full_parse_with_simple_syntax_error)
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
-        ast_fn_def_create_va("fn",
+        ast_fn_def_create_va("foo", "int",
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_int_lit_create(0)),
                 nullptr),
             nullptr),
-        ast_fn_def_create_va("fn2",
+        ast_fn_def_create_va("foo2", "int",
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_int_lit_create(10)),
@@ -150,8 +150,13 @@ TEST(ut_parser_fixture_t, full_parse_with_simple_syntax_error)
 
 TEST(ut_parser_fixture_t, partial_parse_with_structural_error)
 {
-    parser_set_source(fix->parser, "test", "int fn()\n{ return 0; }\nint fn2()\nreturn 10; }\n"
-        "int fn3()\n{ return 20; }");
+    parser_set_source(fix->parser, "test",
+        "fn foo() -> int\n"
+        "{ return 0; }\n"
+        "fn foo2() -> int\n"
+        "return 10; }\n"
+        "fn foo3() -> int\n"
+        "{ return 20; }");
     ast_root_t* root = parser_parse(fix->parser);
     ASSERT_NEQ(nullptr, root);
 
@@ -162,20 +167,19 @@ TEST(ut_parser_fixture_t, partial_parse_with_structural_error)
     ASSERT_NEQ(nullptr, err);
     ASSERT_EQ("test", err->source_file);
     ASSERT_EQ(3, err->line);
-    ASSERT_EQ(10, err->column);
+    ASSERT_EQ(17, err->column);
     ASSERT_EQ("expected '{'", err->description);
     ASSERT_EQ(nullptr, err->offender);
-    // TODO: Check that offender is type ast_fn_def_t*
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
-        ast_fn_def_create_va("fn",
+        ast_fn_def_create_va("foo", "int",
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_int_lit_create(0)),
                 nullptr),
             nullptr),
-        ast_fn_def_create_va("fn3",
+        ast_fn_def_create_va("foo3", "int",
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_int_lit_create(20)),
@@ -475,9 +479,9 @@ TEST(ut_parser_fixture_t, parse_var_decls_force_type_inference)
 TEST(ut_parser_fixture_t, parse_and_verify_source_locations)
 {
     parser_set_source(fix->parser, "test",
-        "int main(int argc) {\n"
+        "fn main(int argc) {\n"
         "  var some_val = 23 * 10;\n"
-        "  fn(some_val);\n"
+        "  foo(some_val);\n"
         "}");
 
     ast_root_t* snippet = parser_parse(fix->parser);
@@ -490,16 +494,17 @@ TEST(ut_parser_fixture_t, parse_and_verify_source_locations)
     const char* expected_code =
         "Root\n"
         "  FnDef 'main' <test:1:1, test:4:2>\n"
-        "    CompoundStmt <test:1:20, test:4:2>\n"
+        "    ParamDecl 'int' 'argc' <test:1:9, test:1:17>\n"
+        "    CompoundStmt <test:1:19, test:4:2>\n"
         "      DeclStmt <test:2:3, test:2:26>\n"
         "        VarDecl 'some_val' <test:2:3, test:2:25>\n"
         "          BinOp '*' <test:2:18, test:2:25>\n"
         "            IntLit '23' <test:2:18, test:2:20>\n"
         "            IntLit '10' <test:2:23, test:2:25>\n"
-        "      ExprStmt <test:3:3, test:3:16>\n"
-        "        CallExpr <test:3:3, test:3:15>\n"
-        "          RefExpr 'fn' <test:3:3, test:3:5>\n"
-        "          RefExpr 'some_val' <test:3:6, test:3:14>\n";
+        "      ExprStmt <test:3:3, test:3:17>\n"
+        "        CallExpr <test:3:3, test:3:16>\n"
+        "          RefExpr 'foo' <test:3:3, test:3:6>\n"
+        "          RefExpr 'some_val' <test:3:7, test:3:15>\n";
     ASSERT_EQ(expected_code, printed_snippet);
     ast_node_destroy(snippet);
     ast_printer_destroy(printer);

@@ -8,6 +8,7 @@
 typedef enum
 {
     // Keywords
+    TOKEN_FN,
     TOKEN_INT,
     TOKEN_RETURN,
     TOKEN_VAR,
@@ -24,6 +25,7 @@ typedef enum
     TOKEN_SEMICOLON,
     TOKEN_COLON,
     TOKEN_COMMA,
+    TOKEN_ARROW,
 
     // Unary & Binary Operators
     TOKEN_PLUS,

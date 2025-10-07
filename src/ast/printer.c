@@ -73,10 +73,14 @@ static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     ast_printer_t* self = self_;
 
     string_append_cstr(out, ssprintf("%*sFnDef '%s'", self->indentation, "", fn_def->base.name));
+    if (fn_def->return_type != nullptr)
+        string_append_cstr(out, ssprintf("%s", fn_def->return_type));
     print_source_location(self, fn_def, out);
     string_append_cstr(out, "\n");
 
     self->indentation += PRINT_INDENTATION_WIDTH;
+    for (size_t i = 0; i < ptr_vec_size(&fn_def->params); ++i)
+        ast_visitor_visit(self, ptr_vec_get(&fn_def->params, i), out);
     ast_visitor_visit(self, fn_def->body, out);
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
