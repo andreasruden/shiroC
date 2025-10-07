@@ -1,5 +1,6 @@
 #include "int_lit.h"
 
+#include "ast/node.h"
 #include "ast/visitor.h"
 
 #include <stdlib.h>
@@ -21,6 +22,7 @@ ast_expr_t* ast_int_lit_create(int value)
         .value = value,
     };
     AST_NODE(int_lit)->vtable = &ast_int_lit_vtable;
+    AST_NODE(int_lit)->kind = AST_EXPR_INT_LIT;
 
     return (ast_expr_t*)int_lit;
 }

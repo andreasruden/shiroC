@@ -26,8 +26,9 @@ ast_def_t* ast_fn_def_create(const char* name, ptr_vec_t* params, const char* re
         .return_type = ret_type ? strdup(ret_type) : nullptr,
         .body = body,
     };
-    AST_NODE(fn_def)->vtable = &ast_fn_def_vtable;
     ptr_vec_move(&fn_def->params, params);
+    AST_NODE(fn_def)->vtable = &ast_fn_def_vtable;
+    AST_NODE(fn_def)->kind = AST_DEF_FN;
 
     return (ast_def_t*)fn_def;
 }

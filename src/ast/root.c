@@ -21,6 +21,7 @@ ast_root_t* ast_root_create(ptr_vec_t* defs)
     ast_root_t* root = calloc(1, sizeof(*root));
 
     root->base.vtable = &ast_root_vtable;
+    root->base.kind = AST_ROOT,
     ptr_vec_move(&root->tl_defs, defs);
 
     return root;

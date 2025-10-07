@@ -16,10 +16,13 @@ static ast_node_vtable_t ast_paren_expr_vtable =
 
 ast_expr_t* ast_paren_expr_create(ast_expr_t* expr)
 {
-    ast_paren_expr_t* paren_expr = calloc(1, sizeof(*paren_expr));
+    ast_paren_expr_t* paren_expr = malloc(sizeof(*paren_expr));
 
+    *paren_expr = (ast_paren_expr_t) {
+        .expr = expr,
+    };
     AST_NODE(paren_expr)->vtable = &ast_paren_expr_vtable;
-    paren_expr->expr = expr;
+    AST_NODE(paren_expr)->kind = AST_EXPR_PAREN;
 
     return (ast_expr_t*)paren_expr;
 }

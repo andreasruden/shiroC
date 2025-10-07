@@ -25,6 +25,7 @@ ast_stmt_t* ast_decl_stmt_create(ast_decl_t* decl)
         .decl = decl
     };
     AST_NODE(decl_stmt)->vtable = &ast_decl_stmt_vtable;
+    AST_NODE(decl_stmt)->kind = AST_STMT_DECL;
 
     return (ast_stmt_t*)decl_stmt;
 }

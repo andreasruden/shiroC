@@ -19,11 +19,14 @@ static ast_node_vtable_t ast_call_expr_vtable =
 
 ast_expr_t* ast_call_expr_create(ast_expr_t* function, ptr_vec_t* arguments)
 {
-    ast_call_expr_t* call_expr = calloc(1, sizeof(*call_expr));
+    ast_call_expr_t* call_expr = malloc(sizeof(*call_expr));
 
-    AST_NODE(call_expr)->vtable = &ast_call_expr_vtable;
-    call_expr->function = function;
+    *call_expr = (ast_call_expr_t){
+        .function = function
+    };
     ptr_vec_move(&call_expr->arguments, arguments);
+    AST_NODE(call_expr)->vtable = &ast_call_expr_vtable;
+    AST_NODE(call_expr)->kind = AST_EXPR_CALL;
 
     return (ast_expr_t*)call_expr;
 }

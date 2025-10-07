@@ -25,6 +25,7 @@ ast_stmt_t* ast_if_stmt_create(ast_expr_t* condition, ast_stmt_t* then_branch, a
         .else_branch = else_branch
     };
     AST_NODE(if_stmt)->vtable = &ast_if_stmt_vtable;
+    AST_NODE(if_stmt)->kind = AST_STMT_IF;
 
     return (ast_stmt_t*)if_stmt;
 }

@@ -1,5 +1,6 @@
 #include "bin_op.h"
 
+#include "ast/node.h"
 #include "ast/visitor.h"
 
 #include <stdlib.h>
@@ -15,14 +16,17 @@ static ast_node_vtable_t ast_bin_op_vtable =
 
 ast_expr_t* ast_bin_op_create(token_type_t op, ast_expr_t* lhs, ast_expr_t* rhs)
 {
-    ast_bin_op_t* expr = calloc(1, sizeof(*expr));
+    ast_bin_op_t* bin_op = malloc(sizeof(*bin_op));
 
-    AST_NODE(expr)->vtable = &ast_bin_op_vtable;
-    expr->op = op;
-    expr->lhs = lhs;
-    expr->rhs = rhs;
+    *bin_op = (ast_bin_op_t){
+        .op = op,
+        .lhs = lhs,
+        .rhs = rhs,
+    };
+    AST_NODE(bin_op)->vtable = &ast_bin_op_vtable;
+    AST_NODE(bin_op)->kind = AST_EXPR_BIN_OP;
 
-    return (ast_expr_t*)expr;
+    return (ast_expr_t*)bin_op;
 }
 
 static void ast_bin_op_accept(void* self_, ast_visitor_t* visitor, void* out_)

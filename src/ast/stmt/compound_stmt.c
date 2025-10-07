@@ -19,10 +19,12 @@ static ast_node_vtable_t ast_compound_stmt_vtable =
 
 ast_stmt_t* ast_compound_stmt_create(ptr_vec_t* inner_stmts)
 {
-    ast_compound_stmt_t* compound_stmt = calloc(1, sizeof(*compound_stmt));
+    ast_compound_stmt_t* compound_stmt = malloc(sizeof(*compound_stmt));
 
-    AST_NODE(compound_stmt)->vtable = &ast_compound_stmt_vtable;
+    *compound_stmt = (ast_compound_stmt_t){};
     ptr_vec_move(&compound_stmt->inner_stmts, inner_stmts);
+    AST_NODE(compound_stmt)->vtable = &ast_compound_stmt_vtable;
+    AST_NODE(compound_stmt)->kind = AST_STMT_COMPOUND;
 
     return (ast_stmt_t*)compound_stmt;
 }

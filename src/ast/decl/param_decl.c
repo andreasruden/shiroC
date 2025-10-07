@@ -24,6 +24,7 @@ ast_decl_t* ast_param_decl_create(const char* name, const char* type)
         .type = strdup(type),
     };
     AST_NODE(param_decl)->vtable = &ast_param_decl_vtable;
+    AST_NODE(param_decl)->kind = AST_DECL_PARAM;
 
     return (ast_decl_t*)param_decl;
 }

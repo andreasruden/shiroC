@@ -24,6 +24,7 @@ ast_stmt_t* ast_while_stmt_create(ast_expr_t* condition, ast_stmt_t* body)
         .body = body,
     };
     AST_NODE(while_stmt)->vtable = &ast_while_stmt_vtable;
+    AST_NODE(while_stmt)->kind = AST_STMT_WHILE;
 
     return (ast_stmt_t*)while_stmt;
 }

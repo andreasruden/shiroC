@@ -25,6 +25,7 @@ ast_decl_t* ast_var_decl_create(const char* name, const char* type, ast_expr_t* 
         .init_expr = init_expr,
     };
     AST_NODE(var_decl)->vtable = &ast_var_decl_vtable;
+    AST_NODE(var_decl)->kind = AST_DECL_VAR;
 
     return (ast_decl_t*)var_decl;
 }

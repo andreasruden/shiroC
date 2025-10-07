@@ -17,10 +17,13 @@ static ast_node_vtable_t ast_expr_stmt_vtable =
 
 ast_stmt_t* ast_expr_stmt_create(ast_expr_t* expr)
 {
-    ast_expr_stmt_t* expr_stmt = calloc(1, sizeof(*expr_stmt));
+    ast_expr_stmt_t* expr_stmt = malloc(sizeof(*expr_stmt));
 
+    *expr_stmt = (ast_expr_stmt_t){
+        .expr = expr
+    };
     AST_NODE(expr_stmt)->vtable = &ast_expr_stmt_vtable;
-    expr_stmt->expr = expr;
+    AST_NODE(expr_stmt)->kind = AST_STMT_EXPR;
 
     return (ast_stmt_t*)expr_stmt;
 }

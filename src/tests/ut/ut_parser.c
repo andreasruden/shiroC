@@ -700,7 +700,7 @@ TEST(ut_parser_fixture_t, parse_while_stmt_syntax_errors_but_valid_ast)
 
     // Should produce a valid AST despite syntax errors
     ASSERT_NEQ(nullptr, stmt);
-    // ASSERT_EQ(AST_STMT_WHILE, stmt->kind); FIXME: Should have some kind field on ast, probably
+    ASSERT_EQ(AST_STMT_WHILE, AST_KIND(stmt));
     ASSERT_LT(2, ptr_vec_size(parser_errors(fix->parser)));
 
     // Verify AST structure is intact
@@ -708,12 +708,12 @@ TEST(ut_parser_fixture_t, parse_while_stmt_syntax_errors_but_valid_ast)
 
     // Condition should be parsed (i > 5)
     ASSERT_NEQ(nullptr, while_stmt->condition);
-    // ASSERT_EQ(AST_EXPR_BINARY, while_stmt->condition->kind); FIXME:
+    ASSERT_EQ(AST_EXPR_BIN_OP, AST_KIND(while_stmt->condition));
 
     // Body should exist
     ASSERT_NEQ(nullptr, while_stmt->body);
-    // ASSERT_EQ(AST_STMT_EXPR, AST_KIND(while_stmt->body)); FIXME:
-    // ASSERT_EQ(AST_CALL_EXPR, AST_KIND(while_stmt->body->expr)); FIXME:
+    ASSERT_EQ(AST_STMT_EXPR, AST_KIND(while_stmt->body));
+    ASSERT_EQ(AST_EXPR_CALL, AST_KIND(((ast_expr_stmt_t*)while_stmt->body)->expr));
 
     ast_node_destroy(stmt);
 }

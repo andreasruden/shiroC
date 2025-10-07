@@ -3,6 +3,38 @@
 
 static constexpr int AST_NODE_PRINT_INDENTATION_WIDTH = 2;
 
+// Order of categories must remain unchanged
+typedef enum ast_node_kind
+{
+    AST_ROOT,
+
+    // Declarations
+    AST_DECL_PARAM,
+    AST_DECL_VAR,
+    AST_DECL_END, // Sentinel
+
+    // Definitions
+    AST_DEF_FN,
+    AST_DEF_END, // Sentinel
+
+    // Expressions
+    AST_EXPR_BIN_OP,
+    AST_EXPR_CALL,
+    AST_EXPR_INT_LIT,
+    AST_EXPR_PAREN,
+    AST_EXPR_REF,
+    AST_EXPR_END, // Sentinel
+
+    // Statements
+    AST_STMT_COMPOUND,
+    AST_STMT_DECL,
+    AST_STMT_EXPR,
+    AST_STMT_IF,
+    AST_STMT_RETURN,
+    AST_STMT_WHILE,
+    AST_STMT_END,
+} ast_node_kind_t;
+
 typedef struct ast_node ast_node_t;
 typedef struct ast_visitor ast_visitor_t;
 
@@ -21,12 +53,19 @@ typedef struct ast_node_vtable
 
 struct ast_node
 {
+    ast_node_kind_t kind;
     ast_node_vtable_t* vtable;
     source_location_t source_begin;
     source_location_t source_end;
 };
 
-#define AST_NODE(ptr) ((ast_node_t*)(ptr))
+#define AST_NODE(node) ((ast_node_t*)(node))
+#define AST_KIND(node) (((ast_node_t*)(node))->kind)
+
+#define AST_IS_DECL(node) (AST_KIND(node) > AST_ROOT && AST_KIND(node) < AST_DECL_END)
+#define AST_IS_DEF(node) (AST_KIND(node) > AST_DECL_END && AST_KIND(node) < AST_DEF_END)
+#define AST_IS_EXPR(node) (AST_KIND(node) > AST_DEF_END && AST_KIND(node) < AST_EXPR_END)
+#define AST_IS_STMT(node) (AST_KIND(node) > AST_EXPR_END && AST_KIND(node) < AST_STMT_END)
 
 void ast_node_destroy(void* node);
 
