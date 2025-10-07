@@ -342,8 +342,9 @@ ast_stmt_t* parser_parse_stmt(parser_t* parser)
 
 static ast_decl_t* parse_param_decl(parser_t* parser)
 {
-    token_t* type_tok = lexer_next_token(parser->lexer);
     token_t* name_tok = lexer_next_token(parser->lexer);
+    lexer_next_token_iff(parser->lexer, TOKEN_COLON);  // emit error, but continue parsing
+    token_t* type_tok = lexer_next_token(parser->lexer);
 
     ast_decl_t* decl = nullptr;
     if (type_tok->type != TOKEN_INT && type_tok->type != TOKEN_IDENTIFIER)
@@ -351,8 +352,8 @@ static ast_decl_t* parse_param_decl(parser_t* parser)
     if (name_tok->type != TOKEN_IDENTIFIER)
         goto cleanup;
 
-    decl = ast_param_decl_create(type_tok->value, name_tok->value);
-    parser_set_source_tok_to_current(parser, decl, type_tok);
+    decl = ast_param_decl_create(name_tok->value, type_tok->value);
+    parser_set_source_tok_to_current(parser, decl, name_tok);
 
 cleanup:
     return decl;

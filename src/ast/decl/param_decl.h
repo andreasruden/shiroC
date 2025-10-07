@@ -6,10 +6,10 @@
 typedef struct ast_param_decl
 {
     ast_decl_t base;
-    char* type;
     char* name;
+    char* type;
 } ast_param_decl_t;
 
-ast_decl_t* ast_param_decl_create(const char* type, const char* name);
+ast_decl_t* ast_param_decl_create(const char* name, const char* type);
 
 #endif

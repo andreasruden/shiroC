@@ -72,8 +72,8 @@ TEST(ut_parser_fixture_t, parse_basic_main_function)
 TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
 {
     // Parse source code
-    parser_set_source(fix->parser, "test", "fn foo2(int arg1, int arg2) -> int { return arg2; } "
-        "fn foo(int arg) { foo2(arg, arg); foo2(arg, 5); }");
+    parser_set_source(fix->parser, "test", "fn foo2(arg1: int, arg2: int) -> int { return arg2; } "
+        "fn foo(arg: int) { foo2(arg, arg); foo2(arg, 5); }");
     ast_root_t* root = parser_parse(fix->parser);
     ASSERT_NEQ(nullptr, root);
     ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
@@ -85,8 +85,8 @@ TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
                 ast_return_stmt_create(
                     ast_ref_expr_create("arg2")),
                 nullptr),
-            ast_param_decl_create("int", "arg1"),
-            ast_param_decl_create("int", "arg2"),
+            ast_param_decl_create("arg1", "int"),
+            ast_param_decl_create("arg2", "int"),
             nullptr),
         ast_fn_def_create_va("foo", nullptr,
             ast_compound_stmt_create_va(
@@ -101,7 +101,7 @@ TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
                         ast_int_lit_create(5),
                         nullptr)),
                 nullptr),
-            ast_param_decl_create("int", "arg"),
+            ast_param_decl_create("arg", "int"),
             nullptr),
         nullptr);
 
@@ -479,7 +479,7 @@ TEST(ut_parser_fixture_t, parse_var_decls_force_type_inference)
 TEST(ut_parser_fixture_t, parse_and_verify_source_locations)
 {
     parser_set_source(fix->parser, "test",
-        "fn main(int argc) {\n"
+        "fn main(argc: int) {\n"
         "  var some_val = 23 * 10;\n"
         "  foo(some_val);\n"
         "}");
@@ -494,8 +494,8 @@ TEST(ut_parser_fixture_t, parse_and_verify_source_locations)
     const char* expected_code =
         "Root\n"
         "  FnDef 'main' <test:1:1, test:4:2>\n"
-        "    ParamDecl 'int' 'argc' <test:1:9, test:1:17>\n"
-        "    CompoundStmt <test:1:19, test:4:2>\n"
+        "    ParamDecl 'argc' 'int' <test:1:9, test:1:18>\n"
+        "    CompoundStmt <test:1:20, test:4:2>\n"
         "      DeclStmt <test:2:3, test:2:26>\n"
         "        VarDecl 'some_val' <test:2:3, test:2:25>\n"
         "          BinOp '*' <test:2:18, test:2:25>\n"

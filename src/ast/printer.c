@@ -42,8 +42,8 @@ static void print_param_decl(void* self_, ast_param_decl_t* param_decl, void* ou
     string_t* out = out_;
     ast_printer_t* self = self_;
 
-    string_append_cstr(out, ssprintf("%*sParamDecl '%s' '%s'", self->indentation, "", param_decl->type,
-        param_decl->name));
+    string_append_cstr(out, ssprintf("%*sParamDecl '%s' '%s'", self->indentation, "", param_decl->name,
+        param_decl->type));
     print_source_location(self, param_decl, out);
     string_append_cstr(out, "\n");
 }
