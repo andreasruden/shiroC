@@ -3,7 +3,6 @@
 #include "ast/decl/decl.h"
 #include "ast/node.h"
 #include "ast/visitor.h"
-#include "common/containers/ptr_vec.h"
 
 #include <stdarg.h>
 #include <stdlib.h>

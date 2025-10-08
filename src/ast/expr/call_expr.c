@@ -3,7 +3,7 @@
 #include "ast/expr/expr.h"
 #include "ast/node.h"
 #include "ast/visitor.h"
-#include "common/containers/ptr_vec.h"
+#include "common/containers/vec.h"
 
 #include <stdarg.h>
 #include <stdlib.h>
@@ -17,14 +17,14 @@ static ast_node_vtable_t ast_call_expr_vtable =
     .destroy = ast_call_expr_destroy
 };
 
-ast_expr_t* ast_call_expr_create(ast_expr_t* function, ptr_vec_t* arguments)
+ast_expr_t* ast_call_expr_create(ast_expr_t* function, vec_t* arguments)
 {
     ast_call_expr_t* call_expr = malloc(sizeof(*call_expr));
 
     *call_expr = (ast_call_expr_t){
         .function = function
     };
-    ptr_vec_move(&call_expr->arguments, arguments);
+    vec_move(&call_expr->arguments, arguments);
     AST_NODE(call_expr)->vtable = &ast_call_expr_vtable;
     AST_NODE(call_expr)->kind = AST_EXPR_CALL;
 
@@ -33,12 +33,12 @@ ast_expr_t* ast_call_expr_create(ast_expr_t* function, ptr_vec_t* arguments)
 
 ast_expr_t* ast_call_expr_create_va(ast_expr_t* function, ...)
 {
-    ptr_vec_t arglist = PTR_VEC_INIT;
+    vec_t arglist = VEC_INIT(ast_node_destroy);
     va_list args;
     va_start(args, function);
     ast_expr_t* arg_expr;
     while ((arg_expr = va_arg(args, ast_expr_t*)) != nullptr) {
-        ptr_vec_append(&arglist, arg_expr);
+        vec_push(&arglist, arg_expr);
     }
     va_end(args);
 
@@ -59,6 +59,6 @@ static void ast_call_expr_destroy(void* self_)
 
     ast_expr_deconstruct((ast_expr_t*)self);
     ast_node_destroy(self->function);
-    ptr_vec_deinit(&self->arguments, ast_node_destroy);
+    vec_deinit(&self->arguments);
     free(self);
 }

@@ -2,7 +2,7 @@
 
 #include "ast/node.h"
 #include "ast/visitor.h"
-#include "common/containers/ptr_vec.h"
+#include "common/containers/vec.h"
 
 #include <stdarg.h>
 #include <stdlib.h>
@@ -16,13 +16,13 @@ static ast_node_vtable_t ast_root_vtable =
     .destroy = ast_root_destroy
 };
 
-ast_root_t* ast_root_create(ptr_vec_t* defs)
+ast_root_t* ast_root_create(vec_t* defs)
 {
     ast_root_t* root = calloc(1, sizeof(*root));
 
     root->base.vtable = &ast_root_vtable;
     root->base.kind = AST_ROOT,
-    ptr_vec_move(&root->tl_defs, defs);
+    vec_move(&root->tl_defs, defs);
 
     return root;
 }
@@ -30,15 +30,15 @@ ast_root_t* ast_root_create(ptr_vec_t* defs)
 __attribute__((sentinel))
 ast_root_t* ast_root_create_va(ast_def_t* first, ...)
 {
-    ptr_vec_t body = PTR_VEC_INIT;
+    vec_t body = VEC_INIT(ast_node_destroy);
     if (first != nullptr)
-        ptr_vec_append(&body, first);
+        vec_push(&body, first);
 
     va_list args;
     va_start(args, first);
     ast_def_t* def;
     while ((def = va_arg(args, ast_def_t*)) != nullptr) {
-        ptr_vec_append(&body, def);
+        vec_push(&body, def);
     }
     va_end(args);
 
@@ -58,6 +58,6 @@ static void ast_root_destroy(void* self_)
         return;
 
     ast_node_deconstruct((ast_node_t*)self);
-    ptr_vec_deinit(&self->tl_defs, ast_node_destroy);
+    vec_deinit(&self->tl_defs);
     free(self);
 }

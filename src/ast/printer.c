@@ -23,8 +23,8 @@ static void print_root(void* self_, ast_root_t* root, void* out_)
 
     string_append_cstr(out, "Root\n");
     self->indentation += PRINT_INDENTATION_WIDTH;
-    for (size_t i = 0; i < ptr_vec_size(&root->tl_defs); ++i)
-        ast_visitor_visit(self_, ptr_vec_get(&root->tl_defs, i), out_);
+    for (size_t i = 0; i < vec_size(&root->tl_defs); ++i)
+        ast_visitor_visit(self_, vec_get(&root->tl_defs, i), out_);
 }
 
 static void print_source_location(ast_printer_t* self, void* node, string_t* out)
@@ -79,8 +79,8 @@ static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     string_append_cstr(out, "\n");
 
     self->indentation += PRINT_INDENTATION_WIDTH;
-    for (size_t i = 0; i < ptr_vec_size(&fn_def->params); ++i)
-        ast_visitor_visit(self, ptr_vec_get(&fn_def->params, i), out);
+    for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
+        ast_visitor_visit(self, vec_get(&fn_def->params, i), out);
     ast_visitor_visit(self, fn_def->body, out);
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
@@ -111,8 +111,8 @@ static void print_call_expr(void* self_, ast_call_expr_t* call_expr, void* out_)
 
     self->indentation += PRINT_INDENTATION_WIDTH;
     ast_visitor_visit(self_, call_expr->function, out_);
-    for (size_t i = 0; i < ptr_vec_size(&call_expr->arguments); ++i)
-        ast_visitor_visit(self, ptr_vec_get(&call_expr->arguments, i), out);
+    for (size_t i = 0; i < vec_size(&call_expr->arguments); ++i)
+        ast_visitor_visit(self, vec_get(&call_expr->arguments, i), out);
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
@@ -160,8 +160,8 @@ static void print_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt,
     string_append_cstr(out, "\n");
 
     self->indentation += PRINT_INDENTATION_WIDTH;
-    for (size_t i = 0; i < ptr_vec_size(&compound_stmt->inner_stmts); ++i)
-        ast_visitor_visit(self, ptr_vec_get(&compound_stmt->inner_stmts, i), out);
+    for (size_t i = 0; i < vec_size(&compound_stmt->inner_stmts); ++i)
+        ast_visitor_visit(self, vec_get(&compound_stmt->inner_stmts, i), out);
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 

@@ -55,7 +55,7 @@ TEST(ut_parser_fixture_t, parse_basic_main_function)
     parser_set_source(fix->parser, "test", "fn main() -> int { return 0; }");
     ast_root_t* root = parser_parse(fix->parser);
     ASSERT_NEQ(nullptr, root);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
@@ -78,7 +78,7 @@ TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
         "fn foo(arg: int) { foo2(arg, arg); foo2(arg, 5); }");
     ast_root_t* root = parser_parse(fix->parser);
     ASSERT_NEQ(nullptr, root);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
@@ -119,9 +119,9 @@ TEST(ut_parser_fixture_t, full_parse_with_simple_syntax_error)
     ASSERT_NEQ(nullptr, root);
 
     // Verify the error
-    ptr_vec_t* errors = parser_errors(fix->parser);
-    ASSERT_EQ(1, ptr_vec_size(errors));
-    compiler_error_t* err = ptr_vec_get(errors, 0);
+    vec_t* errors = parser_errors(fix->parser);
+    ASSERT_EQ(1, vec_size(errors));
+    compiler_error_t* err = vec_get(errors, 0);
     ASSERT_NEQ(nullptr, err);
     ASSERT_EQ("test", err->source_file);
     ASSERT_EQ(2, err->line);
@@ -163,9 +163,9 @@ TEST(ut_parser_fixture_t, partial_parse_with_structural_error)
     ASSERT_NEQ(nullptr, root);
 
     // Verify the error
-    ptr_vec_t* errors = parser_errors(fix->parser);
-    ASSERT_EQ(1, ptr_vec_size(errors));
-    compiler_error_t* err = ptr_vec_get(errors, 0);
+    vec_t* errors = parser_errors(fix->parser);
+    ASSERT_EQ(1, vec_size(errors));
+    compiler_error_t* err = vec_get(errors, 0);
     ASSERT_NEQ(nullptr, err);
     ASSERT_EQ("test", err->source_file);
     ASSERT_EQ(3, err->line);
@@ -199,7 +199,7 @@ TEST(ut_parser_fixture_t, parse_basic_bin_op)
     parser_set_source(fix->parser, "test", "var1 == var2");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected expression
     ast_expr_t* expected = ast_bin_op_create( TOKEN_EQ, ast_ref_expr_create("var1"), ast_ref_expr_create("var2"));
@@ -214,7 +214,7 @@ TEST(ut_parser_fixture_t, parse_left_associative_same_precedence)
     parser_set_source(fix->parser, "test", "a + b + c");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: (a + b) + c
     ast_expr_t* expected = ast_bin_op_create(TOKEN_PLUS,
@@ -233,7 +233,7 @@ TEST(ut_parser_fixture_t, parse_precedence_mul_before_add)
     parser_set_source(fix->parser, "test", "a + b * c");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: a + (b * c)
     ast_expr_t* expected = ast_bin_op_create(TOKEN_PLUS,
@@ -252,7 +252,7 @@ TEST(ut_parser_fixture_t, parse_precedence_add_then_mul)
     parser_set_source(fix->parser, "test", "a * b + c");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: (a * b) + c
     ast_expr_t* expected = ast_bin_op_create(TOKEN_PLUS,
@@ -271,7 +271,7 @@ TEST(ut_parser_fixture_t, parse_multiple_precedence_levels)
     parser_set_source(fix->parser, "test", "a + b * c + d");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: (a + (b * c)) + d
     ast_expr_t* expected = ast_bin_op_create(TOKEN_PLUS,
@@ -292,7 +292,7 @@ TEST(ut_parser_fixture_t, parse_parentheses_override_precedence)
     parser_set_source(fix->parser, "test", "(a + b) * c");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: (a + b) * c
     ast_expr_t* expected = ast_bin_op_create(TOKEN_STAR,
@@ -312,7 +312,7 @@ TEST(ut_parser_fixture_t, parse_nested_parentheses)
     parser_set_source(fix->parser, "test", "((a + b) * c) + d");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: ((a + b) * c) + d
     ast_expr_t* expected = ast_bin_op_create(TOKEN_PLUS,
@@ -335,7 +335,7 @@ TEST(ut_parser_fixture_t, parse_comparison_with_arithmetic)
     parser_set_source(fix->parser, "test", "a + b == c * d");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: (a + b) == (c * d)
     ast_expr_t* expected = ast_bin_op_create(TOKEN_EQ,
@@ -356,7 +356,7 @@ TEST(ut_parser_fixture_t, parse_complex_mixed_precedence)
     parser_set_source(fix->parser, "test", "a * b + c < d + e * f");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: ((a * b) + c) < (d + (e * f))
     ast_expr_t* expected = ast_bin_op_create(TOKEN_LT,
@@ -381,7 +381,7 @@ TEST(ut_parser_fixture_t, parse_chained_division)
     parser_set_source(fix->parser, "test", "a / b / c");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: (a / b) / c  (left-to-right)
     ast_expr_t* expected = ast_bin_op_create(TOKEN_DIV,
@@ -400,7 +400,7 @@ TEST(ut_parser_fixture_t, parse_mixed_add_subtract)
     parser_set_source(fix->parser, "test", "a - b + c - d");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: ((a - b) + c) - d
     ast_expr_t* expected = ast_bin_op_create(TOKEN_MINUS,
@@ -422,7 +422,7 @@ TEST(ut_parser_fixture_t, parse_decl_stmt_no_init)
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_decl_stmt_create(
         ast_var_decl_create("x", "int", nullptr));
@@ -438,7 +438,7 @@ TEST(ut_parser_fixture_t, parse_decl_stmt_with_init)
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_decl_stmt_create(
         ast_var_decl_create("x", nullptr, ast_int_lit_create(42)));
@@ -454,7 +454,7 @@ TEST(ut_parser_fixture_t, parse_var_decls_with_no_type)
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
-    ASSERT_EQ(1, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(1, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_decl_stmt_create(ast_var_decl_create("x", nullptr, nullptr));
 
@@ -469,7 +469,7 @@ TEST(ut_parser_fixture_t, parse_var_decls_force_type_inference)
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
-    ASSERT_EQ(1, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(1, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_decl_stmt_create(ast_var_decl_create("x", "int", ast_int_lit_create(42)));
 
@@ -488,7 +488,7 @@ TEST(ut_parser_fixture_t, parse_and_verify_source_locations)
 
     ast_root_t* snippet = parser_parse(fix->parser);
     ASSERT_NEQ(nullptr, snippet);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     ast_printer_t* printer = ast_printer_create(); \
     ast_printer_set_show_source_loc(printer, true);
@@ -524,7 +524,7 @@ TEST(ut_parser_fixture_t, parse_if_stmt_with_else)
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_if_stmt_create(
         ast_bin_op_create(TOKEN_GT,
@@ -553,7 +553,7 @@ TEST(ut_parser_fixture_t, parse_if_stmt_no_else)
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_if_stmt_create(
         ast_ref_expr_create("flag"),
@@ -581,7 +581,7 @@ TEST(ut_parser_fixture_t, parse_if_stmt_else_if_chain)
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Build inner if (the "else if" part)
     ast_stmt_t* inner_if = ast_if_stmt_create(
@@ -618,7 +618,7 @@ TEST(ut_parser_fixture_t, parse_simple_assignment)
     parser_set_source(fix->parser, "test", "x = 5");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     ast_expr_t* expected = ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("x"), ast_int_lit_create(5));
 
@@ -632,7 +632,7 @@ TEST(ut_parser_fixture_t, parse_chained_assignment)
     parser_set_source(fix->parser, "test", "x += y *= 10");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: x += (y /= 10)
     ast_expr_t* expected = ast_bin_op_create(TOKEN_PLUS_ASSIGN,
@@ -651,7 +651,7 @@ TEST(ut_parser_fixture_t, parse_assignment_with_expression)
     parser_set_source(fix->parser, "test", "x = a + b * c");
     ast_expr_t* expr = parser_parse_expr(fix->parser);
     ASSERT_NEQ(nullptr, expr);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Should parse as: x = (a + (b * c))
     ast_expr_t* expected = ast_bin_op_create(TOKEN_ASSIGN,
@@ -676,7 +676,7 @@ TEST(ut_parser_fixture_t, parse_while_stmt_simple)
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
-    ASSERT_EQ(0, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_while_stmt_create(
         ast_ref_expr_create("flag"),
@@ -701,7 +701,7 @@ TEST(ut_parser_fixture_t, parse_while_stmt_syntax_errors_but_valid_ast)
     // Should produce a valid AST despite syntax errors
     ASSERT_NEQ(nullptr, stmt);
     ASSERT_EQ(AST_STMT_WHILE, AST_KIND(stmt));
-    ASSERT_LT(2, ptr_vec_size(parser_errors(fix->parser)));
+    ASSERT_LT(2, vec_size(parser_errors(fix->parser)));
 
     // Verify AST structure is intact
     ast_while_stmt_t* while_stmt = (ast_while_stmt_t*)stmt;

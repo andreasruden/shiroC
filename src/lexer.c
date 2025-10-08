@@ -1,7 +1,7 @@
 #include "lexer.h"
 
 #include "ast/node.h"
-#include "common/containers/ptr_vec.h"
+#include "common/containers/vec.h"
 #include "compiler_error.h"
 #include "common/util/ssprintf.h"
 
@@ -101,7 +101,7 @@ static token_t* token_create(lexer_t* lexer, token_type_t type, const char* valu
         .column = col,
     };
 
-    ptr_vec_append(&lexer->created_tokens, tok);
+    vec_push(&lexer->created_tokens, tok);
 
     return tok;
 }
@@ -192,7 +192,7 @@ static token_t* lex_string(lexer_t* lexer)
     return tok;
 }
 
-lexer_t* lexer_create(const char* filename, const char* source, ptr_vec_t* error_output)
+lexer_t* lexer_create(const char* filename, const char* source, vec_t* error_output)
 {
     lexer_t* lexer = malloc(sizeof(*lexer));
 
@@ -203,7 +203,7 @@ lexer_t* lexer_create(const char* filename, const char* source, ptr_vec_t* error
         .line = 1,
         .column = 1,
         .error_output = error_output,
-        .created_tokens = PTR_VEC_INIT,
+        .created_tokens = VEC_INIT(token_destroy),
     };
 
     return lexer;
@@ -213,7 +213,7 @@ void lexer_destroy(lexer_t *lexer)
 {
     if (lexer != nullptr)
     {
-        ptr_vec_deinit(&lexer->created_tokens, token_destroy);
+        vec_deinit(&lexer->created_tokens);
         free(lexer->source);
         free(lexer->filename);
         free(lexer);
@@ -373,7 +373,7 @@ void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t ex
     {
         compiler_error_t* error = compiler_error_create_for_source(false,
             ssprintf("expected '%s'", token_type_str(expected)), lexer->filename, line, column);
-        ptr_vec_append(lexer->error_output, error);
+        vec_push(lexer->error_output, error);
     }
 }
 

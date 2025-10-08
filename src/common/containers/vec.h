@@ -1,30 +1,32 @@
-#ifndef CONTAINERS_VEC__H
-#define CONTAINERS_VEC__H
+#ifndef CONTAINERS_PTR_VEC__H
+#define CONTAINERS_PTR_VEC__H
 
-#include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 
-typedef void (*vec_elem_destructor_fn)(void* elem);
+typedef void (*vec_delete_fn)(void* elem);
 
-typedef struct vec \
+typedef struct vec
 {
-    void* mem;
-    size_t elem_size;
+    void** mem;
     size_t length;
     size_t capacity;
+    vec_delete_fn delete_fn;
 } vec_t;
 
-#define VEC_INIT(type) (vec_t){ \
-        .elem_size = sizeof(type) \
-    }
+#define VEC_INIT(del_fn) (vec_t){ \
+    .delete_fn = del_fn, \
+}
 
-void vec_deinit(vec_t* vec, vec_elem_destructor_fn elem_destructor);
+void vec_deinit(vec_t* vec);
 
-vec_t* vec_create(size_t elem_size);
+vec_t* vec_create(vec_delete_fn delete_fn);
 
-void vec_destroy(vec_t* vec, vec_elem_destructor_fn elem_destructor);
+void vec_destroy(vec_t* vec);
 
-void vec_append(vec_t* vec, void* elem);
+void vec_push(vec_t* vec, void* ptr);
+
+void* vec_pop(vec_t* vec);
 
 void vec_move(vec_t* dst, vec_t* src);
 
@@ -36,7 +38,7 @@ static inline size_t vec_size(vec_t* vec)
 static inline void* vec_get(vec_t* vec, size_t index)
 {
     // TODO: panic if index >= length
-    return (uint8_t*)vec->mem + (index * vec->elem_size);
+    return vec->mem[index];
 }
 
 #endif

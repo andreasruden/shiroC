@@ -2,7 +2,7 @@
 #define LEXER__H
 
 #include "ast/node.h"
-#include "common/containers/ptr_vec.h"
+#include "common/containers/vec.h"
 #include <stddef.h>
 
 typedef enum
@@ -77,13 +77,13 @@ typedef struct lexer
     int last_consumed_end_line;
     int last_consumed_end_column;
     char* filename;
-    ptr_vec_t* error_output;
-    ptr_vec_t created_tokens;
+    vec_t* error_output;
+    vec_t created_tokens;
 } lexer_t;
 
 // If error_output is not nullptr, any error/warning that happens during lexing will be
 // created as a compiler_error_t* and added to this vector.
-lexer_t* lexer_create(const char* filename, const char* source, ptr_vec_t* error_output);
+lexer_t* lexer_create(const char* filename, const char* source, vec_t* error_output);
 
 void lexer_destroy(lexer_t* lexer);
 

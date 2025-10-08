@@ -10,7 +10,7 @@
 typedef struct parser
 {
     lexer_t* lexer;
-    ptr_vec_t errors;
+    vec_t errors;
 } parser_t;
 
 parser_t* parser_create();
@@ -23,9 +23,9 @@ void parser_set_source(parser_t* parser, const char* filename, const char* sourc
 // Reset current parse position to start of source code & forget all errors encountered.
 void parser_reset(parser_t* parser);
 
-// Returns errors (ptr_vec<compiler_error*>) encountered by the parser.
+// Returns errors (vec<compiler_error*>) encountered by the parser.
 // This vector can change/become invalid on future calls to the parser.
-ptr_vec_t* parser_errors(parser_t* parser);
+vec_t* parser_errors(parser_t* parser);
 
 // This calls parser_reset() before parsing.
 ast_root_t* parser_parse(parser_t* parser);

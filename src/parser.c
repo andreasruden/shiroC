@@ -19,7 +19,7 @@
 #include "ast/stmt/return_stmt.h"
 #include "ast/stmt/stmt.h"
 #include "ast/stmt/while_stmt.h"
-#include "common/containers/ptr_vec.h"
+#include "common/containers/vec.h"
 #include "compiler_error.h"
 #include "lexer.h"
 
@@ -31,7 +31,7 @@ parser_t* parser_create()
     parser_t* parser = malloc(sizeof(*parser));
 
     *parser = (parser_t){
-        .errors = PTR_VEC_INIT,
+        .errors = VEC_INIT(compiler_error_destroy_void),
     };
 
     return parser;
@@ -42,7 +42,7 @@ void parser_destroy(parser_t* parser)
     if (parser != nullptr)
     {
         lexer_destroy(parser->lexer);
-        ptr_vec_deinit(&parser->errors, compiler_error_destroy_void);
+        vec_deinit(&parser->errors);
         free(parser);
     }
 }
@@ -50,7 +50,7 @@ void parser_destroy(parser_t* parser)
 static void* parser_error(parser_t* parser, void* ast_node, const char* description)
 {
     compiler_error_t* error = compiler_error_create_for_ast(false, description, ast_node);
-    ptr_vec_append(&parser->errors, error);
+    vec_push(&parser->errors, error);
     return ast_node;
 }
 
@@ -88,7 +88,7 @@ static ast_expr_t* parse_int_lit(parser_t* parser)
 static ast_expr_t* parse_call_expr(parser_t* parser, token_t* id)
 {
     ast_expr_t* call = nullptr;
-    ptr_vec_t args = PTR_VEC_INIT;
+    vec_t args = VEC_INIT(ast_node_destroy);
 
     if (!lexer_next_token_iff(parser->lexer, TOKEN_LPAREN))
         goto cleanup;
@@ -99,7 +99,7 @@ static ast_expr_t* parse_call_expr(parser_t* parser, token_t* id)
         ast_expr_t* arg = parser_parse_primary_expr(parser);
         if (arg == nullptr)
             goto cleanup;
-        ptr_vec_append(&args, arg);
+        vec_push(&args, arg);
 
         if (lexer_peek_token(parser->lexer)->type != TOKEN_COMMA)
             break;
@@ -113,7 +113,7 @@ static ast_expr_t* parse_call_expr(parser_t* parser, token_t* id)
     parser_set_source_tok_to_current(parser, call, id);
 
 cleanup:
-    ptr_vec_deinit(&args, ast_node_destroy);
+    vec_deinit(&args);
     return call;
 }
 
@@ -265,7 +265,7 @@ static ast_stmt_t* parse_compound_stmt(parser_t* parser)
     if (tok_lbrace == nullptr)
         return nullptr;
 
-    ptr_vec_t inner_stmts = PTR_VEC_INIT;
+    vec_t inner_stmts = VEC_INIT(ast_node_destroy);
     token_t* tok;
     while ((tok = lexer_peek_token(parser->lexer))->type != TOKEN_EOF && tok->type != TOKEN_RBRACE)
     {
@@ -276,12 +276,12 @@ static ast_stmt_t* parse_compound_stmt(parser_t* parser)
                 lexer_next_token(parser->lexer);  // consume faulty token
             continue;  // don't add faulty sub-statement, but don't abort
         }
-        ptr_vec_append(&inner_stmts, inner_stmt);
+        vec_push(&inner_stmts, inner_stmt);
     }
 
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACE))
     {
-        ptr_vec_deinit(&inner_stmts, ast_node_destroy);
+        vec_deinit(&inner_stmts);
         return nullptr;
     }
 
@@ -450,7 +450,7 @@ cleanup:
 static ast_def_t* parse_fn_def(parser_t* parser)
 {
     token_t* id = nullptr;
-    ptr_vec_t params = PTR_VEC_INIT;
+    vec_t params = VEC_INIT(ast_node_destroy);
     ast_def_t* fn_def = nullptr;
     const char* ret_type = nullptr;
 
@@ -472,7 +472,7 @@ static ast_def_t* parse_fn_def(parser_t* parser)
         ast_decl_t* param = parse_param_decl(parser);
         if (param == nullptr)
             goto cleanup;
-        ptr_vec_append(&params, param);
+        vec_push(&params, param);
 
         if (lexer_peek_token(parser->lexer)->type != TOKEN_COMMA)
             break;
@@ -500,7 +500,7 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     parser_set_source_tok_to_current(parser, fn_def, tok_fn);
 
 cleanup:
-    ptr_vec_deinit(&params, ast_node_destroy);
+    vec_deinit(&params);
     return fn_def;
 }
 
@@ -518,7 +518,7 @@ static ast_def_t* parse_top_level_definition(parser_t* parser)
 
 ast_root_t* parser_parse(parser_t* parser)
 {
-    ptr_vec_t tl_defs = PTR_VEC_INIT;
+    vec_t tl_defs = VEC_INIT(ast_node_destroy);
 
     token_t* next_token;
     while ((next_token = lexer_peek_token(parser->lexer))->type != TOKEN_EOF)
@@ -531,7 +531,7 @@ ast_root_t* parser_parse(parser_t* parser)
                 lexer_next_token(parser->lexer);
         }
         else
-            ptr_vec_append(&tl_defs, tl_def);
+            vec_push(&tl_defs, tl_def);
     }
 
     // We're currently not setting source for root, but it also seems kind of pointless
@@ -547,11 +547,11 @@ void parser_set_source(parser_t* parser, const char* filename, const char* sourc
 void parser_reset(parser_t* parser)
 {
     lexer_destroy(parser->lexer);
-    ptr_vec_deinit(&parser->errors, compiler_error_destroy_void);
-    parser->errors = PTR_VEC_INIT;
+    vec_deinit(&parser->errors);
+    parser->errors = VEC_INIT(compiler_error_destroy_void);
 }
 
-ptr_vec_t* parser_errors(parser_t* parser)
+vec_t* parser_errors(parser_t* parser)
 {
     return &parser->errors;
 }

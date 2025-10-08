@@ -3,7 +3,7 @@
 #include "ast/node.h"
 #include "ast/stmt/stmt.h"
 #include "ast/visitor.h"
-#include "common/containers/ptr_vec.h"
+#include "common/containers/vec.h"
 
 #include <stdarg.h>
 #include <stdlib.h>
@@ -17,12 +17,12 @@ static ast_node_vtable_t ast_compound_stmt_vtable =
     .destroy = ast_compound_stmt_destroy
 };
 
-ast_stmt_t* ast_compound_stmt_create(ptr_vec_t* inner_stmts)
+ast_stmt_t* ast_compound_stmt_create(vec_t* inner_stmts)
 {
     ast_compound_stmt_t* compound_stmt = malloc(sizeof(*compound_stmt));
 
     *compound_stmt = (ast_compound_stmt_t){};
-    ptr_vec_move(&compound_stmt->inner_stmts, inner_stmts);
+    vec_move(&compound_stmt->inner_stmts, inner_stmts);
     AST_NODE(compound_stmt)->vtable = &ast_compound_stmt_vtable;
     AST_NODE(compound_stmt)->kind = AST_STMT_COMPOUND;
 
@@ -31,15 +31,15 @@ ast_stmt_t* ast_compound_stmt_create(ptr_vec_t* inner_stmts)
 
 ast_stmt_t* ast_compound_stmt_create_va(ast_stmt_t* first, ...)
 {
-    ptr_vec_t stmts = PTR_VEC_INIT;
+    vec_t stmts = VEC_INIT(ast_node_destroy);
     if (first != nullptr)
-        ptr_vec_append(&stmts, first);
+        vec_push(&stmts, first);
 
     va_list args;
     va_start(args, first);
     ast_stmt_t* def;
     while ((def = va_arg(args, ast_stmt_t*)) != nullptr) {
-        ptr_vec_append(&stmts, def);
+        vec_push(&stmts, def);
     }
     va_end(args);
 
@@ -48,7 +48,7 @@ ast_stmt_t* ast_compound_stmt_create_va(ast_stmt_t* first, ...)
 
 ast_stmt_t* ast_compound_stmt_create_empty()
 {
-    ptr_vec_t stmts = PTR_VEC_INIT;
+    vec_t stmts = VEC_INIT(ast_node_destroy);
     return ast_compound_stmt_create(&stmts);
 }
 
@@ -65,6 +65,6 @@ static void ast_compound_stmt_destroy(void* self_)
         return;
 
     ast_stmt_deconstruct((ast_stmt_t*)self);
-    ptr_vec_deinit(&self->inner_stmts, ast_node_destroy);
+    vec_deinit(&self->inner_stmts);
     free(self);
 }

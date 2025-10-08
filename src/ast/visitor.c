@@ -3,8 +3,8 @@
 
 static void ast_visitor_visit_root(void* self_, ast_root_t* root, void* out_)
 {
-    for (size_t i = 0; i < ptr_vec_size(&root->tl_defs); ++i)
-        ast_visitor_visit(self_, ptr_vec_get(&root->tl_defs, i), out_);
+    for (size_t i = 0; i < vec_size(&root->tl_defs); ++i)
+        ast_visitor_visit(self_, vec_get(&root->tl_defs, i), out_);
 }
 
 static void ast_visitor_visit_param_decl(void* self_, ast_param_decl_t* param_decl, void* out_)
@@ -35,8 +35,8 @@ static void ast_visitor_visit_call_expr(void* self_, ast_call_expr_t* call_expr,
 {
     ast_visitor_visit(self_, call_expr->function, out_);
 
-    for (size_t i = 0; i < ptr_vec_size(&call_expr->arguments); ++i)
-        ast_visitor_visit(self_, ptr_vec_get(&call_expr->arguments, i), out_);
+    for (size_t i = 0; i < vec_size(&call_expr->arguments); ++i)
+        ast_visitor_visit(self_, vec_get(&call_expr->arguments, i), out_);
 }
 
 static void ast_visitor_visit_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
@@ -60,8 +60,8 @@ static void ast_visitor_visit_ref_expr(void* self_, ast_ref_expr_t* ref_expr, vo
 
 static void ast_visitor_visit_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt, void* out_)
 {
-    for (size_t i = 0; i < ptr_vec_size(&compound_stmt->inner_stmts); ++i)
-        ast_visitor_visit(self_, ptr_vec_get(&compound_stmt->inner_stmts, i), out_);
+    for (size_t i = 0; i < vec_size(&compound_stmt->inner_stmts); ++i)
+        ast_visitor_visit(self_, vec_get(&compound_stmt->inner_stmts, i), out_);
 }
 
 static void ast_visitor_visit_decl_stmt(void* self_, ast_decl_stmt_t* decl_stmt, void* out_)
