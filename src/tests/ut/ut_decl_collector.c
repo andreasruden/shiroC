@@ -2,6 +2,7 @@
 #include "ast/decl/param_decl.h"
 #include "ast/node.h"
 #include "ast/root.h"
+#include "ast/type.h"
 #include "sema/decl_collector.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
@@ -28,9 +29,9 @@ TEST_TEARDOWN(decl_collector_fixture_t)
 TEST(decl_collector_fixture_t, collect_function_with_params)
 {
     // Build AST: fn add(x: int, y: int) -> int
-    ast_decl_t* param_x = ast_param_decl_create("x", "int");
-    ast_decl_t* param_y = ast_param_decl_create("y", "int");
-    ast_def_t* fn = ast_fn_def_create_va("add", "int", nullptr, param_x, param_y, nullptr);
+    ast_decl_t* param_x = ast_param_decl_create("x", ast_type_from_builtin(TYPE_I32));
+    ast_decl_t* param_y = ast_param_decl_create("y", ast_type_from_builtin(TYPE_F32));
+    ast_def_t* fn = ast_fn_def_create_va("add", ast_type_from_builtin(TYPE_I32), nullptr, param_x, param_y, nullptr);
     ast_root_t* root = ast_root_create_va(fn, nullptr);
 
     bool result = decl_collector_run(fix->collector, AST_NODE(root));
@@ -43,30 +44,34 @@ TEST(decl_collector_fixture_t, collect_function_with_params)
     ASSERT_EQ("add", sym->name);
 
     // Verify function signature
-    ASSERT_EQ("int", sym->data.function.return_type);
+    ast_type_t* type_i32 = ast_type_from_builtin(TYPE_I32);
+    ASSERT_TRUE(ast_type_equal(type_i32, sym->data.function.return_type));
 
     // Verify parameters
     ASSERT_EQ(2, vec_size(&sym->data.function.parameters));
 
     ast_param_decl_t* p1 = vec_get(&sym->data.function.parameters, 0);
     ASSERT_EQ("x", p1->name);
-    ASSERT_EQ("int", p1->type);
+    ASSERT_TRUE(ast_type_equal(type_i32, p1->type));
 
     ast_param_decl_t* p2 = vec_get(&sym->data.function.parameters, 1);
     ASSERT_EQ("y", p2->name);
-    ASSERT_EQ("int", p2->type);
+    ast_type_t* type_f32 = ast_type_from_builtin(TYPE_F32);
+    ASSERT_TRUE(ast_type_equal(type_f32, p2->type));
 
     ast_node_destroy(root);
+    ast_type_destroy(type_i32);
+    ast_type_destroy(type_f32);
 }
 
 TEST(decl_collector_fixture_t, collect_redeclaration_error)
 {
-    ast_def_t* fn1 = ast_fn_def_create_va("mul", "int", nullptr, nullptr);
+    ast_def_t* fn1 = ast_fn_def_create_va("mul", ast_type_from_builtin(TYPE_I32), nullptr, nullptr);
     source_location_t begin_loc, end_loc;
     set_source_location(&begin_loc, "test.c", 42, 1);
     set_source_location(&end_loc, "test.c", 60, 2);
     ast_node_set_source(fn1, &begin_loc, &end_loc);
-    ast_def_t* fn2 = ast_fn_def_create_va("mul", "int", nullptr, nullptr);
+    ast_def_t* fn2 = ast_fn_def_create_va("mul", ast_type_from_builtin(TYPE_I32), nullptr, nullptr);
     ast_root_t* root = ast_root_create_va(fn1, fn2, nullptr);
 
     bool result = decl_collector_run(fix->collector, AST_NODE(root));
@@ -81,4 +86,3 @@ TEST(decl_collector_fixture_t, collect_redeclaration_error)
 
     ast_node_destroy(root);
 }
-

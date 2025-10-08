@@ -21,6 +21,7 @@ COMMON_SRCS = \
     $(SRC_DIR)/ast/node.c \
 	$(SRC_DIR)/ast/printer.c \
 	$(SRC_DIR)/ast/root.c \
+	$(SRC_DIR)/ast/type.c \
 	$(SRC_DIR)/ast/visitor.c \
 	$(SRC_DIR)/ast/decl/param_decl.c \
 	$(SRC_DIR)/ast/decl/var_decl.c \

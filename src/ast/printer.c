@@ -1,6 +1,7 @@
 #include "printer.h"
 
 #include "ast/def/fn_def.h"
+#include "ast/type.h"
 #include "common/containers/string.h"
 #include "common/util/ssprintf.h"
 #include "visitor.h"
@@ -43,7 +44,7 @@ static void print_param_decl(void* self_, ast_param_decl_t* param_decl, void* ou
     ast_printer_t* self = self_;
 
     string_append_cstr(out, ssprintf("%*sParamDecl '%s' '%s'", self->indentation, "", param_decl->name,
-        param_decl->type));
+        ast_type_string(param_decl->type)));
     print_source_location(self, param_decl, out);
     string_append_cstr(out, "\n");
 }
@@ -55,7 +56,7 @@ static void print_var_decl(void* self_, ast_var_decl_t* var_decl, void* out_)
 
     string_append_cstr(out, ssprintf("%*sVarDecl '%s'", self->indentation, "", var_decl->name));
     if (var_decl->type != nullptr)
-        string_append_cstr(out, ssprintf(" '%s'", var_decl->type));
+        string_append_cstr(out, ssprintf(" '%s'", ast_type_string(var_decl->type)));
     print_source_location(self, var_decl, out);
     string_append_cstr(out, "\n");
 
@@ -74,7 +75,7 @@ static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 
     string_append_cstr(out, ssprintf("%*sFnDef '%s'", self->indentation, "", fn_def->base.name));
     if (fn_def->return_type != nullptr)
-        string_append_cstr(out, ssprintf("%s", fn_def->return_type));
+        string_append_cstr(out, ssprintf(" %s", ast_type_string(fn_def->return_type)));
     print_source_location(self, fn_def, out);
     string_append_cstr(out, "\n");
 

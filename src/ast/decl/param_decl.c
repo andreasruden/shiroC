@@ -1,6 +1,7 @@
 #include "param_decl.h"
 
 #include "ast/decl/decl.h"
+#include "ast/type.h"
 #include "ast/visitor.h"
 
 #include <stdlib.h>
@@ -15,13 +16,13 @@ static ast_node_vtable_t ast_param_decl_vtable =
     .destroy = ast_param_decl_destroy
 };
 
-ast_decl_t* ast_param_decl_create(const char* name, const char* type)
+ast_decl_t* ast_param_decl_create(const char* name, ast_type_t* type)
 {
     ast_param_decl_t* param_decl = malloc(sizeof(*param_decl));
 
     *param_decl = (ast_param_decl_t){
         .name = strdup(name),
-        .type = strdup(type),
+        .type = type,
     };
     AST_NODE(param_decl)->vtable = &ast_param_decl_vtable;
     AST_NODE(param_decl)->kind = AST_DECL_PARAM;
@@ -43,6 +44,6 @@ static void ast_param_decl_destroy(void* self_)
 
     ast_decl_deconstruct((ast_decl_t*)self);
     free(self->name);
-    free(self->type);
+    ast_type_destroy(self->type);
     free(self);
 }

@@ -19,6 +19,7 @@
 #include "ast/stmt/return_stmt.h"
 #include "ast/stmt/stmt.h"
 #include "ast/stmt/while_stmt.h"
+#include "ast/type.h"
 #include "common/containers/vec.h"
 #include "compiler_error.h"
 #include "lexer.h"
@@ -313,9 +314,17 @@ static ast_decl_t* parse_var_decl(parser_t* parser)
     if (lexer_peek_token(parser->lexer)->type == TOKEN_COLON)
     {
         lexer_next_token(parser->lexer);
-        // TODO: Handle user-defined types, pointers, etc
-        if (lexer_next_token_iff(parser->lexer, TOKEN_INT))
-            var_decl->type = strdup("int");
+        token_t* type_tok = lexer_peek_token(parser->lexer);
+        ast_type_t* type = ast_type_from_token(type_tok);
+        if (type->kind == AST_TYPE_INVALID)
+        {
+            lexer_emit_error_for_token(parser->lexer, type_tok, TOKEN_IDENTIFIER);
+        }
+        else
+        {
+            var_decl->type = type;
+            lexer_next_token(parser->lexer);
+        }
     }
 
     // Optional initialization expression
@@ -436,20 +445,24 @@ ast_stmt_t* parser_parse_stmt(parser_t* parser)
 
 static ast_decl_t* parse_param_decl(parser_t* parser)
 {
-    token_t* name_tok = lexer_next_token(parser->lexer);
+    token_t* name_tok = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
+    if (name_tok == nullptr)
+        return nullptr;
+
     lexer_next_token_iff(parser->lexer, TOKEN_COLON);  // emit error, but continue parsing
-    token_t* type_tok = lexer_next_token(parser->lexer);
 
-    ast_decl_t* decl = nullptr;
-    if (type_tok->type != TOKEN_INT && type_tok->type != TOKEN_IDENTIFIER)
-        goto cleanup;
-    if (name_tok->type != TOKEN_IDENTIFIER)
-        goto cleanup;
+    token_t* type_tok = lexer_peek_token(parser->lexer);
+    ast_type_t* type = ast_type_from_token(type_tok);
+    if (type->kind == AST_TYPE_INVALID)
+    {
+        lexer_emit_error_for_token(parser->lexer, type_tok, TOKEN_IDENTIFIER);
+        return nullptr;
+    }
+    lexer_next_token(parser->lexer);
 
-    decl = ast_param_decl_create(name_tok->value, type_tok->value);
+    ast_decl_t* decl = ast_param_decl_create(name_tok->value, type);
     parser_set_source_tok_to_current(parser, decl, name_tok);
 
-cleanup:
     return decl;
 }
 
@@ -458,7 +471,7 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     token_t* id = nullptr;
     vec_t params = VEC_INIT(ast_node_destroy);
     ast_def_t* fn_def = nullptr;
-    const char* ret_type = nullptr;
+    ast_type_t* ret_type = nullptr;
 
     token_t* tok_fn = lexer_next_token_iff(parser->lexer, TOKEN_FN);
     if (!tok_fn)
@@ -492,9 +505,7 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     if (lexer_peek_token(parser->lexer)->type == TOKEN_ARROW)
     {
         lexer_next_token(parser->lexer);
-        // TODO: Handle more types
-        if (lexer_next_token_iff(parser->lexer, TOKEN_INT))  // accept error
-            ret_type = "int";
+        ret_type = ast_type_from_token(lexer_next_token(parser->lexer));
     }
 
     // Body
@@ -505,7 +516,12 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     fn_def = ast_fn_def_create(id->value, &params, ret_type, body);
     parser_set_source_tok_to_current(parser, fn_def, tok_fn);
 
+    if (ret_type != nullptr && ret_type->kind == AST_TYPE_INVALID)
+        parser_error(parser, fn_def, "missing return type after '->'");
+    ret_type = nullptr;
+
 cleanup:
+    ast_type_destroy(ret_type);
     vec_deinit(&params);
     return fn_def;
 }

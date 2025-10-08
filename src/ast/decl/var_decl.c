@@ -1,6 +1,7 @@
 #include "var_decl.h"
 
 #include "ast/node.h"
+#include "ast/type.h"
 #include "ast/visitor.h"
 
 #include <stdlib.h>
@@ -15,13 +16,13 @@ static ast_node_vtable_t ast_var_decl_vtable =
     .destroy = ast_var_decl_destroy
 };
 
-ast_decl_t* ast_var_decl_create(const char* name, const char* type, ast_expr_t* init_expr)
+ast_decl_t* ast_var_decl_create(const char* name, ast_type_t* type, ast_expr_t* init_expr)
 {
     ast_var_decl_t* var_decl = malloc(sizeof(*var_decl));
 
     *var_decl = (ast_var_decl_t){
         .name = strdup(name),
-        .type = type ? strdup(type) : nullptr,
+        .type = type,
         .init_expr = init_expr,
     };
     AST_NODE(var_decl)->vtable = &ast_var_decl_vtable;
@@ -54,7 +55,7 @@ static void ast_var_decl_destroy(void* self_)
 
     ast_decl_deconstruct((ast_decl_t*)self);
     free(self->name);
-    free(self->type);
+    ast_type_destroy(self->type);
     ast_node_destroy(self->init_expr);
     free(self);
 }

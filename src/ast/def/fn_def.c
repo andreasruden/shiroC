@@ -1,6 +1,7 @@
 #include "fn_def.h"
 
 #include "ast/node.h"
+#include "ast/type.h"
 #include "ast/visitor.h"
 #include "common/containers/vec.h"
 
@@ -17,13 +18,13 @@ static ast_node_vtable_t ast_fn_def_vtable =
     .destroy = ast_fn_def_destroy
 };
 
-ast_def_t* ast_fn_def_create(const char* name, vec_t* params, const char* ret_type, ast_stmt_t* body)
+ast_def_t* ast_fn_def_create(const char* name, vec_t* params, ast_type_t* ret_type, ast_stmt_t* body)
 {
     ast_fn_def_t* fn_def = malloc(sizeof(*fn_def));
 
     *fn_def = (ast_fn_def_t){
         .base.name = strdup(name),
-        .return_type = ret_type ? strdup(ret_type) : nullptr,
+        .return_type = ret_type,
         .body = body,
     };
     vec_move(&fn_def->params, params);
@@ -33,7 +34,7 @@ ast_def_t* ast_fn_def_create(const char* name, vec_t* params, const char* ret_ty
     return (ast_def_t*)fn_def;
 }
 
-ast_def_t* ast_fn_def_create_va(const char* name, const char* ret_type, ast_stmt_t* body, ...)
+ast_def_t* ast_fn_def_create_va(const char* name, ast_type_t* ret_type, ast_stmt_t* body, ...)
 {
     vec_t params = VEC_INIT(ast_node_destroy);
     va_list args;
@@ -61,7 +62,7 @@ static void ast_fn_def_destroy(void* self_)
 
     ast_def_deconstruct((ast_def_t*)self);
     vec_deinit(&self->params);
-    free(self->return_type);
+    ast_type_destroy(self->return_type);
     ast_node_destroy(self->body);
     free(self);
 }

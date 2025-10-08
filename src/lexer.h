@@ -8,12 +8,23 @@
 typedef enum
 {
     // Keywords
+    TOKEN_BOOL,
     TOKEN_ELSE,
+    TOKEN_F32,
+    TOKEN_F64,
     TOKEN_FN,
     TOKEN_IF,
-    TOKEN_INT,
+    TOKEN_I8,
+    TOKEN_I16,
+    TOKEN_I32,
+    TOKEN_I64,
     TOKEN_RETURN,
+    TOKEN_U8,
+    TOKEN_U16,
+    TOKEN_U32,
+    TOKEN_U64,
     TOKEN_VAR,
+    TOKEN_VOID,
     TOKEN_WHILE,
 
     // Literals
@@ -58,7 +69,7 @@ typedef enum
     TOKEN_UNKNOWN
 } token_type_t;
 
-typedef struct
+typedef struct token
 {
     token_type_t type;
     char* value;

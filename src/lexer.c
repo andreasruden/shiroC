@@ -18,21 +18,41 @@ typedef struct
 
 static keyword_t lexer_keywords[] =
 {
+    {"bool", TOKEN_BOOL},
     {"else", TOKEN_ELSE},
+    {"f32", TOKEN_F32},
+    {"f64", TOKEN_F64},
     {"fn", TOKEN_FN},
     {"if", TOKEN_IF},
-    {"int", TOKEN_INT},
+    {"i8", TOKEN_I8},
+    {"i16", TOKEN_I16},
+    {"i32", TOKEN_I32},
+    {"i64", TOKEN_I64},
     {"return", TOKEN_RETURN},
+    {"u8", TOKEN_U8},
+    {"u16", TOKEN_U16},
+    {"u32", TOKEN_U32},
+    {"u64", TOKEN_U64},
     {"var", TOKEN_VAR},
+    {"void", TOKEN_VOID},
     {"while", TOKEN_WHILE},
-    {NULL, TOKEN_UNKNOWN}
+    {nullptr, TOKEN_UNKNOWN}
 };
 
 const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
-        case TOKEN_INT: return "int";
+        case TOKEN_BOOL: return "bool";
+        case TOKEN_VOID: return "void";
+        case TOKEN_I8: return "i8";
+        case TOKEN_I16: return "i16";
+        case TOKEN_I32: return "i32";
+        case TOKEN_I64: return "i64";
+        case TOKEN_U8: return "u8";
+        case TOKEN_U16: return "u16";
+        case TOKEN_U32: return "u32";
+        case TOKEN_U64: return "u64";
         case TOKEN_RETURN: return "return";
         case TOKEN_IDENTIFIER: return "identifier";
         case TOKEN_NUMBER: return "number";
@@ -55,9 +75,25 @@ const char* token_type_str(token_type_t type)
         case TOKEN_NEQ: return "!=";
         case TOKEN_ASSIGN: return "=";
         case TOKEN_NOT: return "!";
+        case TOKEN_ELSE: return "else";
+        case TOKEN_FN: return "else";
+        case TOKEN_IF: return "if";
+        case TOKEN_VAR: return "var";
+        case TOKEN_WHILE: return "while";
+        case TOKEN_COLON: return ":";
+        case TOKEN_COMMA: return ",";
+        case TOKEN_ARROW: return "->";
+        case TOKEN_PLUS_ASSIGN: return "+=";
+        case TOKEN_MINUS_ASSIGN: return "-=";
+        case TOKEN_MUL_ASSIGN: return "*=";
+        case TOKEN_DIV_ASSIGN: return "/=";
+        case TOKEN_MODULO_ASSIGN: return "%=";
+        case TOKEN_F32: return "f32";
+        case TOKEN_F64: return "f64";
+        case TOKEN_UNKNOWN: return "UNKNOWN";
         case TOKEN_EOF: return "EOF";
-        default: return "UNKNOWN";
     }
+    return "UNHANDLED";
 }
 
 static char lexer_peek(lexer_t* lexer)

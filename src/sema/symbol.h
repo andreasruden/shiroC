@@ -2,6 +2,7 @@
 #define SEMA_SYMBOL__H
 
 #include "ast/node.h"
+#include "ast/type.h"
 #include "common/containers/vec.h"
 
 typedef enum symbol_kind
@@ -24,7 +25,7 @@ typedef struct symbol
         struct
         {
             vec_t parameters;         // ast_param_decl_t*
-            const char* return_type;
+            ast_type_t* return_type;
         } function;
     } data;
 } symbol_t;
