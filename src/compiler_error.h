@@ -1,7 +1,7 @@
 #ifndef COMPILE_ERROR__H
 #define COMPILE_ERROR__H
 
-#include "ast/node.h"
+typedef struct ast_node ast_node_t;
 
 // Class used for any errors or warnings output by the compiler that is targetting the user.
 typedef struct compiler_error
@@ -20,6 +20,7 @@ typedef struct compiler_error
 compiler_error_t* compiler_error_create_for_source(bool warning, const char* description,
     const char* source_file, int line, int column);
 
+// The offender assumes ownership of the error
 compiler_error_t* compiler_error_create_for_ast(bool warning, const char* description,
     ast_node_t* offender);
 

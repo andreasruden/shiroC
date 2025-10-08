@@ -66,6 +66,8 @@ typedef struct
     int column;
 } token_t;
 
+typedef void (*lexer_error_output_fn)(compiler_error_t* error, void* arg);
+
 typedef struct lexer
 {
     char* source;
@@ -77,13 +79,15 @@ typedef struct lexer
     int last_consumed_end_line;
     int last_consumed_end_column;
     char* filename;
-    vec_t* error_output;
+    lexer_error_output_fn error_output;
+    void* error_output_arg;
     vec_t created_tokens;
 } lexer_t;
 
 // If error_output is not nullptr, any error/warning that happens during lexing will be
 // created as a compiler_error_t* and added to this vector.
-lexer_t* lexer_create(const char* filename, const char* source, vec_t* error_output);
+lexer_t* lexer_create(const char* filename, const char* source, lexer_error_output_fn error_output,
+    void* error_output_arg);
 
 void lexer_destroy(lexer_t* lexer);
 

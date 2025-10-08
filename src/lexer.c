@@ -192,7 +192,8 @@ static token_t* lex_string(lexer_t* lexer)
     return tok;
 }
 
-lexer_t* lexer_create(const char* filename, const char* source, vec_t* error_output)
+lexer_t* lexer_create(const char* filename, const char* source, lexer_error_output_fn error_output,
+    void* error_output_arg)
 {
     lexer_t* lexer = malloc(sizeof(*lexer));
 
@@ -203,6 +204,7 @@ lexer_t* lexer_create(const char* filename, const char* source, vec_t* error_out
         .line = 1,
         .column = 1,
         .error_output = error_output,
+        .error_output_arg = error_output_arg,
         .created_tokens = VEC_INIT(token_destroy),
     };
 
@@ -373,7 +375,7 @@ void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t ex
     {
         compiler_error_t* error = compiler_error_create_for_source(false,
             ssprintf("expected '%s'", token_type_str(expected)), lexer->filename, line, column);
-        vec_push(lexer->error_output, error);
+        lexer->error_output(error, lexer->error_output_arg);
     }
 }
 

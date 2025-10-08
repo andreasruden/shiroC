@@ -1,6 +1,9 @@
 #ifndef AST_NODE__H
 #define AST_NODE__H
 
+#include "common/containers/vec.h"
+#include "compiler_error.h"
+
 static constexpr int AST_NODE_PRINT_INDENTATION_WIDTH = 2;
 
 // Order of categories must remain unchanged
@@ -37,6 +40,7 @@ typedef enum ast_node_kind
 
 typedef struct ast_node ast_node_t;
 typedef struct ast_visitor ast_visitor_t;
+typedef struct compiler_error compiler_error_t;
 
 typedef struct source_location
 {
@@ -57,6 +61,7 @@ struct ast_node
     ast_node_vtable_t* vtable;
     source_location_t source_begin;
     source_location_t source_end;
+    vec_t* errors;  // compiler_error_t*
 };
 
 #define AST_NODE(node) ((ast_node_t*)(node))
@@ -79,6 +84,8 @@ void ast_node_set_source_upto(void* node, source_location_t* begin, void* last_n
 // Set source location from first child ast_node_t to end.
 // begin ownership is transferred
 void ast_node_set_source_from(void* node, void* first_node, source_location_t* end);
+
+void ast_node_add_error(void* node, compiler_error_t* error);
 
 // Deconstruct data held in abstract class. Should be called by children inheriting from this class.
 void ast_node_deconstruct(ast_node_t* node);

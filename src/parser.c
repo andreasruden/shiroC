@@ -31,7 +31,8 @@ parser_t* parser_create()
     parser_t* parser = malloc(sizeof(*parser));
 
     *parser = (parser_t){
-        .errors = VEC_INIT(compiler_error_destroy_void),
+        .lex_errors = VEC_INIT(compiler_error_destroy_void),
+        .errors = VEC_INIT(nullptr),  // mix of lex errors and AST node errors
     };
 
     return parser;
@@ -39,19 +40,24 @@ parser_t* parser_create()
 
 void parser_destroy(parser_t* parser)
 {
-    if (parser != nullptr)
-    {
-        lexer_destroy(parser->lexer);
-        vec_deinit(&parser->errors);
-        free(parser);
-    }
+    if (parser == nullptr)
+        return;
+
+    parser_reset(parser);
+    free(parser);
 }
 
-static void* parser_error(parser_t* parser, void* ast_node, const char* description)
+static void parser_on_lex_error(compiler_error_t* error, void* arg)
+{
+    parser_t* parser = arg;
+    vec_push(&parser->lex_errors, error);
+    vec_push(&parser->errors, error);
+}
+
+static void parser_error(parser_t* parser, void* ast_node, const char* description)
 {
     compiler_error_t* error = compiler_error_create_for_ast(false, description, ast_node);
     vec_push(&parser->errors, error);
-    return ast_node;
 }
 
 static void parser_set_source_tok_to_current(parser_t* parser, void* node, token_t* begin)
@@ -541,14 +547,16 @@ ast_root_t* parser_parse(parser_t* parser)
 void parser_set_source(parser_t* parser, const char* filename, const char* source)
 {
     parser_reset(parser);
-    parser->lexer = lexer_create(filename, source, &parser->errors);
+    parser->lexer = lexer_create(filename, source, parser_on_lex_error, parser);
 }
 
 void parser_reset(parser_t* parser)
 {
     lexer_destroy(parser->lexer);
+    vec_deinit(&parser->lex_errors);
+    parser->lex_errors = VEC_INIT(compiler_error_destroy_void);
     vec_deinit(&parser->errors);
-    parser->errors = VEC_INIT(compiler_error_destroy_void);
+    parser->errors = VEC_INIT(nullptr);
 }
 
 vec_t* parser_errors(parser_t* parser)

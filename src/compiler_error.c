@@ -1,5 +1,7 @@
 #include "compiler_error.h"
 
+#include "ast/node.h"
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -29,7 +31,10 @@ compiler_error_t* compiler_error_create_for_source(bool warning, const char* des
 compiler_error_t* compiler_error_create_for_ast(bool warning, const char* description,
     ast_node_t* offender)
 {
-    return compiler_error_create(warning, description, offender, nullptr, 0, 0);
+    compiler_error_t* error = compiler_error_create(warning, description, offender, nullptr, 0, 0);
+    ast_node_add_error(offender, error);
+
+    return error;
 }
 
 void compiler_error_destroy(compiler_error_t* error)

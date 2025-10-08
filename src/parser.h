@@ -10,7 +10,8 @@
 typedef struct parser
 {
     lexer_t* lexer;
-    vec_t errors;
+    vec_t lex_errors;   // only lex errors: we own those
+    vec_t errors;       // lex + AST errors
 } parser_t;
 
 parser_t* parser_create();
