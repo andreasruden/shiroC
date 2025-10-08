@@ -39,6 +39,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/stmt/return_stmt.c \
 	$(SRC_DIR)/ast/stmt/stmt.c \
 	$(SRC_DIR)/ast/stmt/while_stmt.c \
+	$(SRC_DIR)/common/containers/hash_table.c \
 	$(SRC_DIR)/common/containers/ptr_vec.c \
 	$(SRC_DIR)/common/containers/string.c \
 	$(SRC_DIR)/common/containers/vec.c
@@ -46,6 +47,7 @@ COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMMON_SRCS))
 
 # Unit-tests source files
 UT_SRCS = \
+	$(UT_SRC_DIR)/ut_hash_table.c \
 	$(UT_SRC_DIR)/ut_parser.c
 
 # Compiler target
