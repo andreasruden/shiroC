@@ -61,7 +61,7 @@ struct ast_node
     ast_node_vtable_t* vtable;
     source_location_t source_begin;
     source_location_t source_end;
-    vec_t* errors;  // compiler_error_t*
+    vec_t* errors;  // compiler_error_t*; note that this includes warnings
 };
 
 #define AST_NODE(node) ((ast_node_t*)(node))

@@ -62,7 +62,6 @@ static void ast_fn_def_destroy(void* self_)
 
     ast_def_deconstruct((ast_def_t*)self);
     vec_deinit(&self->params);
-    ast_type_destroy(self->return_type);
     ast_node_destroy(self->body);
     free(self);
 }

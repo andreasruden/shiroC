@@ -41,7 +41,7 @@ static inline void* vec_get(vec_t* vec, size_t index)
     return vec->mem[index];
 }
 
-static inline void* vec_top(vec_t* vec)
+static inline void* vec_last(vec_t* vec)
 {
     return vec_get(vec, vec_size(vec) - 1);
 }

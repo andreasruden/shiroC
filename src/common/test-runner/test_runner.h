@@ -73,7 +73,7 @@ extern bool g_test_failed;
 
 #define get_fixture() (g_current_fixture)
 
-static inline int str_compare(const char* a, const char* b) { return strcmp(a, b); }
+static inline int str_compare(const char* a, const char* b) { return (!a || !b) ? ((a == nullptr) - (b == nullptr)) : (strcmp(a, b)); }
 static inline int int_compare(int a, int b) { return (a > b) - (a < b); }
 static inline int uint_compare(unsigned int a, unsigned int b) { return (a > b) - (a < b); }
 static inline int long_compare(long a, long b) { return (a > b) - (a < b); }

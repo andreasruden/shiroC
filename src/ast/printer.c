@@ -6,6 +6,7 @@
 #include "common/util/ssprintf.h"
 #include "visitor.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 
 struct ast_printer
@@ -122,7 +123,7 @@ static void print_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
     string_t* out = out_;
     ast_printer_t* self = self_;
 
-    string_append_cstr(out, ssprintf("%*sIntLit '%d'", self->indentation, "", int_lit->value));
+    string_append_cstr(out, ssprintf("%*sIntLit '%ld'", self->indentation, "", int_lit->value));
     print_source_location(self, int_lit, out);
     string_append_cstr(out, "\n");
 }

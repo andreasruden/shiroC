@@ -85,7 +85,7 @@ static ast_expr_t* parse_int_lit(parser_t* parser)
     if (tok == nullptr)
         return nullptr;
 
-    int value = atoi(tok->value);
+    int64_t value = strtoll(tok->value, nullptr, 0);
     ast_expr_t* expr = ast_int_lit_create(value);
     parser_set_source_tok_to_current(parser, expr, tok);
 
@@ -521,7 +521,6 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     ret_type = nullptr;
 
 cleanup:
-    ast_type_destroy(ret_type);
     vec_deinit(&params);
     return fn_def;
 }

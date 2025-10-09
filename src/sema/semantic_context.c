@@ -1,10 +1,9 @@
 #include "semantic_context.h"
 
 #include "common/containers/vec.h"
+#include "common/debug/panic.h"
 #include "compiler_error.h"
 #include "sema/symbol_table.h"
-
-#include <assert.h>
 
 semantic_context_t* semantic_context_create()
 {
@@ -32,6 +31,7 @@ void semantic_context_destroy(semantic_context_t* ctx)
 
     vec_deinit(&ctx->scope_stack);
     vec_deinit(&ctx->error_nodes);
+    vec_deinit(&ctx->warning_nodes);
     free(ctx);
 }
 
@@ -44,9 +44,9 @@ void semantic_context_push_scope(semantic_context_t* ctx, scope_kind_t kind)
 
 void semantic_context_pop_scope(semantic_context_t* ctx)
 {
-    assert(ctx->current != ctx->global);
+    panic_if(ctx->current == ctx->global);
     symbol_table_destroy(vec_pop(&ctx->scope_stack));
-    ctx->current = vec_top(&ctx->scope_stack);
+    ctx->current = vec_last(&ctx->scope_stack);
 }
 
 void semantic_context_add_error(semantic_context_t* ctx, void* ast_node, const char* description)

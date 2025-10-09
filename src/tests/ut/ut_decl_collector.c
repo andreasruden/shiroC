@@ -45,7 +45,7 @@ TEST(decl_collector_fixture_t, collect_function_with_params)
 
     // Verify function signature
     ast_type_t* type_i32 = ast_type_from_builtin(TYPE_I32);
-    ASSERT_TRUE(ast_type_equal(type_i32, sym->data.function.return_type));
+    ASSERT_TRUE(ast_type_equal(type_i32, sym->type));
 
     // Verify parameters
     ASSERT_EQ(2, vec_size(&sym->data.function.parameters));
@@ -60,8 +60,6 @@ TEST(decl_collector_fixture_t, collect_function_with_params)
     ASSERT_TRUE(ast_type_equal(type_f32, p2->type));
 
     ast_node_destroy(root);
-    ast_type_destroy(type_i32);
-    ast_type_destroy(type_f32);
 }
 
 TEST(decl_collector_fixture_t, collect_redeclaration_error)

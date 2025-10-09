@@ -55,7 +55,6 @@ static void ast_var_decl_destroy(void* self_)
 
     ast_decl_deconstruct((ast_decl_t*)self);
     free(self->name);
-    ast_type_destroy(self->type);
     ast_node_destroy(self->init_expr);
     free(self);
 }

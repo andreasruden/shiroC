@@ -1,4 +1,5 @@
 #include "symbol.h"
+#include "ast/type.h"
 #include "common/containers/vec.h"
 
 #include <stdlib.h>
@@ -41,7 +42,6 @@ void symbol_destroy(symbol_t* symbol)
     }
 
     free(symbol->name);
-    free(symbol->type);
     free(symbol);
 }
 

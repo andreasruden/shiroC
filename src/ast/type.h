@@ -15,6 +15,8 @@ typedef enum type
     TYPE_U64,
     TYPE_F32,
     TYPE_F64,
+
+    TYPE_END,
 } type_t;
 
 typedef enum ast_type_kind
@@ -28,6 +30,7 @@ typedef enum ast_type_kind
 typedef struct ast_type ast_type_t;
 typedef struct token token_t;
 
+// Instances of ast_type_t should always be assumed const and not edited.
 struct ast_type
 {
     ast_type_kind_t kind;
@@ -52,15 +55,21 @@ struct ast_type
     } data;
 };
 
+// Returned instance should not be edited.
 ast_type_t* ast_type_from_builtin(type_t type);
 
+// Returned instance should not be edited.
+ast_type_t* ast_type_from_user(const char* type_name);
+
+// Returned instance should not be edited.
 ast_type_t* ast_type_from_token(token_t* tok);
 
+// Returned instance should not be edited.
 ast_type_t* ast_type_create_invalid();
 
-void ast_type_destroy(ast_type_t* type);
-
 bool ast_type_equal(ast_type_t* lhs, ast_type_t* rhs);
+
+bool ast_type_is_arithmetic(ast_type_t* type);
 
 const char* ast_type_string(ast_type_t* type);
 

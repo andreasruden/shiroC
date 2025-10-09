@@ -17,7 +17,7 @@ typedef struct symbol
     char* name;
     symbol_kind_t kind;
     ast_node_t* ast;
-    char* type;
+    ast_type_t* type;
 
     // Kind-specific data
     union
@@ -25,8 +25,12 @@ typedef struct symbol
         struct
         {
             vec_t parameters;         // ast_param_decl_t*
-            ast_type_t* return_type;
         } function;
+
+        struct
+        {
+            bool is_initialized;
+        } variable;
     } data;
 } symbol_t;
 

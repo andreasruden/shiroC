@@ -507,6 +507,56 @@ bool token_type_is_right_associative(token_type_t token_type)
     return false;
 }
 
+bool token_type_is_assignment_op(token_type_t token_type)
+{
+    switch (token_type)
+    {
+        case TOKEN_ASSIGN:
+        case TOKEN_PLUS_ASSIGN:
+        case TOKEN_MINUS_ASSIGN:
+        case TOKEN_MUL_ASSIGN:
+        case TOKEN_DIV_ASSIGN:
+        case TOKEN_MODULO_ASSIGN:
+            return true;
+        default:
+            break;
+    }
+    return false;
+}
+
+bool token_type_is_arithmetic_op(token_type_t token_type)
+{
+    switch (token_type)
+    {
+        case TOKEN_STAR:
+        case TOKEN_DIV:
+        case TOKEN_MODULO:
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+            return true;
+        default:
+            break;
+    }
+    return false;
+}
+
+bool token_type_is_relation_op(token_type_t token_type)
+{
+    switch (token_type)
+    {
+        case TOKEN_LT:
+        case TOKEN_LTE:
+        case TOKEN_GT:
+        case TOKEN_GTE:
+        case TOKEN_EQ:
+        case TOKEN_NEQ:
+            return true;
+        default:
+            break;
+    }
+    return false;
+}
+
 void lexer_get_token_location(lexer_t* lexer, token_t* token, source_location_t* out)
 {
     set_source_location(out, lexer->filename, token->line, token->column);

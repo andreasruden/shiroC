@@ -44,6 +44,5 @@ static void ast_param_decl_destroy(void* self_)
 
     ast_decl_deconstruct((ast_decl_t*)self);
     free(self->name);
-    ast_type_destroy(self->type);
     free(self);
 }

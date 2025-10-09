@@ -8,7 +8,7 @@ UT_SRC_DIR = $(SRC_DIR)/tests/ut
 
 # Tools & Flags
 CC = gcc
-CFLAGS = -Wall -Wextra -Wpedantic -Werror=incompatible-pointer-types -Wsign-conversion -Wshadow  \
+CFLAGS = -Wall -Wextra -Werror=incompatible-pointer-types -Wsign-conversion -Wshadow  \
 		 -std=c23 -I$(SRC_DIR)
 DEBUGFLAGS = -g -O0
 LD = ld
@@ -54,7 +54,8 @@ COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMMON_SRCS))
 UT_SRCS = \
 	$(UT_SRC_DIR)/ut_decl_collector.c \
 	$(UT_SRC_DIR)/ut_hash_table.c \
-	$(UT_SRC_DIR)/ut_parser.c
+	$(UT_SRC_DIR)/ut_parser.c \
+	$(UT_SRC_DIR)/ut_semantic_analyzer.c
 
 # Compiler target
 COMPILER_TARGET = $(BIN_DIR)/shiroc

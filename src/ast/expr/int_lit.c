@@ -14,7 +14,7 @@ static ast_node_vtable_t ast_int_lit_vtable =
     .destroy = ast_int_lit_destroy
 };
 
-ast_expr_t* ast_int_lit_create(int value)
+ast_expr_t* ast_int_lit_create(int64_t value)
 {
     ast_int_lit_t* int_lit = malloc(sizeof(*int_lit));
 
