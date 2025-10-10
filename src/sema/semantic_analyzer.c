@@ -7,6 +7,7 @@
 #include "common/debug/panic.h"
 #include "common/util/ssprintf.h"
 #include "lexer.h"
+#include "sema/init_tracker.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
 #include "sema/symbol_table.h"
@@ -16,6 +17,8 @@ struct semantic_analyzer
     ast_visitor_t base;
     semantic_context_t* ctx;  // decl_collector does not own ctx
     ast_fn_def_t* current_function;
+    init_tracker_t* init_tracker;
+    bool in_lvalue_context;
 };
 
 static symbol_t* add_variable_to_scope(semantic_analyzer_t* sema, void* node, const char* name, ast_type_t* type)
@@ -43,6 +46,18 @@ static symbol_t* add_variable_to_scope(semantic_analyzer_t* sema, void* node, co
     return symb;
 }
 
+static bool require_variable_initialized(semantic_analyzer_t* sema, symbol_t* symbol, void* node)
+{
+    if (symbol->kind != SYMBOL_VARIABLE)
+        return true;
+
+    if (init_tracker_is_initialized(sema->init_tracker, symbol))
+        return true;
+
+    semantic_context_add_error(sema->ctx, node, ssprintf("'%s' is not initialized", symbol->name));
+    return false;
+}
+
 static void analyze_root(void* self_, ast_root_t* root, void* out_)
 {
     semantic_analyzer_t* sema = self_;
@@ -57,9 +72,11 @@ static void analyze_param_decl(void* self_, ast_param_decl_t* param, void* out_)
     semantic_analyzer_t* sema = self_;
 
     symbol_t* symbol = add_variable_to_scope(sema, param, param->name, param->type);
-    symbol->kind = SYMBOL_PARAMETER;
     if (symbol != nullptr)
+    {
+        symbol->kind = SYMBOL_PARAMETER;
         symbol->type = param->type;
+    }
 }
 
 static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
@@ -73,7 +90,7 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     symbol_t* symbol = add_variable_to_scope(sema, var, var->name,
         var->init_expr == nullptr ? var->type : var->init_expr->type);
     if (symbol != nullptr)
-        symbol->data.variable.is_initialized = var->init_expr != nullptr;
+        init_tracker_set_initialized(sema->init_tracker, symbol, var->init_expr != nullptr);
 }
 
 static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
@@ -82,6 +99,8 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
 
     sema->current_function = fn;
     semantic_context_push_scope(sema->ctx, SCOPE_FUNCTION);
+    init_tracker_t* previous_tracker = sema->init_tracker;
+    sema->init_tracker = init_tracker_create();
 
     if (fn->return_type == nullptr)
         fn->return_type = ast_type_from_builtin(TYPE_VOID);
@@ -99,34 +118,27 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
         semantic_context_add_error(sema->ctx, fn, ssprintf("'%s' missing return statement", fn->base.name));
     }
 
+    init_tracker_destroy(sema->init_tracker);
+    sema->init_tracker = previous_tracker;
     semantic_context_pop_scope(sema->ctx);
     sema->current_function = nullptr;
 }
 
 static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* bin_op)
 {
-    symbol_t* lhs_symbol;
+    symbol_t* lhs_symbol = nullptr;
+    sema->in_lvalue_context = bin_op->op == TOKEN_ASSIGN;
     ast_visitor_visit(sema, bin_op->lhs, &lhs_symbol);
-    if (lhs_symbol == nullptr || lhs_symbol->kind != SYMBOL_VARIABLE)
+    sema->in_lvalue_context = false;
+    if (lhs_symbol == nullptr || (lhs_symbol->kind != SYMBOL_VARIABLE && lhs_symbol->kind != SYMBOL_PARAMETER))
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs, "cannot be assigned to");
         return;
     }
 
-    // For $= assignment the LHS is also read, and needs to be initialized
-    if (bin_op->op != TOKEN_ASSIGN && !lhs_symbol->data.variable.is_initialized)
-    {
-        semantic_context_add_error(sema->ctx, bin_op->lhs, ssprintf("'%s' is not initialized", lhs_symbol->name));
-        return;
-    }
+    init_tracker_set_initialized(sema->init_tracker, lhs_symbol, true);
 
-    symbol_t* rhs_symbol = nullptr;  // does not have to be a symbol on RHS
-    ast_visitor_visit(sema, bin_op->rhs, AST_KIND(bin_op->rhs) == AST_EXPR_REF ? &rhs_symbol : nullptr);
-    if (rhs_symbol != nullptr && rhs_symbol->kind == SYMBOL_VARIABLE && !rhs_symbol->data.variable.is_initialized)
-    {
-        semantic_context_add_error(sema->ctx, bin_op->rhs, ssprintf("'%s' is not initialized", rhs_symbol->name));
-        return;
-    }
+    ast_visitor_visit(sema, bin_op->rhs, nullptr);
 
     if (!ast_type_equal(lhs_symbol->type, bin_op->rhs->type))
     {
@@ -194,21 +206,8 @@ static void analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
         return;
     }
 
-    symbol_t* lhs_symbol = nullptr;  // does not have to be a symbol on LHS
-    ast_visitor_visit(sema, bin_op->lhs, AST_KIND(bin_op->lhs) == AST_EXPR_REF ? &lhs_symbol : nullptr);
-    if (lhs_symbol != nullptr && lhs_symbol->kind == SYMBOL_VARIABLE && !lhs_symbol->data.variable.is_initialized)
-    {
-        semantic_context_add_error(sema->ctx, bin_op->lhs, ssprintf("'%s' is not initialized", lhs_symbol->name));
-        return;
-    }
-
-    symbol_t* rhs_symbol = nullptr;  // does not have to be a symbol on RHS
-    ast_visitor_visit(sema, bin_op->rhs, AST_KIND(bin_op->rhs) == AST_EXPR_REF ? &rhs_symbol : nullptr);
-    if (rhs_symbol != nullptr && rhs_symbol->kind == SYMBOL_VARIABLE && !rhs_symbol->data.variable.is_initialized)
-    {
-        semantic_context_add_error(sema->ctx, bin_op->rhs, ssprintf("'%s' is not initialized", rhs_symbol->name));
-        return;
-    }
+    ast_visitor_visit(sema, bin_op->lhs, nullptr);
+    ast_visitor_visit(sema, bin_op->rhs, nullptr);
 
     if (!ast_type_equal(bin_op->lhs->type, bin_op->rhs->type))
     {
@@ -294,9 +293,14 @@ static void analyze_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
 
     symbol_t* symbol = symbol_table_lookup(sema->ctx->current, ref_expr->name);
     if (symbol == nullptr)
+    {
         semantic_context_add_error(sema->ctx, ref_expr, ssprintf("unknown symbol name '%s'", ref_expr->name));
-
+        return;
+    }
     ref_expr->base.type = symbol->type;
+
+    if (!sema->in_lvalue_context)
+        require_variable_initialized(sema, symbol, ref_expr);
 
     if (symbol_out != nullptr)
         *symbol_out = symbol;
@@ -344,10 +348,19 @@ static void analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
                 ast_type_string(if_stmt->condition->type)));
     }
 
-    // FIXME: We need to NOT set is_initialized=true for variables that are only assigned to in one branch
+    init_tracker_t* then_tracker = sema->init_tracker;
+    init_tracker_t* else_tracker = init_tracker_clone(sema->init_tracker);
+
+    sema->init_tracker = then_tracker;
     ast_visitor_visit(sema, if_stmt->then_branch, out_);
+
     if (if_stmt->else_branch != nullptr)
+    {
+        sema->init_tracker = else_tracker;
         ast_visitor_visit(sema, if_stmt->else_branch, out_);
+    }
+
+    sema->init_tracker = init_tracker_merge(&then_tracker, &else_tracker);
 }
 
 static void analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void* out_)
@@ -367,7 +380,6 @@ static void analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* 
 {
     semantic_analyzer_t* sema = self_;
 
-    // FIXME: We need to NOT set is_initialized=true for variables that are assigned to in while statement
     ast_visitor_visit(sema, while_stmt->condition, out_);
     if (!ast_type_equal(while_stmt->condition->type, ast_type_from_builtin(TYPE_BOOL)))
     {
@@ -376,7 +388,15 @@ static void analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* 
                 ast_type_string(while_stmt->condition->type)));
     }
 
+    init_tracker_t* entry_state = sema->init_tracker;
+    init_tracker_t* body_tracker = init_tracker_clone(sema->init_tracker);
+    sema->init_tracker = body_tracker;
+
     ast_visitor_visit(sema, while_stmt->body, out_);
+
+    // Discard init_tracker state changes inside while
+    init_tracker_destroy(body_tracker);
+    sema->init_tracker = entry_state;
 }
 
 semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
@@ -386,6 +406,7 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
     // NOTE: We do not need to init the visitor because we override every implementation
     *sema = (semantic_analyzer_t){
         .ctx = ctx,
+        .init_tracker = init_tracker_create(),
         .base = (ast_visitor_t){
             .visit_root = analyze_root,
             // Declarations
@@ -416,6 +437,8 @@ void semantic_analyzer_destroy(semantic_analyzer_t* sema)
 {
     if (sema == nullptr)
         return;
+
+    init_tracker_destroy(sema->init_tracker);
 
     free(sema);
 }

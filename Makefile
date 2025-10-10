@@ -44,6 +44,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/common/containers/string.c \
 	$(SRC_DIR)/common/containers/vec.c \
 	$(SRC_DIR)/sema/decl_collector.c \
+	$(SRC_DIR)/sema/init_tracker.c \
 	$(SRC_DIR)/sema/semantic_analyzer.c \
 	$(SRC_DIR)/sema/semantic_context.c \
 	$(SRC_DIR)/sema/symbol_table.c \

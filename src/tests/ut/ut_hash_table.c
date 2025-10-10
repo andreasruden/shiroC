@@ -106,3 +106,31 @@ TEST(hash_table_fixture_t, delete_function_called)
     hash_table_destroy(table);
     ASSERT_EQ(3, delete_count);
 }
+
+static void* entry_clone(void* entry)
+{
+    int* i = entry;
+    int* copy = malloc(sizeof(*i));
+    *copy = *i;
+    return copy;
+}
+
+TEST(hash_table_fixture_t, clone_deep_copy)
+{
+    (void)fix;
+
+    hash_table_t* table = hash_table_create(free);
+    int* v = malloc(sizeof(*v));
+    *v = 42;
+    hash_table_insert(table, "my_key", v);
+
+    hash_table_t clone;
+    hash_table_clone(&clone, table, entry_clone);
+    int* find = (int*)hash_table_find(&clone, "my_key");
+    ASSERT_NEQ(nullptr, find);
+    ASSERT_NEQ(v, find);
+    ASSERT_EQ(*v, *find);
+
+    hash_table_destroy(table);
+    hash_table_deinit(&clone);
+}

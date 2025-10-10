@@ -26,11 +26,6 @@ typedef struct symbol
         {
             vec_t parameters;         // ast_param_decl_t*
         } function;
-
-        struct
-        {
-            bool is_initialized;
-        } variable;
     } data;
 } symbol_t;
 

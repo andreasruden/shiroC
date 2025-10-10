@@ -11,6 +11,7 @@
 
 typedef struct hash_table_entry hash_table_entry_t;
 typedef void (*hash_table_delete_fn)(void* value);
+typedef void* (*hash_table_clone_value_fn)(void* value);
 static constexpr size_t HASH_TABLE_INITIAL_BUCKETS = 16;
 
 typedef struct hash_table
@@ -53,6 +54,11 @@ void hash_table_insert(hash_table_t* table, const char* key, void* value);
 
 void* hash_table_find(hash_table_t* table, const char* key);
 
+bool hash_table_contains(hash_table_t* table, const char* key);
+
 void hash_table_remove(hash_table_t* table, const char* key);
+
+// Make a deep-copy of src into dst
+void hash_table_clone(hash_table_t* dst, hash_table_t* src, hash_table_clone_value_fn clone_value_fn);
 
 #endif

@@ -123,6 +123,19 @@ void* hash_table_find(hash_table_t* table, const char* key)
     return nullptr;
 }
 
+bool hash_table_contains(hash_table_t* table, const char* key)
+{
+    size_t bucket = hash_table_hash_str(key) & (table->num_buckets - 1);
+    hash_table_entry_t* entry = table->buckets[bucket];
+    while (entry != nullptr)
+    {
+        if (strcmp(key, entry->key) == 0)
+            return true;
+        entry = entry->next;
+    }
+    return false;
+}
+
 void hash_table_remove(hash_table_t* table, const char* key)
 {
     size_t bucket = hash_table_hash_str(key) & (table->num_buckets - 1);
@@ -149,5 +162,20 @@ void hash_table_remove(hash_table_t* table, const char* key)
             table->buckets[bucket] = nullptr;
         hash_table_entry_destroy(entry, table->delete_fn);
         --table->size;
+    }
+}
+
+void hash_table_clone(hash_table_t* dst, hash_table_t* src, hash_table_clone_value_fn clone_value_fn)
+{
+    *dst = HASH_TABLE_INIT(src->delete_fn);
+
+    for (size_t i = 0; i < src->num_buckets; ++i)
+    {
+        hash_table_entry_t* entry = src->buckets[i];
+        while (entry != nullptr)
+        {
+            hash_table_insert(dst, entry->key, clone_value_fn(entry->value));
+            entry = entry->next;
+        }
     }
 }

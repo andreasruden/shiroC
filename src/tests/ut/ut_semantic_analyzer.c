@@ -12,6 +12,7 @@
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/if_stmt.h"
 #include "ast/stmt/return_stmt.h"
+#include "ast/stmt/stmt.h"
 #include "ast/stmt/while_stmt.h"
 #include "ast/type.h"
 #include "common/containers/vec.h"
@@ -336,6 +337,293 @@ TEST(ut_sema_fixture_t, assignment_with_mismatched_types)
     ASSERT_EQ(error_node, offender);
     compiler_error_t* error = vec_get(offender->errors, 0);
     ASSERT_NEQ(nullptr, strstr(error->description, "type"));
+
+    ast_node_destroy(foo_fn);
+}
+
+// Variable initialized in both branches should be considered initialized after if
+TEST(ut_sema_fixture_t, variable_init_in_if_both_branches)
+{
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_if_stmt_create(
+            ast_ref_expr_create("cond"),
+            ast_compound_stmt_create_va(
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_create(23))),
+                nullptr
+            ),
+            ast_compound_stmt_create_va(
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_create(42))),
+                nullptr
+            )
+        ),
+        // After if-statement, i should be initialized
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("i"), ast_int_lit_create(23))),
+        nullptr
+    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(foo_fn);
+}
+
+// Variable initialized only in then-branch should NOT be considered initialized after if
+TEST(ut_sema_fixture_t, variable_init_in_if_only_then_branch)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("i");
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_if_stmt_create(
+            ast_ref_expr_create("cond"),
+            ast_compound_stmt_create_va(
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_create(23))),
+                // Inside then-branch, i IS initialized, so this should be OK
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("i"), ast_int_lit_create(5))),
+                nullptr
+            ),
+            ast_compound_stmt_create_va(
+                // Else-branch doesn't initialize i
+                ast_expr_stmt_create(ast_int_lit_create(50)),
+                nullptr
+            )
+        ),
+        // After if-statement, i is NOT initialized (error)
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_int_lit_create(5), error_node)),
+        nullptr
+    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+
+    ast_node_destroy(foo_fn);
+}
+
+// Variable initialized only in then-branch with no else should NOT be considered initialized
+TEST(ut_sema_fixture_t, variable_init_in_if_no_else_branch)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("i");
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_if_stmt_create(
+            ast_ref_expr_create("cond"),
+            ast_compound_stmt_create_va(
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_create(23)
+                )),
+                nullptr
+            ),
+            nullptr  // No else branch
+        ),
+        // After if-statement, i might not be initialized (error)
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_STAR, error_node, ast_int_lit_create(5))),
+        nullptr
+    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+
+    ast_node_destroy(foo_fn);
+}
+
+// Variable initialized inside while loop should NOT be considered initialized after loop
+TEST(ut_sema_fixture_t, variable_init_in_while_loop)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("i");
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_while_stmt_create(
+            ast_ref_expr_create("cond"),
+            ast_compound_stmt_create_va(
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_create(23))),
+                nullptr
+            )
+        ),
+        // After while loop, i is NOT guaranteed to be initialized
+        ast_expr_stmt_create(error_node),
+        nullptr
+    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)),  nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+
+    ast_node_destroy(foo_fn);
+}
+
+// Variable initialized before if-statement should remain initialized after
+TEST(ut_sema_fixture_t, variable_init_before_if_remains_initialized)
+{
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_create(10))),
+        ast_if_stmt_create(
+            ast_ref_expr_create("cond"),
+            ast_compound_stmt_create_va(
+                // Do something else in if
+                ast_expr_stmt_create(ast_int_lit_create(1)),
+                nullptr
+            ),
+            nullptr
+        ),
+        // i should still be initialized here
+        ast_expr_stmt_create(ast_ref_expr_create("i")),
+        nullptr
+    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(foo_fn);
+}
+
+// Emit error when variable used in while-condition is not initialized
+TEST(ut_sema_fixture_t, uninitialized_variable_used_in_while_condition)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("y");
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("y", ast_type_from_builtin(TYPE_BOOL), nullptr)),
+        ast_while_stmt_create(error_node, ast_compound_stmt_create_empty()),
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+
+    ast_node_destroy(block);
+}
+
+// Variable shadowed and initialized in both branches, but outer variable remains uninitialized
+TEST(ut_sema_fixture_t, variable_shadowing_does_not_affect_outer_scope_initialization)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("i");
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_if_stmt_create(
+            ast_ref_expr_create("cond"), ast_compound_stmt_create_va(
+                // Shadow outer 'i' with a new local 'i'
+                ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_create(10))),
+                // This 'i' refers to the inner variable, which is initialized
+                ast_expr_stmt_create(ast_ref_expr_create("i")),
+                nullptr
+            ),
+            ast_compound_stmt_create_va(
+                // Shadow outer 'i' with another new local 'i'
+                ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_create(20))),
+                // This 'i' also refers to the inner variable
+                ast_expr_stmt_create(ast_ref_expr_create("i")),
+                nullptr
+            )
+        ),
+        // After if-statement, the outer 'i' is still not initialized
+        // The initializations only affected the shadowed inner variables
+        ast_expr_stmt_create(error_node),
+        nullptr
+    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+
+    ast_node_destroy(foo_fn);
+}
+
+// Emit error when we try to assign to a function
+TEST(ut_sema_fixture_t, assignment_to_function_error)
+{
+    // Register a function in global scope
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", ast_type_from_builtin(TYPE_VOID), ast_compound_stmt_create_empty(),
+        nullptr);
+    symbol_t* foo_symbol = symbol_create("foo", SYMBOL_FUNCTION, foo_fn);
+    foo_symbol->type = ast_type_from_builtin(TYPE_VOID);
+    symbol_table_insert(fix->ctx->global, foo_symbol);
+
+    // Try to assign to the function
+    ast_expr_t* error_node = ast_ref_expr_create("foo");
+    ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_create(12));
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(expr));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "cannot be assigned to"));
+
+    ast_node_destroy(expr);
+    ast_node_destroy(foo_fn);
+}
+
+// Emit error when we try to assign to a binary-expression
+TEST(ut_sema_fixture_t, assignment_to_non_lvalue_expression_error)
+{
+    // Try to assign to a binary expression (5 * 3 = 30)
+    ast_expr_t* error_node = ast_bin_op_create(TOKEN_STAR, ast_int_lit_create(5), ast_int_lit_create(3));;
+    ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_create(30));
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(expr));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "cannot be assigned to"));
+
+    ast_node_destroy(expr);
+}
+
+// Emit error when we try to assign to a literal
+TEST(ut_sema_fixture_t, assignment_to_literal_error)
+{
+    // Try to assign to a literal (42 = 10)
+    ast_expr_t* error_node = ast_int_lit_create(42);
+    ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_create(10));
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(expr));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "cannot be assigned to"));
+
+    ast_node_destroy(expr);
+}
+
+// Allow assigning to a parameter
+TEST(ut_sema_fixture_t, assignment_to_parameter_allowed)
+{
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("param"), ast_int_lit_create(42))),
+        nullptr
+    ), ast_param_decl_create("param", ast_type_from_builtin(TYPE_I32)), nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
 
     ast_node_destroy(foo_fn);
 }
