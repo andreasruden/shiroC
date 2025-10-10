@@ -7,6 +7,7 @@
 #include <string.h>
 
 // Managed by ast_type_cache_init() and ast_type_cache_cleanup()
+ast_type_t* invalid_cache = nullptr;
 static ast_type_t* builtins_cache[TYPE_END] = {};
 static hash_table_t* user_cache = nullptr;
 
@@ -84,14 +85,7 @@ ast_type_t* ast_type_from_token(token_t* tok)
 
 ast_type_t* ast_type_create_invalid()
 {
-    ast_type_t* ast_type = malloc(sizeof(ast_type_t));
-    panic_if(ast_type == nullptr);
-
-    *ast_type = (ast_type_t){
-        .kind = AST_TYPE_INVALID,
-    };
-
-    return ast_type;
+    return invalid_cache;
 }
 
 bool ast_type_equal(ast_type_t* lhs, ast_type_t* rhs)
@@ -179,9 +173,18 @@ const char* type_to_str(type_t type)
 __attribute__((constructor))
 void ast_type_cache_init()
 {
+    // Invalid type
+    ast_type_t* ast_type = malloc(sizeof(ast_type_t));
+    panic_if(ast_type == nullptr);
+    *ast_type = (ast_type_t){
+        .kind = AST_TYPE_INVALID,
+    };
+    invalid_cache = ast_type;
+
+    // The builtin types
     for (int type = 0; type < TYPE_END; ++type)
     {
-        ast_type_t* ast_type = malloc(sizeof(ast_type_t));
+        ast_type = malloc(sizeof(ast_type_t));
         panic_if(ast_type == nullptr);
 
         *ast_type = (ast_type_t){
@@ -196,6 +199,7 @@ void ast_type_cache_init()
 __attribute__((destructor))
 void ast_type_cache_cleanup()
 {
+    free(invalid_cache);
     for (int type = 0; type < TYPE_END; ++type)
         free(builtins_cache[type]);
     hash_table_destroy(user_cache);

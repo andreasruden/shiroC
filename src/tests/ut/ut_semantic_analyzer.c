@@ -627,3 +627,19 @@ TEST(ut_sema_fixture_t, assignment_to_parameter_allowed)
 
     ast_node_destroy(foo_fn);
 }
+
+// Error on using symbol that does not exist
+TEST(ut_sema_fixture_t, symbol_not_exist)
+{
+    ast_def_t* main_fn = ast_fn_def_create_va("main", nullptr, ast_compound_stmt_create_va(
+        ast_if_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("inexistant"), ast_int_lit_create(5)),
+            ast_compound_stmt_create_empty(), nullptr),
+        nullptr
+    ), nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(main_fn));
+    ASSERT_FALSE(res);
+    ASSERT_LT(1, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(main_fn);
+}

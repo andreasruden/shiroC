@@ -19,6 +19,7 @@ ast_expr_t* ast_bin_op_create(token_type_t op, ast_expr_t* lhs, ast_expr_t* rhs)
     ast_bin_op_t* bin_op = malloc(sizeof(*bin_op));
 
     *bin_op = (ast_bin_op_t){
+        .base = AST_EXPR_INIT,
         .op = op,
         .lhs = lhs,
         .rhs = rhs,

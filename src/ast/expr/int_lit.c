@@ -19,6 +19,7 @@ ast_expr_t* ast_int_lit_create(int64_t value)
     ast_int_lit_t* int_lit = malloc(sizeof(*int_lit));
 
     *int_lit = (ast_int_lit_t){
+        .base = AST_EXPR_INIT,
         .value = value,
     };
     AST_NODE(int_lit)->vtable = &ast_int_lit_vtable;

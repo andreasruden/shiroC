@@ -22,6 +22,7 @@ ast_expr_t* ast_call_expr_create(ast_expr_t* function, vec_t* arguments)
     ast_call_expr_t* call_expr = malloc(sizeof(*call_expr));
 
     *call_expr = (ast_call_expr_t){
+        .base = AST_EXPR_INIT,
         .function = function
     };
     vec_move(&call_expr->arguments, arguments);

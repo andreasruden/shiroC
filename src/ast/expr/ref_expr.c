@@ -19,6 +19,7 @@ ast_expr_t* ast_ref_expr_create(const char* name)
     ast_ref_expr_t* ref_expr = calloc(1, sizeof(*ref_expr));
 
     *ref_expr = (ast_ref_expr_t){
+        .base = AST_EXPR_INIT,
         .name = strdup(name)
     };
     AST_NODE(ref_expr)->vtable = &ast_ref_expr_vtable;
