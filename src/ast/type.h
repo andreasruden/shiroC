@@ -65,7 +65,7 @@ ast_type_t* ast_type_from_user(const char* type_name);
 ast_type_t* ast_type_from_token(token_t* tok);
 
 // Returned instance should not be edited.
-ast_type_t* ast_type_create_invalid();
+ast_type_t* ast_type_invalid();
 
 bool ast_type_equal(ast_type_t* lhs, ast_type_t* rhs);
 

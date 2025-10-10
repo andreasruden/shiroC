@@ -139,12 +139,15 @@ static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* b
     init_tracker_set_initialized(sema->init_tracker, lhs_symbol, true);
 
     ast_visitor_visit(sema, bin_op->rhs, nullptr);
+    if (bin_op->rhs->type == ast_type_invalid())
+        return;  // avoid cascading errors
 
     if (!ast_type_equal(lhs_symbol->type, bin_op->rhs->type))
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs,
             ssprintf("'%s' type is '%s' but assigned expression type is '%s'", lhs_symbol->name,
                 ast_type_string(lhs_symbol->type), ast_type_string(bin_op->rhs->type)));
+        return;
     }
 
     bin_op->base.type = lhs_symbol->type;
@@ -154,7 +157,7 @@ static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, 
 {
     if (type->kind != AST_TYPE_BUILTIN)
     {
-        *result_type = ast_type_create_invalid();
+        *result_type = ast_type_invalid();
         return false;
     }
 
@@ -167,7 +170,7 @@ static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, 
         }
         else
         {
-            *result_type = ast_type_create_invalid();
+            *result_type = ast_type_invalid();
             return false;
         }
     }
@@ -182,12 +185,12 @@ static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, 
     {
         if (ast_type_is_arithmetic(type))
         {
-            *result_type = ast_type_from_builtin(type->data.builtin.type);
+            *result_type = ast_type_from_builtin(TYPE_BOOL);
             return true;
         }
         else
         {
-            *result_type = ast_type_create_invalid();
+            *result_type = ast_type_invalid();
             return false;
         }
     }
@@ -208,6 +211,8 @@ static void analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
 
     ast_visitor_visit(sema, bin_op->lhs, nullptr);
     ast_visitor_visit(sema, bin_op->rhs, nullptr);
+    if (bin_op->lhs->type == ast_type_invalid() || bin_op->rhs->type == ast_type_invalid())
+        return;  // avoid cascading errors
 
     if (!ast_type_equal(bin_op->lhs->type, bin_op->rhs->type))
     {
@@ -297,13 +302,17 @@ static void analyze_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
         semantic_context_add_error(sema->ctx, ref_expr, ssprintf("unknown symbol name '%s'", ref_expr->name));
         return;
     }
-    ref_expr->base.type = symbol->type;
-
-    if (!sema->in_lvalue_context)
-        require_variable_initialized(sema, symbol, ref_expr);
 
     if (symbol_out != nullptr)
         *symbol_out = symbol;
+
+    if (!sema->in_lvalue_context)
+    {
+        if (!require_variable_initialized(sema, symbol, ref_expr))
+            return;
+    }
+
+    ref_expr->base.type = symbol->type;
 }
 
 static void analyze_compound_statement(void* self_, ast_compound_stmt_t* block, void* out_)
@@ -322,10 +331,6 @@ static void analyze_decl_stmt(void* self_, ast_decl_stmt_t* stmt, void* out_)
 {
     semantic_analyzer_t* sema = self_;
 
-    // TODO: Is this error necessary? Seems like parser shouldn't let this happen
-    if (AST_KIND(stmt->decl) != AST_DECL_VAR)
-        semantic_context_add_error(sema->ctx, stmt, "type of declaration is not valid here");
-
     ast_visitor_visit(sema, stmt->decl, out_);
 }
 
@@ -341,6 +346,9 @@ static void analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
     semantic_analyzer_t* sema = self_;
 
     ast_visitor_visit(sema, if_stmt->condition, out_);
+    if (if_stmt->condition->type == ast_type_invalid())
+        return;  // avoid cascading errors
+
     if (!ast_type_equal(if_stmt->condition->type, ast_type_from_builtin(TYPE_BOOL)))
     {
         semantic_context_add_error(sema->ctx, if_stmt->condition,
@@ -381,6 +389,9 @@ static void analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* 
     semantic_analyzer_t* sema = self_;
 
     ast_visitor_visit(sema, while_stmt->condition, out_);
+    if (while_stmt->condition->type == ast_type_invalid())
+        return;  // avoid cascading errors
+
     if (!ast_type_equal(while_stmt->condition->type, ast_type_from_builtin(TYPE_BOOL)))
     {
         semantic_context_add_error(sema->ctx, while_stmt->condition,

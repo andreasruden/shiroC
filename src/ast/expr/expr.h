@@ -11,7 +11,7 @@ typedef struct ast_expr
 } ast_expr_t;
 
 // Init data held in abstract class. Should be used by children inheriting from this class.
-#define AST_EXPR_INIT (ast_expr_t){ .type = ast_type_create_invalid(), }
+#define AST_EXPR_INIT (ast_expr_t){ .type = ast_type_invalid(), }
 
 // Deconstruct data held in abstract class. Should be called by children inheriting from this class.
 void ast_expr_deconstruct(ast_expr_t* expr);

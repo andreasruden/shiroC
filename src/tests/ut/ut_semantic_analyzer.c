@@ -643,3 +643,18 @@ TEST(ut_sema_fixture_t, symbol_not_exist)
 
     ast_node_destroy(main_fn);
 }
+
+// Comparison is valid in if-condition
+TEST(ut_sema_fixture_t, comparison_in_if_condition)
+{
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_create(3))),
+        ast_if_stmt_create(ast_bin_op_create(TOKEN_GT, ast_ref_expr_create("i"), ast_int_lit_create(5)),
+            ast_compound_stmt_create_empty(), nullptr),
+        nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+
+    ast_node_destroy(block);
+}

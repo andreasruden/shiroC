@@ -79,11 +79,11 @@ ast_type_t* ast_type_from_token(token_t* tok)
         return ast_type_from_user(tok->value);
 
         default:
-            return ast_type_create_invalid();
+            return ast_type_invalid();
     }
 }
 
-ast_type_t* ast_type_create_invalid()
+ast_type_t* ast_type_invalid()
 {
     return invalid_cache;
 }
