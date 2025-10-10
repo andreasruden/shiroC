@@ -17,7 +17,6 @@ LD = ld
 COMMON_SRCS = \
 	$(SRC_DIR)/compiler_error.c \
     $(SRC_DIR)/ast/node.c \
-	$(SRC_DIR)/ast/printer.c \
 	$(SRC_DIR)/ast/root.c \
 	$(SRC_DIR)/ast/type.c \
 	$(SRC_DIR)/ast/visitor.c \
@@ -38,6 +37,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/stmt/return_stmt.c \
 	$(SRC_DIR)/ast/stmt/stmt.c \
 	$(SRC_DIR)/ast/stmt/while_stmt.c \
+	$(SRC_DIR)/ast/util/printer.c \
 	$(SRC_DIR)/common/containers/hash_table.c \
 	$(SRC_DIR)/common/containers/string.c \
 	$(SRC_DIR)/common/containers/vec.c \

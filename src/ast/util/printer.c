@@ -2,9 +2,9 @@
 
 #include "ast/def/fn_def.h"
 #include "ast/type.h"
+#include "ast/visitor.h"
 #include "common/containers/string.h"
 #include "common/util/ssprintf.h"
-#include "visitor.h"
 
 #include <stdint.h>
 #include <stdlib.h>
