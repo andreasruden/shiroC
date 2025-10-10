@@ -6,7 +6,7 @@
 #include "ast/visitor.h"
 #include "common/debug/panic.h"
 #include "common/util/ssprintf.h"
-#include "lexer.h"
+#include "parser/lexer.h"
 #include "sema/init_tracker.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"

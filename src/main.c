@@ -1,6 +1,6 @@
 #include "ast/node.h"
 #include "ast/printer.h"
-#include "parser.h"
+#include "parser/parser.h"
 
 #include <stdio.h>
 #include <stdlib.h>

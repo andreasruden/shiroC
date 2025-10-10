@@ -16,7 +16,7 @@
 #include "ast/stmt/while_stmt.h"
 #include "ast/type.h"
 #include "common/containers/vec.h"
-#include "lexer.h"
+#include "parser/lexer.h"
 #include "sema/semantic_analyzer.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"

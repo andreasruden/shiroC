@@ -16,8 +16,6 @@ LD = ld
 # Common source files
 COMMON_SRCS = \
 	$(SRC_DIR)/compiler_error.c \
-    $(SRC_DIR)/lexer.c \
-    $(SRC_DIR)/parser.c \
     $(SRC_DIR)/ast/node.c \
 	$(SRC_DIR)/ast/printer.c \
 	$(SRC_DIR)/ast/root.c \
@@ -43,6 +41,8 @@ COMMON_SRCS = \
 	$(SRC_DIR)/common/containers/hash_table.c \
 	$(SRC_DIR)/common/containers/string.c \
 	$(SRC_DIR)/common/containers/vec.c \
+	$(SRC_DIR)/parser/lexer.c \
+    $(SRC_DIR)/parser/parser.c \
 	$(SRC_DIR)/sema/decl_collector.c \
 	$(SRC_DIR)/sema/init_tracker.c \
 	$(SRC_DIR)/sema/semantic_analyzer.c \

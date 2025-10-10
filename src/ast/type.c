@@ -2,7 +2,7 @@
 
 #include "common/containers/hash_table.h"
 #include "common/debug/panic.h"
-#include "lexer.h"
+#include "parser/lexer.h"
 
 #include <string.h>
 

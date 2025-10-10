@@ -16,8 +16,8 @@
 #include "ast/stmt/return_stmt.h"
 #include "ast/stmt/while_stmt.h"
 #include "compiler_error.h"
-#include "lexer.h"
-#include "parser.h"
+#include "parser/lexer.h"
+#include "parser/parser.h"
 #include "test_runner.h"
 
 #include <stdarg.h>
