@@ -28,4 +28,6 @@ void compiler_error_destroy(compiler_error_t* error);
 
 void compiler_error_destroy_void(void* error);
 
+char* compiler_error_string(compiler_error_t* error);
+
 #endif

@@ -1,25 +1,136 @@
 #include "ast/node.h"
-#include "ast/printer.h"
+#include "common/debug/panic.h"
+#include "compiler_error.h"
 #include "parser/parser.h"
+#include "sema/decl_collector.h"
+#include "sema/semantic_analyzer.h"
+#include "sema/semantic_context.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-int main()
+static char* read_file(const char* filepath)
 {
-    parser_t* parser = parser_create();
-    parser_set_source(parser, "hardcoded", "int main() { return 0; }");
-    ast_root_t* root = parser_parse(parser);
-    if (root == nullptr)
+    FILE* file = fopen(filepath, "rb");
+    if (!file)
     {
-        puts("Parser failed parsing");
+        fprintf(stderr, "Error: Could not open file '%s'\n", filepath);
+        return NULL;
+    }
+
+    // Get file size
+    fseek(file, 0, SEEK_END);
+    size_t size = (size_t)ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    // Allocate buffer and read
+    char* buffer = malloc(size + 1);
+    if (!buffer)
+    {
+        fprintf(stderr, "Error: Out of memory\n");
+        fclose(file);
+        return NULL;
+    }
+
+    size_t bytes_read = fread(buffer, 1, size, file);
+    buffer[bytes_read] = '\0';
+
+    fclose(file);
+    return buffer;
+}
+
+static void print_compiler_errors(vec_t* vec)
+{
+    for (size_t j = 0; j < vec_size(vec); j++)
+    {
+        compiler_error_t* error = vec_get(vec, j);
+        char* str = compiler_error_string(error);
+        fprintf(stderr, "%s", str);
+        free(str);
+    }
+}
+
+static void print_ast_errors(vec_t* vec)
+{
+    for (size_t i = 0; i < vec_size(vec); i++)
+    {
+        ast_node_t* node = vec_get(vec, i);
+        print_compiler_errors(node->errors);
+    }
+}
+
+int main(int argc, char** argv)
+{
+    if (argc != 2)
+    {
+        fprintf(stderr, "Usage: %s <file.shiro>\n", argv[0]);
         return 1;
     }
 
-    ast_printer_t* printer = ast_printer_create();
-    char* str = ast_printer_print_ast(printer, AST_NODE(root));
-    puts(str);
-    free(str);
+    const char* filepath = argv[1];
 
-    ast_node_destroy(root);
+    // Read source file
+    char* source = read_file(filepath);
+    if (!source)
+        return 1;
+
+    // Parse
+    parser_t* parser = parser_create();
+    parser_set_source(parser, filepath, source);
+    ast_root_t* ast = parser_parse(parser);
+    bool failed_parse = vec_size(&parser->errors) > 0;
+    if (failed_parse)
+        print_compiler_errors(&parser->errors);
+    parser_destroy(parser);
+
+    if (!ast || failed_parse)
+        return 2;
+
+    // Create semantic context
+    semantic_context_t* ctx = semantic_context_create();
+    panic_if(ctx == nullptr);
+
+    // First pass: Collect declarations
+    decl_collector_t* decl_collector = decl_collector_create(ctx);
+    bool decl_success = decl_collector_run(decl_collector, AST_NODE(ast));
+    if (!decl_success)
+    {
+        print_ast_errors(&ctx->error_nodes);
+        semantic_context_destroy(ctx);
+        decl_collector_destroy(decl_collector);
+        ast_node_destroy(ast);
+        return 3;
+    }
+
+    decl_collector_destroy(decl_collector);
+    decl_collector = nullptr;
+
+    // Second pass: Semantic analysis
+    semantic_analyzer_t* sema = semantic_analyzer_create(ctx);
+    bool sema_success = semantic_analyzer_run(sema, AST_NODE(ast));
+    if (!sema_success)
+    {
+        print_ast_errors(&ctx->error_nodes);
+        semantic_context_destroy(ctx);
+        semantic_analyzer_destroy(sema);
+        ast_node_destroy(ast);
+        return 4;
+    }
+
+    semantic_analyzer_destroy(sema);
+    sema = nullptr;
+
+    if (vec_size(&ctx->warning_nodes) > 0)
+        print_ast_errors(&ctx->warning_nodes);
+
+    // Code Generation:
+    printf("Code generation TODO\n");
+
+    // Cleanup
+    semantic_context_destroy(ctx);
+    ast_node_destroy(ast);
+    free(source);
+
+    return 0;
 }
