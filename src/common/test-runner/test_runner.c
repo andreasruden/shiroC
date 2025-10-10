@@ -9,18 +9,55 @@ bool g_test_failed = false;
 
 int main(int argc, char** argv)
 {
-    (void)argc;
-    (void)argv;
+    char* test_name_pattern = nullptr;
+    bool complete_match = false;
+    if (argc >= 2)
+    {
+        test_name_pattern = argv[1];
+        int len = strlen(test_name_pattern);
+        if (test_name_pattern[len - 1] == '$')
+        {
+            test_name_pattern[len - 1] = '\0';
+            complete_match = true;
+        }
+    }
+
     int passed = 0;
     int failed = 0;
+    int total = 0;
+
+    for (int i = 0; i < g_test_count; i++)
+    {
+        if (test_name_pattern == nullptr)
+        {
+            ++total;
+            continue;
+        }
+
+        test_entry_t* test = &g_tests[i];
+        if (complete_match ? (strcmp(test->name, test_name_pattern) == 0) :
+            (strstr(test->name, test_name_pattern) != nullptr))
+        {
+            ++total;
+        }
+    }
 
     printf("=================================================\n");
-    printf("Running %d test(s)\n", g_test_count);
+    printf("Running %d test(s)\n", total);
     printf("=================================================\n\n");
 
     for (int i = 0; i < g_test_count; i++)
     {
         test_entry_t* test = &g_tests[i];
+
+        if (test_name_pattern != nullptr)
+        {
+            if (complete_match ? (strcmp(test->name, test_name_pattern) != 0) :
+                (strstr(test->name, test_name_pattern) == nullptr))
+            {
+                continue;
+            }
+        }
 
         void* fixture = calloc(1, test->fixture_size);
         if (!fixture)
@@ -64,7 +101,7 @@ int main(int argc, char** argv)
     printf("Test Results:\n");
     printf("  Passed: %d\n", passed);
     printf("  Failed: %d\n", failed);
-    printf("  Total:  %d\n", g_test_count);
+    printf("  Total:  %d\n", total);
     printf("=================================================\n");
 
     return (failed > 0) ? 1 : 0;
