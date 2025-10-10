@@ -3,6 +3,10 @@
 
 #include "ast/node.h"
 
+/*
+ * Dumps the AST in a way that is predictable and easy to manipulate with text tools.
+ */
+
 typedef struct ast_printer ast_printer_t;
 
 ast_printer_t* ast_printer_create();

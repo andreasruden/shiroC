@@ -415,7 +415,9 @@ static ast_stmt_t* parse_if_stmt(parser_t* parser)
             goto error;
     }
 
-    return ast_if_stmt_create(condition, then_branch, else_branch);
+    ast_stmt_t* if_stmt = ast_if_stmt_create(condition, then_branch, else_branch);
+    parser_set_source_tok_to_current(parser, if_stmt, tok_if);
+    return if_stmt;
 
 error:
     ast_node_destroy(condition);
@@ -539,6 +541,7 @@ static ast_def_t* parse_top_level_definition(parser_t* parser)
 
 ast_root_t* parser_parse(parser_t* parser)
 {
+    token_t* first = lexer_peek_token(parser->lexer);
     vec_t tl_defs = VEC_INIT(ast_node_destroy);
 
     token_t* next_token;
@@ -555,8 +558,9 @@ ast_root_t* parser_parse(parser_t* parser)
             vec_push(&tl_defs, tl_def);
     }
 
-    // We're currently not setting source for root, but it also seems kind of pointless
-    return ast_root_create(&tl_defs);
+    ast_root_t* root = ast_root_create(&tl_defs);
+    parser_set_source_tok_to_current(parser, root, first);
+    return root;
 }
 
 void parser_set_source(parser_t* parser, const char* filename, const char* source)

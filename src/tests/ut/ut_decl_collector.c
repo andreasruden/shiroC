@@ -84,3 +84,24 @@ TEST(decl_collector_fixture_t, collect_redeclaration_error)
 
     ast_node_destroy(root);
 }
+
+TEST(decl_collector_fixture_t, collect_implicit_void_function)
+{
+    // Build AST: fn foo()
+    ast_def_t* fn = ast_fn_def_create_va("foo", nullptr, nullptr, nullptr);
+    ast_root_t* root = ast_root_create_va(fn, nullptr);
+
+    bool result = decl_collector_run(fix->collector, AST_NODE(root));
+    ASSERT_TRUE(result);
+
+    // Verify symbol was added to global scope
+    symbol_t* sym = symbol_table_lookup(fix->ctx->global, "foo");
+    ASSERT_NEQ(nullptr, sym);
+    ASSERT_EQ(SYMBOL_FUNCTION, sym->kind);
+    ASSERT_EQ("foo", sym->name);
+
+    // Verify function signature
+    ASSERT_EQ(ast_type_from_builtin(TYPE_VOID), sym->type);
+
+    ast_node_destroy(root);
+}

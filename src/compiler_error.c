@@ -6,9 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define COLOR_RESET     "\x1b[0m"
-#define COLOR_BOLD_RED  "\x1b[1;31m"
-#define COLOR_BOLD_CYAN "\x1b[1;36m"
+#define COLOR_RESET        "\x1b[0m"
+#define COLOR_BOLD_RED     "\x1b[1;31m"
+#define COLOR_BOLD_MAGENTA "\x1b[1;35m"
 
 static compiler_error_t* compiler_error_create(bool warning, const char* description, ast_node_t* offender,
     const char* source_file, int line, int column)
@@ -60,7 +60,7 @@ void compiler_error_destroy_void(void* error)
 
 char* compiler_error_string(compiler_error_t* error)
 {
-    const char* color = error->is_warning ? COLOR_BOLD_CYAN : COLOR_BOLD_RED;
+    const char* color = error->is_warning ? COLOR_BOLD_MAGENTA : COLOR_BOLD_RED;
     const char* header = error->is_warning ? "warning" : "error";
 
     const char* file;

@@ -37,6 +37,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/stmt/return_stmt.c \
 	$(SRC_DIR)/ast/stmt/stmt.c \
 	$(SRC_DIR)/ast/stmt/while_stmt.c \
+	$(SRC_DIR)/ast/util/presenter.c \
 	$(SRC_DIR)/ast/util/printer.c \
 	$(SRC_DIR)/common/containers/hash_table.c \
 	$(SRC_DIR)/common/containers/string.c \
@@ -60,7 +61,7 @@ UT_SRCS = \
 
 # Compiler target
 COMPILER_TARGET = $(BIN_DIR)/shiroc
-COMPILER_SRCS = $(COMMON_SRCS) $(SRC_DIR)/main.c
+COMPILER_SRCS = $(COMMON_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/codegen/llvm/llvm_codegen.c
 COMPILER_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMPILER_SRCS))
 
 # Unit-tests target

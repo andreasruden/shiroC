@@ -270,6 +270,8 @@ static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
             return;
         }
     }
+
+    call->base.type = symbol->type;
 }
 
 static void analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)

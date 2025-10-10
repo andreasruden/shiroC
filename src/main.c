@@ -1,4 +1,5 @@
 #include "ast/node.h"
+#include "codegen/llvm/llvm_codegen.h"
 #include "common/debug/panic.h"
 #include "compiler_error.h"
 #include "parser/parser.h"
@@ -58,6 +59,41 @@ static void print_ast_errors(vec_t* vec)
         ast_node_t* node = vec_get(vec, i);
         print_compiler_errors(node->errors);
     }
+}
+
+static FILE* open_output_file_for(const char* sourcefile)
+{
+    // Find the last dot in the filename
+    const char *last_dot = strrchr(sourcefile, '.');
+    const char *last_slash = strrchr(sourcefile, '/');
+
+    char *output_path;
+
+    // Make sure the dot is after any slash (i.e., in the filename, not directory)
+    if (last_dot && (!last_slash || last_dot > last_slash)) {
+        // Has an extension - replace it
+        size_t base_len = (size_t)last_dot - (size_t)sourcefile;
+        output_path = malloc(base_len + 4);  // +4 for ".ll\0"
+        panic_if(!output_path);
+        memcpy(output_path, sourcefile, base_len);
+        strcpy(output_path + base_len, ".ll");
+    } else {
+        // No extension - append .ll
+        output_path = malloc(strlen(sourcefile) + 4);  // +4 for ".ll\0"
+        panic_if(!output_path);
+        strcpy(output_path, sourcefile);
+        strcat(output_path, ".ll");
+    }
+
+    FILE *file = fopen(output_path, "w");
+    if (!file) {
+        fprintf(stderr, "Unable to open %s for writing", output_path);
+        free(output_path);
+        return nullptr;
+    }
+    free(output_path);
+
+    return file;
 }
 
 int main(int argc, char** argv)
@@ -125,7 +161,9 @@ int main(int argc, char** argv)
         print_ast_errors(&ctx->warning_nodes);
 
     // Code Generation:
-    printf("Code generation TODO\n");
+    FILE* fout = open_output_file_for(filepath);
+    llvm_codegen_t* llvm = llvm_codegen_create();
+    llvm_codegen_generate(llvm, AST_NODE(ast), fout);
 
     // Cleanup
     semantic_context_destroy(ctx);

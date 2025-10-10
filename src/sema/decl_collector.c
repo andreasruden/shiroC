@@ -2,6 +2,7 @@
 
 #include "ast/decl/param_decl.h"
 #include "ast/def/fn_def.h"
+#include "ast/type.h"
 #include "ast/visitor.h"
 #include "common/containers/vec.h"
 #include "common/util/ssprintf.h"
@@ -30,7 +31,7 @@ void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     }
 
     symbol_t* symbol = symbol_create(fn_def->base.name, SYMBOL_FUNCTION, fn_def);
-    symbol->type = fn_def->return_type;
+    symbol->type = fn_def->return_type == nullptr ? ast_type_from_builtin(TYPE_VOID) : fn_def->return_type;
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
         ast_visitor_visit(collector, vec_get(&fn_def->params, i), symbol);
 
