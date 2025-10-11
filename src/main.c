@@ -201,6 +201,7 @@ int main(int argc, char** argv)
     llvm_codegen_generate(llvm, AST_NODE(ast), fout);
     fflush(fout);
     fclose(fout);
+    llvm_codegen_destroy(llvm);
 
     // Invoke clang to compile LLVM IR into binary:
     compile_with_clang(ir_path, output_redirect);
