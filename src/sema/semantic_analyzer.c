@@ -17,6 +17,7 @@ struct semantic_analyzer
     ast_visitor_t base;
     semantic_context_t* ctx;  // decl_collector does not own ctx
     ast_fn_def_t* current_function;
+    symbol_table_t* current_function_scope;
     init_tracker_t* init_tracker;
     bool in_lvalue_context;
 };
@@ -30,6 +31,18 @@ static symbol_t* add_variable_to_scope(semantic_analyzer_t* sema, void* node, co
         semantic_context_add_error(sema->ctx, node, ssprintf("'%s' already declared at <%s:%d>", name,
             collision->ast->source_begin.filename, collision->ast->source_begin.line));
         return nullptr;
+    }
+
+    // Error: parameter shadowing
+    if (sema->current_function != nullptr)
+    {
+        collision = symbol_table_lookup_local(sema->current_function_scope, name);
+        if (collision != nullptr)
+        {
+            semantic_context_add_error(sema->ctx, node, ssprintf("'%s' redeclares function parameter at <%s:%d>", name,
+                collision->ast->source_begin.filename, collision->ast->source_begin.line));
+            return nullptr;
+        }
     }
 
     // Warning: outer scope shadowing
@@ -97,8 +110,9 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
 {
     semantic_analyzer_t* sema = self_;
 
-    sema->current_function = fn;
     semantic_context_push_scope(sema->ctx, SCOPE_FUNCTION);
+    sema->current_function = fn;
+    sema->current_function_scope = sema->ctx->current;
     init_tracker_t* previous_tracker = sema->init_tracker;
     sema->init_tracker = init_tracker_create();
 
@@ -122,6 +136,7 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     sema->init_tracker = previous_tracker;
     semantic_context_pop_scope(sema->ctx);
     sema->current_function = nullptr;
+    sema->current_function_scope = nullptr;
 }
 
 static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* bin_op)

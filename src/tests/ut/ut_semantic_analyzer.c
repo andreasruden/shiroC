@@ -658,3 +658,26 @@ TEST(ut_sema_fixture_t, comparison_in_if_condition)
 
     ast_node_destroy(block);
 }
+
+// Declaring a local variable with the same name as a parameter should produce an error
+TEST(ut_sema_fixture_t, local_variable_shadows_parameter_error)
+{
+    ast_decl_t* error_node = ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr);
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr,
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(error_node),  // Redeclares parameter 'i'
+            nullptr
+        ),
+        ast_param_decl_create("i", ast_type_from_builtin(TYPE_I32)), nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "redeclares function parameter"));
+
+    ast_node_destroy(foo_fn);
+}
