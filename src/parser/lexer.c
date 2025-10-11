@@ -120,10 +120,80 @@ static char lexer_advance(lexer_t* lexer)
     return c;
 }
 
-static void lexer_skip_whitespace(lexer_t* lex)
+static void lexer_skip_whitespace(lexer_t* lexer)
 {
-    while (isspace(lexer_peek(lex)))
-        lexer_advance(lex);
+    while (isspace(lexer_peek(lexer)))
+        lexer_advance(lexer);
+}
+
+static void lexer_skip_until_next_token(lexer_t* lexer)
+{
+    while (true)
+    {
+        lexer_skip_whitespace(lexer);
+
+        // Check for comments
+        if (lexer_peek(lexer) != '/')
+            break;
+
+        // Save position in case it's not a comment
+        size_t saved_pos = lexer->pos;
+        int saved_line = lexer->line;
+        int saved_col = lexer->column;
+
+        lexer_advance(lexer); // consume '/'
+
+        if (lexer_peek(lexer) == '/')
+        {
+            // Single-line comment: skip until newline
+            lexer_advance(lexer); // consume second '/'
+            while (lexer_peek(lexer) != '\n' && lexer_peek(lexer) != '\0')
+                lexer_advance(lexer);
+        }
+        else if (lexer_peek(lexer) == '*')
+        {
+            // Multi-line comment: skip until */
+            lexer_advance(lexer); // consume '*'
+            while (true)
+            {
+                if (lexer_peek(lexer) == '\0')
+                {
+                    if (lexer->error_output == nullptr)
+                    {
+                        printf("Error: Unterminated multi-line comment at line %d, col %d\n", saved_line, saved_col);
+                    }
+                    else
+                    {
+                        compiler_error_t* error = compiler_error_create_for_source(false,
+                            "unterminated multi-line comment", lexer->filename, saved_line, saved_col);
+                        lexer->error_output(error, lexer->error_output_arg);
+                    }
+                    break;
+                }
+                if (lexer_peek(lexer) == '*')
+                {
+                    lexer_advance(lexer);
+                    if (lexer_peek(lexer) == '/')
+                    {
+                        lexer_advance(lexer); // consume '/'
+                        break; // End of multi-line comment
+                    }
+                }
+                else
+                {
+                    lexer_advance(lexer);
+                }
+            }
+        }
+        else
+        {
+            // Not a comment, restore position
+            lexer->pos = saved_pos;
+            lexer->line = saved_line;
+            lexer->column = saved_col;
+            break;
+        }
+    }
 }
 
 static token_t* token_create(lexer_t* lexer, token_type_t type, const char* value, int line, int col)
@@ -352,7 +422,7 @@ static token_t* lex_symbol(lexer_t* lexer)
 
 static token_t* lex_next_token(lexer_t* lexer)
 {
-    lexer_skip_whitespace(lexer);
+    lexer_skip_until_next_token(lexer);  // skips comments & whitespace
 
     if (lexer->pos >= lexer->length)
         return token_create(lexer, TOKEN_EOF, NULL, lexer->line, lexer->column);
