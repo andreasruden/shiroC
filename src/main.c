@@ -61,50 +61,84 @@ static void print_ast_errors(vec_t* vec)
     }
 }
 
-static FILE* open_output_file_for(const char* sourcefile)
+static FILE* open_output_file_for(const char* sourcefile, char** output_path)
 {
     // Find the last dot in the filename
     const char *last_dot = strrchr(sourcefile, '.');
     const char *last_slash = strrchr(sourcefile, '/');
 
-    char *output_path;
-
     // Make sure the dot is after any slash (i.e., in the filename, not directory)
     if (last_dot && (!last_slash || last_dot > last_slash)) {
         // Has an extension - replace it
         size_t base_len = (size_t)last_dot - (size_t)sourcefile;
-        output_path = malloc(base_len + 4);  // +4 for ".ll\0"
-        panic_if(!output_path);
-        memcpy(output_path, sourcefile, base_len);
-        strcpy(output_path + base_len, ".ll");
+        *output_path = malloc(base_len + 4);  // +4 for ".ll\0"
+        panic_if(!*output_path);
+        memcpy(*output_path, sourcefile, base_len);
+        strcpy(*output_path + base_len, ".ll");
     } else {
         // No extension - append .ll
-        output_path = malloc(strlen(sourcefile) + 4);  // +4 for ".ll\0"
-        panic_if(!output_path);
-        strcpy(output_path, sourcefile);
-        strcat(output_path, ".ll");
+        *output_path = malloc(strlen(sourcefile) + 4);  // +4 for ".ll\0"
+        panic_if(!*output_path);
+        strcpy(*output_path, sourcefile);
+        strcat(*output_path, ".ll");
     }
 
-    FILE *file = fopen(output_path, "w");
+    FILE *file = fopen(*output_path, "w");
     if (!file) {
-        fprintf(stderr, "Unable to open %s for writing", output_path);
-        free(output_path);
+        fprintf(stderr, "Unable to open %s for writing", *output_path);
+        free(*output_path);
         return nullptr;
     }
-    free(output_path);
 
     return file;
 }
 
+static void compile_with_clang(const char* filepath, const char* output_redirect)
+{
+    char *output_name;
+    if (output_redirect == nullptr)
+    {
+        // Remove ".ll" extension
+        size_t len = strlen(filepath);
+        output_name = malloc(len + 1);
+        strcpy(output_name, filepath);
+        char *ext = strstr(output_name, ".ll");
+        if (ext && ext[3] == '\0') {
+            *ext = '\0';
+        }
+    }
+    else
+        output_name = strdup(output_redirect);
+
+    // Build command
+    size_t cmd_len = strlen("clang  -o  -Wno-override-module") + strlen(filepath) + strlen(output_name) + 1;
+    char *command = malloc(cmd_len);
+    snprintf(command, cmd_len, "clang %s -o %s -Wno-override-module", filepath, output_name);
+
+    // Execute
+    int result = system(command);
+
+    if (result != 0) {
+        fprintf(stderr, "clang compilation failed\n");
+    }
+
+    free(command);
+    free(output_name);
+}
+
 int main(int argc, char** argv)
 {
-    if (argc != 2)
+    if (argc < 2)
     {
-        fprintf(stderr, "Usage: %s <file.shiro>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <file.shiro> [-o FILE]\n", argv[0]);
         return 1;
     }
 
+    const char* output_redirect = nullptr;
     const char* filepath = argv[1];
+
+    if (argc == 4 && strcmp(argv[2], "-o") == 0)
+        output_redirect = argv[3];
 
     // Read source file
     char* source = read_file(filepath);
@@ -161,11 +195,20 @@ int main(int argc, char** argv)
         print_ast_errors(&ctx->warning_nodes);
 
     // Code Generation:
-    FILE* fout = open_output_file_for(filepath);
+    char* ir_path;
+    FILE* fout = open_output_file_for(filepath, &ir_path);
     llvm_codegen_t* llvm = llvm_codegen_create();
     llvm_codegen_generate(llvm, AST_NODE(ast), fout);
+    fflush(fout);
+    fclose(fout);
+
+    // Invoke clang to compile LLVM IR into binary:
+    compile_with_clang(ir_path, output_redirect);
 
     // Cleanup
+    if (output_redirect != nullptr)
+        remove(ir_path);
+    free(ir_path);
     semantic_context_destroy(ctx);
     ast_node_destroy(ast);
     free(source);
