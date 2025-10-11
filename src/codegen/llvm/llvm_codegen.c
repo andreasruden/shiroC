@@ -87,7 +87,7 @@ static const char* llvm_type(ast_type_t* type)
 {
     if (type == nullptr)
         return "void";
-    if (type == ast_type_from_builtin(TYPE_BOOL))
+    if (type == ast_type_builtin(TYPE_BOOL))
         return "i1";
     return ast_type_string(type);
 }
@@ -149,7 +149,7 @@ static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     EMIT("\n");
 
     ast_visitor_visit(llvm, fn_def->body, out_);
-    if (fn_def->return_type == ast_type_from_builtin(TYPE_VOID))
+    if (fn_def->return_type == ast_type_builtin(TYPE_VOID))
         EMITLN("ret void");
     --llvm->indentation;
     EMITLN("}\n");
@@ -170,7 +170,7 @@ static void emit_bool_lit(void* self_, ast_bool_lit_t* lit, void* out_)
 
 static void emit_float_lit(void* self_, ast_float_lit_t* lit, void* out_)
 {
-    if (lit->base.type == ast_type_from_builtin(TYPE_F64))
+    if (lit->base.type == ast_type_builtin(TYPE_F64))
         EMIT("%s = add %s 0, %lf", NEW_TMPVAR(), llvm_type(lit->base.type), lit->value);
     else
         EMIT("%s = add %s 0, %f", NEW_TMPVAR(), llvm_type(lit->base.type), (float)lit->value);
@@ -186,6 +186,12 @@ static void emit_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
         EMIT("%s = add %s 0, %lu", NEW_TMPVAR(), llvm_type(lit->base.type), lit->value.as_unsigned);
     EMIT_INLINE("  ");
     EMIT_SRC_INLINE(lit);
+}
+
+static void emit_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
+{
+    (void)lit;
+    EMITLN("TODO");
 }
 
 static void emit_simple_assignment(void* self_, ast_bin_op_t* bin_op, void* out_)
@@ -281,7 +287,7 @@ static void emit_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 
     // Emit name of function
     EMITLN("; Call");
-    if (call->base.type == ast_type_from_builtin(TYPE_VOID))
+    if (call->base.type == ast_type_builtin(TYPE_VOID))
         EMIT("call void @");
     else
         EMIT("%s = call %s @", NEW_TMPVAR(), llvm_type(call->base.type));
@@ -456,6 +462,7 @@ llvm_codegen_t* llvm_codegen_create()
             .visit_call_expr = emit_call_expr,
             .visit_float_lit = emit_float_lit,
             .visit_int_lit = emit_int_lit,
+            .visit_null_lit = emit_null_lit,
             .visit_paren_expr = emit_paren_expr,
             .visit_ref_expr = emit_ref_expr,
             // .visit_str_lit = emit_str_lit, FIXME:

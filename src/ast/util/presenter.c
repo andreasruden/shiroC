@@ -5,6 +5,7 @@
 #include "ast/visitor.h"
 #include "common/containers/string.h"
 #include "common/util/ssprintf.h"
+#include "parser/lexer.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -111,12 +112,26 @@ static void present_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
         string_append_cstr(out, ssprintf("%ld", int_lit->value.as_unsigned));
 }
 
+static void present_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
+{
+    PRELUDE
+    (void)lit;
+
+    string_append_cstr(out, "null");
+}
 
 static void present_str_lit(void* self_, ast_str_lit_t* str_lit, void* out_)
 {
     PRELUDE
 
     string_append_cstr(out, ssprintf("%s", str_lit->value));
+}
+static void present_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("%s", token_type_str(unary_op->op)));
+    ast_visitor_visit(self, unary_op->expr, out);
 }
 
 static void present_paren_expr(void* self_, ast_paren_expr_t* paren_expr, void* out_)
@@ -202,9 +217,11 @@ ast_presenter_t* ast_presenter_create()
             .visit_call_expr = present_call_expr,
             .visit_float_lit = present_float_lit,
             .visit_int_lit = present_int_lit,
+            .visit_null_lit = present_null_lit,
             .visit_paren_expr = present_paren_expr,
             .visit_ref_expr = present_ref_expr,
             .visit_str_lit = present_str_lit,
+            .visit_unary_op = present_unary_op,
             // Statements
             .visit_compound_stmt = present_compound_stmt,
             .visit_decl_stmt = present_decl_stmt,

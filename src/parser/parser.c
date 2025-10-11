@@ -10,9 +10,11 @@
 #include "ast/expr/expr.h"
 #include "ast/expr/float_lit.h"
 #include "ast/expr/int_lit.h"
+#include "ast/expr/null_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/expr/str_lit.h"
+#include "ast/expr/unary_op.h"
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
@@ -151,6 +153,18 @@ static ast_expr_t* parse_int_lit(parser_t* parser)
     return expr;
 }
 
+static ast_expr_t* parse_null_lit(parser_t* parser)
+{
+    token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_NULL);
+    if (tok == nullptr)
+        return nullptr;
+
+    ast_expr_t* expr = ast_null_lit_create();
+    parser_set_source_tok_to_current(parser, expr, tok);
+
+    return expr;
+}
+
 static ast_expr_t* parse_str_lit(parser_t* parser)
 {
     token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_STRING);
@@ -248,18 +262,41 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
             return parse_bool_lit(parser);
         case TOKEN_STRING:
             return parse_str_lit(parser);
+        case TOKEN_NULL:
+            return parse_null_lit(parser);
         default:
             break;
     }
     return nullptr;
 }
 
-// Use precedence climbing to efficiently parse expressions
+static ast_expr_t* parse_unary_expr(parser_t* parser)
+{
+    token_t* tok = lexer_peek_token(parser->lexer);
+
+    if (token_type_is_unary_op(tok->type))
+    {
+        lexer_next_token(parser->lexer);
+
+        // Recursively parse unary to handle chains like *&x
+        ast_expr_t* inner_expr = parse_unary_expr(parser);
+        if (inner_expr == nullptr)
+            return nullptr;
+
+        ast_expr_t* expr = ast_unary_op_create(tok->type, inner_expr);
+        parser_set_source_tok_to_current(parser, expr, tok);
+        return expr;
+    }
+
+    return parser_parse_primary_expr(parser);
+}
+
+// Use precedence climbing to efficiently parse binary operator expressions
 static ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_precedence)
 {
     token_t* first_tok = lexer_peek_token(parser->lexer);
 
-    ast_expr_t* lhs = parser_parse_primary_expr(parser);
+    ast_expr_t* lhs = parse_unary_expr(parser);
     if (lhs == nullptr)
         return nullptr;
 
@@ -376,6 +413,26 @@ static ast_stmt_t* parse_compound_stmt(parser_t* parser)
     return stmt;
 }
 
+static ast_type_t* parse_type_annotation(parser_t* parser)
+{
+    token_t* type_tok = lexer_peek_token(parser->lexer);
+    ast_type_t* type = ast_type_from_token(type_tok);
+    if (type->kind == AST_TYPE_INVALID)
+    {
+        lexer_emit_error_for_token(parser->lexer, type_tok, TOKEN_IDENTIFIER);
+    }
+    else
+    {
+        lexer_next_token(parser->lexer);
+        while (lexer_peek_token(parser->lexer)->type == TOKEN_STAR)
+        {
+            lexer_next_token(parser->lexer);
+            type = ast_type_pointer(type);
+        }
+    }
+    return type;
+}
+
 static ast_decl_t* parse_var_decl(parser_t* parser)
 {
     token_t* tok_var = lexer_next_token_iff(parser->lexer, TOKEN_VAR);
@@ -388,21 +445,11 @@ static ast_decl_t* parse_var_decl(parser_t* parser)
 
     ast_var_decl_t* var_decl = ast_var_decl_create_mandatory(name->value);
 
-    // Optional type specification
+    // Optional type annotation
     if (lexer_peek_token(parser->lexer)->type == TOKEN_COLON)
     {
         lexer_next_token(parser->lexer);
-        token_t* type_tok = lexer_peek_token(parser->lexer);
-        ast_type_t* type = ast_type_from_token(type_tok);
-        if (type->kind == AST_TYPE_INVALID)
-        {
-            lexer_emit_error_for_token(parser->lexer, type_tok, TOKEN_IDENTIFIER);
-        }
-        else
-        {
-            var_decl->type = type;
-            lexer_next_token(parser->lexer);
-        }
+        var_decl->type = parse_type_annotation(parser);
     }
 
     // Optional initialization expression
@@ -415,9 +462,17 @@ static ast_decl_t* parse_var_decl(parser_t* parser)
     }
 
     if (var_decl->type == nullptr && var_decl->init_expr == nullptr)
+    {
         parser_error(parser, var_decl, "variable declaration must have either a type annotation or an initializer");
+    }
     else if (var_decl->type != nullptr && var_decl->init_expr != nullptr)
-        parser_error(parser, var_decl, "variable declaration cannot have both a type annotation and an initializer");
+    {
+        if (AST_KIND(var_decl->init_expr) != AST_EXPR_NULL_LIT)  // exception: null lit
+        {
+            parser_error(parser, var_decl,
+                "variable declaration cannot have both a type annotation and an initializer");
+        }
+    }
 
     parser_set_source_tok_to_current(parser, var_decl, tok_var);
 

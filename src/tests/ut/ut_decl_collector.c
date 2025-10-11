@@ -29,9 +29,9 @@ TEST_TEARDOWN(decl_collector_fixture_t)
 TEST(decl_collector_fixture_t, collect_function_with_params)
 {
     // Build AST: fn add(x: int, y: int) -> int
-    ast_decl_t* param_x = ast_param_decl_create("x", ast_type_from_builtin(TYPE_I32));
-    ast_decl_t* param_y = ast_param_decl_create("y", ast_type_from_builtin(TYPE_F32));
-    ast_def_t* fn = ast_fn_def_create_va("add", ast_type_from_builtin(TYPE_I32), nullptr, param_x, param_y, nullptr);
+    ast_decl_t* param_x = ast_param_decl_create("x", ast_type_builtin(TYPE_I32));
+    ast_decl_t* param_y = ast_param_decl_create("y", ast_type_builtin(TYPE_F32));
+    ast_def_t* fn = ast_fn_def_create_va("add", ast_type_builtin(TYPE_I32), nullptr, param_x, param_y, nullptr);
     ast_root_t* root = ast_root_create_va(fn, nullptr);
 
     bool result = decl_collector_run(fix->collector, AST_NODE(root));
@@ -44,7 +44,7 @@ TEST(decl_collector_fixture_t, collect_function_with_params)
     ASSERT_EQ("add", sym->name);
 
     // Verify function signature
-    ast_type_t* type_i32 = ast_type_from_builtin(TYPE_I32);
+    ast_type_t* type_i32 = ast_type_builtin(TYPE_I32);
     ASSERT_TRUE(ast_type_equal(type_i32, sym->type));
 
     // Verify parameters
@@ -56,7 +56,7 @@ TEST(decl_collector_fixture_t, collect_function_with_params)
 
     ast_param_decl_t* p2 = vec_get(&sym->data.function.parameters, 1);
     ASSERT_EQ("y", p2->name);
-    ast_type_t* type_f32 = ast_type_from_builtin(TYPE_F32);
+    ast_type_t* type_f32 = ast_type_builtin(TYPE_F32);
     ASSERT_TRUE(ast_type_equal(type_f32, p2->type));
 
     ast_node_destroy(root);
@@ -64,12 +64,12 @@ TEST(decl_collector_fixture_t, collect_function_with_params)
 
 TEST(decl_collector_fixture_t, collect_redeclaration_error)
 {
-    ast_def_t* fn1 = ast_fn_def_create_va("mul", ast_type_from_builtin(TYPE_I32), nullptr, nullptr);
+    ast_def_t* fn1 = ast_fn_def_create_va("mul", ast_type_builtin(TYPE_I32), nullptr, nullptr);
     source_location_t begin_loc, end_loc;
     set_source_location(&begin_loc, "test.c", 42, 1);
     set_source_location(&end_loc, "test.c", 60, 2);
     ast_node_set_source(fn1, &begin_loc, &end_loc);
-    ast_def_t* fn2 = ast_fn_def_create_va("mul", ast_type_from_builtin(TYPE_I32), nullptr, nullptr);
+    ast_def_t* fn2 = ast_fn_def_create_va("mul", ast_type_builtin(TYPE_I32), nullptr, nullptr);
     ast_root_t* root = ast_root_create_va(fn1, fn2, nullptr);
 
     bool result = decl_collector_run(fix->collector, AST_NODE(root));
@@ -101,7 +101,7 @@ TEST(decl_collector_fixture_t, collect_implicit_void_function)
     ASSERT_EQ("foo", sym->name);
 
     // Verify function signature
-    ASSERT_EQ(ast_type_from_builtin(TYPE_VOID), sym->type);
+    ASSERT_EQ(ast_type_builtin(TYPE_VOID), sym->type);
 
     ast_node_destroy(root);
 }

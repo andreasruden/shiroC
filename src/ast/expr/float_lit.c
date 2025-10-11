@@ -43,5 +43,6 @@ static void ast_float_lit_destroy(void* self_)
         return;
 
     ast_expr_deconstruct((ast_expr_t*)self);
+    free(self->suffix);
     free(self);
 }

@@ -6,7 +6,9 @@
 #include "ast/expr/call_expr.h"
 #include "ast/expr/float_lit.h"
 #include "ast/expr/int_lit.h"
+#include "ast/expr/null_lit.h"
 #include "ast/expr/ref_expr.h"
+#include "ast/expr/unary_op.h"
 #include "ast/node.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
@@ -21,6 +23,7 @@
 #include "sema/semantic_analyzer.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
+#include "sema/symbol_table.h"
 #include "test_runner.h"
 
 #include <stdarg.h>
@@ -49,9 +52,9 @@ TEST_TEARDOWN(ut_sema_fixture_t)
 // Emit an error when a name in the same scope is redeclared
 TEST(ut_sema_fixture_t, variable_redeclaration_error)
 {
-    ast_decl_t* error_node = ast_var_decl_create("my_var", ast_type_from_builtin(TYPE_F32), nullptr);
+    ast_decl_t* error_node = ast_var_decl_create("my_var", ast_type_builtin(TYPE_F32), nullptr);
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("my_var", ast_type_from_builtin(TYPE_BOOL), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("my_var", ast_type_builtin(TYPE_BOOL), nullptr)),
         ast_decl_stmt_create(error_node),
         nullptr
     ), nullptr);
@@ -72,9 +75,9 @@ TEST(ut_sema_fixture_t, variable_redeclaration_error)
 TEST(ut_sema_fixture_t, variable_shadowing)
 {
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_I32), nullptr)),
         ast_compound_stmt_create_va(
-            ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_F32), nullptr)),
+            ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_F32), nullptr)),
             nullptr
         ),
         nullptr
@@ -96,7 +99,7 @@ TEST(ut_sema_fixture_t, variable_read_requires_initialization)
 {
     ast_expr_t* error_node = ast_ref_expr_create("x");
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_I32), nullptr)),
         ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS_ASSIGN, error_node, ast_int_lit_val(42))),
         nullptr
     ), nullptr);
@@ -116,7 +119,7 @@ TEST(ut_sema_fixture_t, variable_read_requires_initialization)
 TEST(ut_sema_fixture_t, variable_write_only_requires_declaration)
 {
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_I32), nullptr)),
         ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("x"), ast_int_lit_val(42))),
         nullptr
     ), nullptr);
@@ -131,7 +134,7 @@ TEST(ut_sema_fixture_t, variable_write_only_requires_declaration)
 // Function parameters should not emit uninitialized errors
 TEST(ut_sema_fixture_t, assume_function_parameter_is_initialized)
 {
-    ast_decl_t* param = ast_param_decl_create("param", ast_type_from_builtin(TYPE_I32));
+    ast_decl_t* param = ast_param_decl_create("param", ast_type_builtin(TYPE_I32));
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
             ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("param"), ast_int_lit_val(42))),
             nullptr),
@@ -149,7 +152,7 @@ TEST(ut_sema_fixture_t, call_expr_must_be_ref_function_symbol)
 {
     ast_expr_t* error_node = ast_ref_expr_create("not_a_function");
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("not_a_function", ast_type_from_builtin(TYPE_I32),
+        ast_decl_stmt_create(ast_var_decl_create("not_a_function", ast_type_builtin(TYPE_I32),
             ast_int_lit_val(5))),
         ast_expr_stmt_create(ast_call_expr_create_va(error_node, nullptr)),
         nullptr
@@ -169,16 +172,16 @@ TEST(ut_sema_fixture_t, call_expr_must_be_ref_function_symbol)
 // Calling a function with wrong number of arguments
 TEST(ut_sema_fixture_t, call_expr_arg_count_mismatch_error)
 {
-    ast_decl_t* param_x = ast_param_decl_create("x", ast_type_from_builtin(TYPE_I32));
-    ast_decl_t* param_y = ast_param_decl_create("y", ast_type_from_builtin(TYPE_I32));
-    ast_def_t* bar_fn = ast_fn_def_create_va("bar", ast_type_from_builtin(TYPE_VOID),
+    ast_decl_t* param_x = ast_param_decl_create("x", ast_type_builtin(TYPE_I32));
+    ast_decl_t* param_y = ast_param_decl_create("y", ast_type_builtin(TYPE_I32));
+    ast_def_t* bar_fn = ast_fn_def_create_va("bar", ast_type_builtin(TYPE_VOID),
         ast_compound_stmt_create_empty(),
         param_x, param_y, nullptr
     );
 
     // Register bar function in global symbol table
     symbol_t* bar_symbol = symbol_create("bar", SYMBOL_FUNCTION, bar_fn);
-    bar_symbol->type = ast_type_from_builtin(TYPE_VOID);
+    bar_symbol->type = ast_type_builtin(TYPE_VOID);
     vec_push(&bar_symbol->data.function.parameters, param_x);
     vec_push(&bar_symbol->data.function.parameters, param_y);
     symbol_table_insert(fix->ctx->global, bar_symbol);
@@ -206,15 +209,15 @@ TEST(ut_sema_fixture_t, call_expr_arg_count_mismatch_error)
 // Calling a function with wrong argument type
 TEST(ut_sema_fixture_t, call_expr_arg_type_mismatch_error)
 {
-    ast_decl_t* param_x = ast_param_decl_create("x", ast_type_from_builtin(TYPE_BOOL));
-    ast_def_t* bar_fn = ast_fn_def_create_va("bar", ast_type_from_builtin(TYPE_VOID),
+    ast_decl_t* param_x = ast_param_decl_create("x", ast_type_builtin(TYPE_BOOL));
+    ast_def_t* bar_fn = ast_fn_def_create_va("bar", ast_type_builtin(TYPE_VOID),
         ast_compound_stmt_create_empty(),
         param_x, nullptr
     );
 
     // Register bar function in global symbol table
     symbol_t* bar_symbol = symbol_create("bar", SYMBOL_FUNCTION, bar_fn);
-    bar_symbol->type = ast_type_from_builtin(TYPE_VOID);
+    bar_symbol->type = ast_type_builtin(TYPE_VOID);
     vec_push(&bar_symbol->data.function.parameters, param_x);
     symbol_table_insert(fix->ctx->global, bar_symbol);
 
@@ -240,7 +243,7 @@ TEST(ut_sema_fixture_t, call_expr_arg_type_mismatch_error)
 TEST(ut_sema_fixture_t, return_stmt_type_mismatch_function_return_type_error)
 {
     ast_expr_t* error_node = ast_int_lit_val(42);
-    ast_def_t* foo_fn = ast_fn_def_create_va("foo", ast_type_from_builtin(TYPE_BOOL),
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", ast_type_builtin(TYPE_BOOL),
         ast_compound_stmt_create_va(
             ast_return_stmt_create(error_node),  // Returning bool, but function returns i32
             nullptr
@@ -260,9 +263,9 @@ TEST(ut_sema_fixture_t, return_stmt_type_mismatch_function_return_type_error)
 // Emit error for function with return type but missing return statement
 TEST(ut_sema_fixture_t, function_with_return_type_has_path_without_return_error)
 {
-    ast_def_t* error_node = ast_fn_def_create_va("foo", ast_type_from_builtin(TYPE_I32),
+    ast_def_t* error_node = ast_fn_def_create_va("foo", ast_type_builtin(TYPE_I32),
         ast_compound_stmt_create_va(
-            ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(5))),
+            ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_I32), ast_int_lit_val(5))),
             nullptr  // No return statement
         ), nullptr);
 
@@ -325,7 +328,7 @@ TEST(ut_sema_fixture_t, assignment_with_mismatched_types)
     ast_expr_t* error_node = ast_ref_expr_create("x");
 
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_BOOL), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_BOOL), nullptr)),
         // Error: assign i32 to bool
         ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(true))),
         nullptr
@@ -346,7 +349,7 @@ TEST(ut_sema_fixture_t, assignment_with_mismatched_types)
 TEST(ut_sema_fixture_t, variable_init_in_if_both_branches)
 {
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), nullptr)),
         ast_if_stmt_create(
             ast_ref_expr_create("cond"),
             ast_compound_stmt_create_va(
@@ -361,7 +364,7 @@ TEST(ut_sema_fixture_t, variable_init_in_if_both_branches)
         // After if-statement, i should be initialized
         ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("i"), ast_int_lit_val(23))),
         nullptr
-    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
+    ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
     ASSERT_TRUE(res);
@@ -375,7 +378,7 @@ TEST(ut_sema_fixture_t, variable_init_in_if_only_then_branch)
 {
     ast_expr_t* error_node = ast_ref_expr_create("i");
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), nullptr)),
         ast_if_stmt_create(
             ast_ref_expr_create("cond"),
             ast_compound_stmt_create_va(
@@ -393,7 +396,7 @@ TEST(ut_sema_fixture_t, variable_init_in_if_only_then_branch)
         // After if-statement, i is NOT initialized (error)
         ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_int_lit_val(5), error_node)),
         nullptr
-    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
+    ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
     ASSERT_FALSE(res);
@@ -411,7 +414,7 @@ TEST(ut_sema_fixture_t, variable_init_in_if_no_else_branch)
 {
     ast_expr_t* error_node = ast_ref_expr_create("i");
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), nullptr)),
         ast_if_stmt_create(
             ast_ref_expr_create("cond"),
             ast_compound_stmt_create_va(
@@ -424,7 +427,7 @@ TEST(ut_sema_fixture_t, variable_init_in_if_no_else_branch)
         // After if-statement, i might not be initialized (error)
         ast_expr_stmt_create(ast_bin_op_create(TOKEN_STAR, error_node, ast_int_lit_val(5))),
         nullptr
-    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
+    ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
     ASSERT_FALSE(res);
@@ -442,7 +445,7 @@ TEST(ut_sema_fixture_t, variable_init_in_while_loop)
 {
     ast_expr_t* error_node = ast_ref_expr_create("i");
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), nullptr)),
         ast_while_stmt_create(
             ast_ref_expr_create("cond"),
             ast_compound_stmt_create_va(
@@ -453,7 +456,7 @@ TEST(ut_sema_fixture_t, variable_init_in_while_loop)
         // After while loop, i is NOT guaranteed to be initialized
         ast_expr_stmt_create(error_node),
         nullptr
-    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)),  nullptr);
+    ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)),  nullptr);
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
     ASSERT_FALSE(res);
@@ -470,7 +473,7 @@ TEST(ut_sema_fixture_t, variable_init_in_while_loop)
 TEST(ut_sema_fixture_t, variable_init_before_if_remains_initialized)
 {
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(10))),
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), ast_int_lit_val(10))),
         ast_if_stmt_create(
             ast_ref_expr_create("cond"),
             ast_compound_stmt_create_va(
@@ -483,7 +486,7 @@ TEST(ut_sema_fixture_t, variable_init_before_if_remains_initialized)
         // i should still be initialized here
         ast_expr_stmt_create(ast_ref_expr_create("i")),
         nullptr
-    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
+    ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
     ASSERT_TRUE(res);
@@ -497,7 +500,7 @@ TEST(ut_sema_fixture_t, uninitialized_variable_used_in_while_condition)
 {
     ast_expr_t* error_node = ast_ref_expr_create("y");
     ast_stmt_t* block = ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("y", ast_type_from_builtin(TYPE_BOOL), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("y", ast_type_builtin(TYPE_BOOL), nullptr)),
         ast_while_stmt_create(error_node, ast_compound_stmt_create_empty()),
         nullptr
     );
@@ -518,18 +521,18 @@ TEST(ut_sema_fixture_t, variable_shadowing_does_not_affect_outer_scope_initializ
 {
     ast_expr_t* error_node = ast_ref_expr_create("i");
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), nullptr)),
         ast_if_stmt_create(
             ast_ref_expr_create("cond"), ast_compound_stmt_create_va(
                 // Shadow outer 'i' with a new local 'i'
-                ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(10))),
+                ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), ast_int_lit_val(10))),
                 // This 'i' refers to the inner variable, which is initialized
                 ast_expr_stmt_create(ast_ref_expr_create("i")),
                 nullptr
             ),
             ast_compound_stmt_create_va(
                 // Shadow outer 'i' with another new local 'i'
-                ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(20))),
+                ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), ast_int_lit_val(20))),
                 // This 'i' also refers to the inner variable
                 ast_expr_stmt_create(ast_ref_expr_create("i")),
                 nullptr
@@ -539,7 +542,7 @@ TEST(ut_sema_fixture_t, variable_shadowing_does_not_affect_outer_scope_initializ
         // The initializations only affected the shadowed inner variables
         ast_expr_stmt_create(error_node),
         nullptr
-    ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
+    ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
     ASSERT_FALSE(res);
@@ -556,10 +559,10 @@ TEST(ut_sema_fixture_t, variable_shadowing_does_not_affect_outer_scope_initializ
 TEST(ut_sema_fixture_t, assignment_to_function_error)
 {
     // Register a function in global scope
-    ast_def_t* foo_fn = ast_fn_def_create_va("foo", ast_type_from_builtin(TYPE_VOID), ast_compound_stmt_create_empty(),
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", ast_type_builtin(TYPE_VOID), ast_compound_stmt_create_empty(),
         nullptr);
     symbol_t* foo_symbol = symbol_create("foo", SYMBOL_FUNCTION, foo_fn);
-    foo_symbol->type = ast_type_from_builtin(TYPE_VOID);
+    foo_symbol->type = ast_type_builtin(TYPE_VOID);
     symbol_table_insert(fix->ctx->global, foo_symbol);
 
     // Try to assign to the function
@@ -620,7 +623,7 @@ TEST(ut_sema_fixture_t, assignment_to_parameter_allowed)
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
         ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("param"), ast_int_lit_val(42))),
         nullptr
-    ), ast_param_decl_create("param", ast_type_from_builtin(TYPE_I32)), nullptr);
+    ), ast_param_decl_create("param", ast_type_builtin(TYPE_I32)), nullptr);
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
     ASSERT_TRUE(res);
@@ -649,7 +652,7 @@ TEST(ut_sema_fixture_t, symbol_not_exist)
 TEST(ut_sema_fixture_t, comparison_in_if_condition)
 {
     ast_stmt_t* block = ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(3))),
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), ast_int_lit_val(3))),
         ast_if_stmt_create(ast_bin_op_create(TOKEN_GT, ast_ref_expr_create("i"), ast_int_lit_val(5)),
             ast_compound_stmt_create_empty(), nullptr),
         nullptr);
@@ -663,13 +666,13 @@ TEST(ut_sema_fixture_t, comparison_in_if_condition)
 // Declaring a local variable with the same name as a parameter should produce an error
 TEST(ut_sema_fixture_t, local_variable_shadows_parameter_error)
 {
-    ast_decl_t* error_node = ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), nullptr);
+    ast_decl_t* error_node = ast_var_decl_create("i", ast_type_builtin(TYPE_I32), nullptr);
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr,
         ast_compound_stmt_create_va(
             ast_decl_stmt_create(error_node),  // Redeclares parameter 'i'
             nullptr
         ),
-        ast_param_decl_create("i", ast_type_from_builtin(TYPE_I32)), nullptr
+        ast_param_decl_create("i", ast_type_builtin(TYPE_I32)), nullptr
     );
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
@@ -906,16 +909,160 @@ TEST(ut_sema_fixture_t, accept_valid_float_literals)
 
         if (test_cases[i].is_f32)
         {
-            ASSERT_EQ(lit->base.type, ast_type_from_builtin(TYPE_F32));
+            ASSERT_EQ(lit->base.type, ast_type_builtin(TYPE_F32));
             ASSERT_EQ(test_cases[i].expected_value.as_f32, (float)lit->value);
         }
         else
         {
-            ASSERT_EQ(lit->base.type, ast_type_from_builtin(TYPE_F64));
+            ASSERT_EQ(lit->base.type, ast_type_builtin(TYPE_F64));
             ASSERT_EQ(test_cases[i].expected_value.as_f64, lit->value);
         }
     }
 
     for (size_t i = 0; i < num_tests; i++)
         ast_node_destroy(AST_NODE(test_cases[i].node));
+}
+
+TEST(ut_sema_fixture_t, accept_assign_address_to_pointer)
+{
+    // var i = 10;
+    // var ptr = &i;
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", nullptr, ast_int_lit_val(10))),
+        ast_decl_stmt_create(ast_var_decl_create("ptr", nullptr, ast_unary_op_create(TOKEN_AMPERSAND,
+            ast_ref_expr_create("i")))),
+        nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(AST_NODE(block));
+}
+
+TEST(ut_sema_fixture_t, reject_assign_value_to_pointer)
+{
+    // var i = 10;
+    // var ptr: i32*;
+    // ptr = i;  // Error: can't assign i32 to i32*
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", nullptr, ast_int_lit_val(10))),
+        ast_decl_stmt_create(ast_var_decl_create("ptr", ast_type_pointer(ast_type_builtin(TYPE_I32)), nullptr)),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("ptr"), ast_ref_expr_create("i"))),
+        nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_FALSE(res);
+    ASSERT_LT(0, vec_size(&fix->ctx->error_nodes));
+
+    compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "type is 'i32*'"));
+
+    ast_node_destroy(AST_NODE(block));
+}
+
+TEST(ut_sema_fixture_t, accept_dereference_pointer)
+{
+    // var value = 10;
+    // var ptr = &value;
+    // value = *ptr;
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("value", nullptr, ast_int_lit_val(10))),
+        ast_decl_stmt_create(ast_var_decl_create("ptr", nullptr, ast_unary_op_create(TOKEN_AMPERSAND,
+            ast_ref_expr_create("value")))),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("value"),
+            ast_unary_op_create(TOKEN_STAR, ast_ref_expr_create("ptr")))),
+        nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(AST_NODE(block));
+}
+
+TEST(ut_sema_fixture_t, reject_assign_to_address_of_lvalue)
+{
+    // var i = 5;
+    // &i = 10;  // Error: not an lvalue
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", nullptr, ast_int_lit_val(5))),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_unary_op_create(TOKEN_AMPERSAND,
+            ast_ref_expr_create("i")), ast_int_lit_val(10))),
+        nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_FALSE(res);
+    ASSERT_LT(0, vec_size(&fix->ctx->error_nodes));
+
+    compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "address of l-value"));
+
+    ast_node_destroy(AST_NODE(block));
+}
+
+TEST(ut_sema_fixture_t, reject_null_without_type_annotation)
+{
+    // var ptr = null;  // Error: cannot infer type from null
+    ast_stmt_t* stmt = ast_decl_stmt_create(ast_var_decl_create("ptr", nullptr, ast_null_lit_create()));
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(stmt));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+
+    compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "cannot infer type from 'null'"));
+
+    ast_node_destroy(AST_NODE(stmt));
+}
+
+TEST(ut_sema_fixture_t, accept_null_with_type_annotation)
+{
+    // var ptr: i32* = null;
+    ast_stmt_t* stmt = ast_decl_stmt_create(
+        ast_var_decl_create("ptr", ast_type_pointer(ast_type_builtin(TYPE_I32)), ast_null_lit_create()));
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(stmt));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    symbol_t* symbol = symbol_table_lookup(fix->ctx->current, "ptr");
+    ASSERT_NEQ(nullptr, symbol);
+    ASSERT_EQ(symbol->type, ast_type_pointer(ast_type_builtin(TYPE_I32)));
+
+    ast_node_destroy(AST_NODE(stmt));
+}
+
+TEST(ut_sema_fixture_t, accept_null_assigned_to_non_pointer_type)
+{
+    // var ptr: i32 = null;  // Error: annotated type is not pointer
+    ast_stmt_t* stmt = ast_decl_stmt_create(
+        ast_var_decl_create("ptr", ast_type_builtin(TYPE_I32), ast_null_lit_create()));
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(stmt));
+    ASSERT_FALSE(res);
+    ASSERT_LT(0, vec_size(&fix->ctx->error_nodes));
+
+    compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "cannot assign 'null' to non-pointer type"));
+
+    ast_node_destroy(AST_NODE(stmt));
+}
+
+TEST(ut_sema_fixture_t, accept_null_comparison_in_function)
+{
+    // foo(ptr: bool*) { if (ptr == null) {} }
+    ast_def_t* func = ast_fn_def_create_va(
+        "foo", ast_type_builtin(TYPE_VOID),
+        ast_compound_stmt_create_va(
+            ast_if_stmt_create(ast_bin_op_create(TOKEN_EQ, ast_ref_expr_create("ptr"), ast_null_lit_create()),
+                ast_compound_stmt_create_empty(), nullptr), nullptr),
+        ast_param_decl_create("ptr", ast_type_pointer(ast_type_builtin(TYPE_BOOL))),
+        nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(func));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(AST_NODE(func));
 }

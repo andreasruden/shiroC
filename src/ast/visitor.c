@@ -60,11 +60,23 @@ static void ast_visitor_visit_int_lit(void* self_, ast_int_lit_t* int_lit, void*
     (void)out_;
 }
 
+static void ast_visitor_visit_null_lit(void* self_, ast_null_lit_t* null_lit, void* out_)
+{
+    (void)self_;
+    (void)null_lit;
+    (void)out_;
+}
+
 static void ast_visitor_visit_str_lit(void* self_, ast_str_lit_t* str_lit, void* out_)
 {
     (void)self_;
     (void)str_lit;
     (void)out_;
+}
+
+static void ast_visitor_visit_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
+{
+    ast_visitor_visit(self_, unary_op->expr, out_);
 }
 
 static void ast_visitor_visit_paren_expr(void* self_, ast_paren_expr_t* paren_expr, void* out_)
@@ -129,9 +141,11 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_call_expr = ast_visitor_visit_call_expr,
         .visit_float_lit = ast_visitor_visit_float_lit,
         .visit_int_lit = ast_visitor_visit_int_lit,
+        .visit_null_lit = ast_visitor_visit_null_lit,
         .visit_paren_expr = ast_visitor_visit_paren_expr,
         .visit_ref_expr = ast_visitor_visit_ref_expr,
         .visit_str_lit = ast_visitor_visit_str_lit,
+        .visit_unary_op = ast_visitor_visit_unary_op,
         // Statements
         .visit_compound_stmt = ast_visitor_visit_compound_stmt,
         .visit_decl_stmt = ast_visitor_visit_decl_stmt,

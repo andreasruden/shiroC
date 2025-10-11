@@ -15,6 +15,7 @@ typedef enum type
     TYPE_U64,
     TYPE_F32,
     TYPE_F64,
+    TYPE_NULL,
 
     TYPE_END,
 } type_t;
@@ -51,27 +52,33 @@ struct ast_type
         struct
         {
             ast_type_t* pointee;
+            char* str_repr;
         } pointer;
     } data;
 };
 
 // Returned instance should not be edited.
-ast_type_t* ast_type_from_builtin(type_t type);
+ast_type_t* ast_type_builtin(type_t type);
 
 // Returned instance should not be edited.
-ast_type_t* ast_type_from_user(const char* type_name);
+ast_type_t* ast_type_user(const char* type_name);
 
 // Returned instance should not be edited.
-ast_type_t* ast_type_from_token(token_t* tok);
+ast_type_t* ast_type_pointer(ast_type_t* pointee);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_invalid();
+
+// Returned instance should not be edited.
+ast_type_t* ast_type_from_token(token_t* tok);
 
 bool ast_type_equal(ast_type_t* lhs, ast_type_t* rhs);
 
 bool ast_type_is_arithmetic(ast_type_t* type);
 
 bool ast_type_is_signed(ast_type_t* type);
+
+bool ast_type_has_equality(ast_type_t* type);
 
 const char* ast_type_string(ast_type_t* type);
 

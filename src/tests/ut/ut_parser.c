@@ -5,8 +5,10 @@
 #include "ast/expr/call_expr.h"
 #include "ast/expr/float_lit.h"
 #include "ast/expr/int_lit.h"
+#include "ast/expr/null_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
+#include "ast/expr/unary_op.h"
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
@@ -60,7 +62,7 @@ TEST(ut_parser_fixture_t, parse_basic_main_function)
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
-        ast_fn_def_create_va("main", ast_type_from_builtin(TYPE_I32),
+        ast_fn_def_create_va("main", ast_type_builtin(TYPE_I32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_int_lit_val(0)),
@@ -83,13 +85,13 @@ TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
-        ast_fn_def_create_va("foo2", ast_type_from_builtin(TYPE_I32),
+        ast_fn_def_create_va("foo2", ast_type_builtin(TYPE_I32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_ref_expr_create("arg2")),
                 nullptr),
-            ast_param_decl_create("arg1", ast_type_from_builtin(TYPE_I32)),
-            ast_param_decl_create("arg2", ast_type_from_builtin(TYPE_I32)),
+            ast_param_decl_create("arg1", ast_type_builtin(TYPE_I32)),
+            ast_param_decl_create("arg2", ast_type_builtin(TYPE_I32)),
             nullptr),
         ast_fn_def_create_va("foo", nullptr,
             ast_compound_stmt_create_va(
@@ -104,7 +106,7 @@ TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
                         ast_int_lit_val(5),
                         nullptr)),
                 nullptr),
-            ast_param_decl_create("arg", ast_type_from_builtin(TYPE_I32)),
+            ast_param_decl_create("arg", ast_type_builtin(TYPE_I32)),
             nullptr),
         nullptr);
 
@@ -132,13 +134,13 @@ TEST(ut_parser_fixture_t, full_parse_with_simple_syntax_error)
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
-        ast_fn_def_create_va("foo", ast_type_from_builtin(TYPE_F32),
+        ast_fn_def_create_va("foo", ast_type_builtin(TYPE_F32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_int_lit_val(0)),
                 nullptr),
             nullptr),
-        ast_fn_def_create_va("foo2", ast_type_from_builtin(TYPE_I32),
+        ast_fn_def_create_va("foo2", ast_type_builtin(TYPE_I32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_int_lit_val(10)),
@@ -176,13 +178,13 @@ TEST(ut_parser_fixture_t, partial_parse_with_structural_error)
 
     // Construct the expected tree
     ast_root_t* expected = ast_root_create_va(
-        ast_fn_def_create_va("foo", ast_type_from_builtin(TYPE_I32),
+        ast_fn_def_create_va("foo", ast_type_builtin(TYPE_I32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_int_lit_val(0)),
                 nullptr),
             nullptr),
-        ast_fn_def_create_va("foo3", ast_type_from_builtin(TYPE_I32),
+        ast_fn_def_create_va("foo3", ast_type_builtin(TYPE_I32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
                     ast_int_lit_val(20)),
@@ -426,7 +428,7 @@ TEST(ut_parser_fixture_t, parse_decl_stmt_no_init)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_decl_stmt_create(
-        ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), nullptr));
+        ast_var_decl_create("x", ast_type_builtin(TYPE_I32), nullptr));
 
     ASSERT_TREES_EQUAL(expected, stmt);
     ast_node_destroy(stmt);
@@ -473,7 +475,7 @@ TEST(ut_parser_fixture_t, parse_var_decls_force_type_inference)
     ASSERT_EQ(1, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_decl_stmt_create(
-        ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(42)));
+        ast_var_decl_create("x", ast_type_builtin(TYPE_I32), ast_int_lit_val(42)));
 
     ASSERT_TREES_EQUAL(expected, stmt);
     ast_node_destroy(stmt);
@@ -875,4 +877,76 @@ TEST(ut_parser_fixture_t, parse_float_exponent_notation)
     ASSERT_EQ("", lit->suffix);
 
     ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_compound_stmt_with_address_of)
+{
+    parser_set_source(fix->parser, "test",
+        "{ var i = 40;\n"
+        "var ptr = &i; }");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", nullptr, ast_int_lit_val(40))),
+        ast_decl_stmt_create(ast_var_decl_create("ptr", nullptr,
+            ast_unary_op_create(TOKEN_AMPERSAND, ast_ref_expr_create("i")))),
+        nullptr);
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
+}
+
+TEST(ut_parser_fixture_t, parse_dereference_of_address_of)
+{
+    parser_set_source(fix->parser, "test", "*&x");
+
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_expr_t* expected = ast_unary_op_create(TOKEN_STAR, ast_unary_op_create(TOKEN_AMPERSAND,
+        ast_ref_expr_create("x")));
+
+    ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expected);
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_var_decl_with_pointer_to_pointer_type)
+{
+    parser_set_source(fix->parser, "test", "var ptr_to_ptr: i32**;");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_decl_stmt_create(
+        ast_var_decl_create("ptr_to_ptr",
+            ast_type_pointer(ast_type_pointer(ast_type_builtin(TYPE_I32))),
+            nullptr));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
+}
+
+TEST(ut_parser_fixture_t, type_annotation_valid_when_init_expr_is_null_lit)
+{
+    parser_set_source(fix->parser, "test", "var ptr: i32* = null;");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_decl_stmt_create(
+        ast_var_decl_create("ptr", ast_type_pointer(ast_type_builtin(TYPE_I32)),
+            ast_null_lit_create()));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
 }

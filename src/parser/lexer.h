@@ -20,6 +20,7 @@ typedef enum
     TOKEN_I16,
     TOKEN_I32,
     TOKEN_I64,
+    TOKEN_NULL,
     TOKEN_RETURN,
     TOKEN_TRUE,
     TOKEN_U8,
@@ -50,6 +51,7 @@ typedef enum
     TOKEN_MINUS,
     TOKEN_STAR,
     TOKEN_NOT,
+    TOKEN_AMPERSAND,
 
     // Binary Operators
     TOKEN_DIV,
@@ -126,6 +128,8 @@ bool token_type_is_assignment_op(token_type_t token_type);
 bool token_type_is_arithmetic_op(token_type_t token_type);
 
 bool token_type_is_relation_op(token_type_t token_type);
+
+bool token_type_is_unary_op(token_type_t token_type);
 
 string_t token_str(token_t* tok);
 

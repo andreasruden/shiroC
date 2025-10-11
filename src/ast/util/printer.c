@@ -5,6 +5,7 @@
 #include "ast/visitor.h"
 #include "common/containers/string.h"
 #include "common/util/ssprintf.h"
+#include "parser/lexer.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -151,6 +152,15 @@ static void print_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
     string_append_cstr(out, "\n");
 }
 
+static void print_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
+{
+    (void)lit;
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sNullLit\n", self->indentation, ""));
+}
+
 static void print_str_lit(void* self_, ast_str_lit_t* str_lit, void* out_)
 {
     string_t* out = out_;
@@ -159,6 +169,15 @@ static void print_str_lit(void* self_, ast_str_lit_t* str_lit, void* out_)
     string_append_cstr(out, ssprintf("%*sStrLit '%s'", self->indentation, "", str_lit->value));
     print_source_location(self, str_lit, out);
     string_append_cstr(out, "\n");
+}
+
+static void print_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sUnaryOp '%s'\n", self->indentation, "", token_type_str(unary_op->op)));
+    ast_visitor_visit(self, unary_op->expr, out);
 }
 
 static void print_paren_expr(void* self_, ast_paren_expr_t* paren_expr, void* out_)
@@ -295,9 +314,11 @@ ast_printer_t* ast_printer_create()
             .visit_call_expr = print_call_expr,
             .visit_float_lit = print_float_lit,
             .visit_int_lit = print_int_lit,
+            .visit_null_lit = print_null_lit,
             .visit_paren_expr = print_paren_expr,
             .visit_ref_expr = print_ref_expr,
             .visit_str_lit = print_str_lit,
+            .visit_unary_op = print_unary_op,
             // Statements
             .visit_compound_stmt = print_compound_stmt,
             .visit_decl_stmt = print_decl_stmt,

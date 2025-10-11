@@ -7,9 +7,11 @@
 #include "ast/expr/bool_lit.h"
 #include "ast/expr/call_expr.h"
 #include "ast/expr/float_lit.h"
+#include "ast/expr/null_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/expr/str_lit.h"
+#include "ast/expr/unary_op.h"
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/def/fn_def.h"
@@ -47,9 +49,11 @@ struct ast_visitor
     void (*visit_call_expr)(void* self_, ast_call_expr_t* call_expr, void *out_);
     void (*visit_float_lit)(void* self_, ast_float_lit_t* float_lit, void *out_);
     void (*visit_int_lit)(void* self_, ast_int_lit_t* int_lit, void *out_);
+    void (*visit_null_lit)(void* self_, ast_null_lit_t* null_lit, void *out_);
     void (*visit_paren_expr)(void* self_, ast_paren_expr_t* paren_expr, void *out_);
     void (*visit_ref_expr)(void* self_, ast_ref_expr_t* ref_expr, void *out_);
     void (*visit_str_lit)(void* self_, ast_str_lit_t* str_lit, void *out_);
+    void (*visit_unary_op)(void* self_, ast_unary_op_t* unary_op, void *out_);
 
     // Statements
     void (*visit_compound_stmt)(void* self_, ast_compound_stmt_t* compound_stmt, void *out_);

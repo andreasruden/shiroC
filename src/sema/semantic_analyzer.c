@@ -1,5 +1,6 @@
 #include "semantic_analyzer.h"
 
+#include "ast/expr/unary_op.h"
 #include "ast/node.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/type.h"
@@ -102,8 +103,24 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     if (var->init_expr != nullptr)
         ast_visitor_visit(sema, var->init_expr, nullptr);
 
-    symbol_t* symbol = add_variable_to_scope(sema, var, var->name,
-        var->init_expr == nullptr ? var->type : var->init_expr->type);
+    ast_type_t* type = var->init_expr == nullptr ? var->type : var->init_expr->type;
+    if (var->init_expr != nullptr && type == ast_type_builtin(TYPE_NULL))
+    {
+        if (var->type == nullptr)
+        {
+            semantic_context_add_error(sema->ctx, var, "cannot infer type from 'null'");
+            return;
+        }
+        if (var->type->kind != AST_TYPE_POINTER)
+        {
+            semantic_context_add_error(sema->ctx, var, ssprintf("cannot assign 'null' to non-pointer type '%s'",
+                ast_type_string(var->type)));
+            return;
+        }
+        type = var->type;
+    }
+
+    symbol_t* symbol = add_variable_to_scope(sema, var, var->name, type);
     if (symbol != nullptr)
         init_tracker_set_initialized(sema->init_tracker, symbol, var->init_expr != nullptr);
 }
@@ -119,7 +136,7 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     sema->init_tracker = init_tracker_create();
 
     if (fn->return_type == nullptr)
-        fn->return_type = ast_type_from_builtin(TYPE_VOID);
+        fn->return_type = ast_type_builtin(TYPE_VOID);
 
     for (size_t i = 0; i < vec_size(&fn->params); ++i)
         ast_visitor_visit(sema, vec_get(&fn->params, i), out_);
@@ -128,7 +145,7 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
 
     panic_if(AST_KIND(fn->body) != AST_STMT_COMPOUND);
     ast_compound_stmt_t* block = (ast_compound_stmt_t*)fn->body;
-    if (!ast_type_equal(fn->return_type, ast_type_from_builtin(TYPE_VOID)) &&
+    if (!ast_type_equal(fn->return_type, ast_type_builtin(TYPE_VOID)) &&
         AST_KIND(vec_last(&block->inner_stmts)) != AST_STMT_RETURN)
     {
         semantic_context_add_error(sema->ctx, fn, ssprintf("'%s' missing return statement", fn->base.name));
@@ -139,6 +156,23 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     semantic_context_pop_scope(sema->ctx);
     sema->current_function = nullptr;
     sema->current_function_scope = nullptr;
+}
+
+// Returns true if via some coercion we can think of LHS and RHS as the same type
+// NOTE: This does not imply the types are valid for an operator, check that with is_type_valid_for_operator().
+static bool is_type_equal_for_bin_op(ast_type_t* lhs_type, ast_type_t* rhs_type)
+{
+    if (lhs_type == rhs_type)
+        return true;
+
+    // Type null can interact with any pointer type or itself
+    ast_type_t* null_type = ast_type_builtin(TYPE_NULL);
+    if (lhs_type == null_type && (rhs_type == null_type || rhs_type->kind == AST_TYPE_POINTER))
+        return true;
+    if (rhs_type == null_type && (lhs_type == null_type || lhs_type->kind == AST_TYPE_POINTER))
+        return true;
+
+    return false;
 }
 
 static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* bin_op)
@@ -159,7 +193,7 @@ static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* b
     if (bin_op->rhs->type == ast_type_invalid())
         return;  // avoid cascading errors
 
-    if (!ast_type_equal(lhs_symbol->type, bin_op->rhs->type))
+    if (!is_type_equal_for_bin_op(lhs_symbol->type, bin_op->rhs->type))
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs,
             ssprintf("'%s' type is '%s' but assigned expression type is '%s'", lhs_symbol->name,
@@ -172,7 +206,7 @@ static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* b
 
 static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, ast_type_t** result_type)
 {
-    if (type->kind != AST_TYPE_BUILTIN)
+    if (type->kind != AST_TYPE_BUILTIN && type->kind != AST_TYPE_POINTER)
     {
         *result_type = ast_type_invalid();
         return false;
@@ -182,7 +216,7 @@ static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, 
     {
         if (ast_type_is_arithmetic(type))
         {
-            *result_type = ast_type_from_builtin(type->data.builtin.type);
+            *result_type = ast_type_builtin(type->data.builtin.type);
             return true;
         }
         else
@@ -192,9 +226,9 @@ static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, 
         }
     }
 
-    if ((operator == TOKEN_EQ || operator == TOKEN_NEQ) && ast_type_equal(type, ast_type_from_builtin(TYPE_BOOL)))
+    if ((operator == TOKEN_EQ || operator == TOKEN_NEQ) && ast_type_has_equality(type))
     {
-        *result_type = ast_type_from_builtin(TYPE_BOOL);
+        *result_type = ast_type_builtin(TYPE_BOOL);
         return true;
     }
 
@@ -202,7 +236,7 @@ static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, 
     {
         if (ast_type_is_arithmetic(type))
         {
-            *result_type = ast_type_from_builtin(TYPE_BOOL);
+            *result_type = ast_type_builtin(TYPE_BOOL);
             return true;
         }
         else
@@ -231,9 +265,9 @@ static void analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
     if (bin_op->lhs->type == ast_type_invalid() || bin_op->rhs->type == ast_type_invalid())
         return;  // avoid cascading errors
 
-    if (!ast_type_equal(bin_op->lhs->type, bin_op->rhs->type))
+    if (!is_type_equal_for_bin_op(bin_op->lhs->type, bin_op->rhs->type))
     {
-        semantic_context_add_error(sema->ctx, bin_op, ssprintf("LHS type '%s' != RHS type '%s'",
+        semantic_context_add_error(sema->ctx, bin_op, ssprintf("type mismatch '%s' and '%s'",
             ast_type_string(bin_op->lhs->type), ast_type_string(bin_op->rhs->type)));
         return;
     }
@@ -254,7 +288,7 @@ static void analyze_bool_lit(void* self_, ast_bool_lit_t* lit, void* out_)
     (void)self_;
     (void)out_;
 
-    lit->base.type = ast_type_from_builtin(TYPE_BOOL);
+    lit->base.type = ast_type_builtin(TYPE_BOOL);
 }
 
 static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
@@ -304,16 +338,16 @@ static void analyze_float_lit(void* self_, ast_float_lit_t* lit, void* out_)
     (void)out_;
     semantic_analyzer_t* sema = self_;
 
-    ast_type_t* type = ast_type_from_builtin(TYPE_F64);
-    if (strcmp(lit->suffix, "f32") == 0) type = ast_type_from_builtin(TYPE_F32);
-    else if (strcmp(lit->suffix, "f64") == 0) type = ast_type_from_builtin(TYPE_F64);
+    ast_type_t* type = ast_type_builtin(TYPE_F64);
+    if (strcmp(lit->suffix, "f32") == 0) type = ast_type_builtin(TYPE_F32);
+    else if (strcmp(lit->suffix, "f64") == 0) type = ast_type_builtin(TYPE_F64);
     else if (strlen(lit->suffix) > 0)
     {
         semantic_context_add_error(sema->ctx, lit, ssprintf("invalid suffix '%s' for integer literal", lit->suffix));
         return;
     }
 
-    if (type == ast_type_from_builtin(TYPE_F32))
+    if (type == ast_type_builtin(TYPE_F32))
     {
         float f32_value = (float)lit->value;
 
@@ -340,15 +374,15 @@ static void analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
     (void)out_;
     semantic_analyzer_t* sema = self_;
 
-    ast_type_t* type = ast_type_from_builtin(TYPE_I32);
-    if (strcmp(lit->suffix, "i8") == 0) type = ast_type_from_builtin(TYPE_I8);
-    else if (strcmp(lit->suffix, "i16") == 0) type = ast_type_from_builtin(TYPE_I16);
-    else if (strcmp(lit->suffix, "i32") == 0) type = ast_type_from_builtin(TYPE_I32);
-    else if (strcmp(lit->suffix, "i64") == 0) type = ast_type_from_builtin(TYPE_I64);
-    else if (strcmp(lit->suffix, "u8") == 0) type = ast_type_from_builtin(TYPE_U8);
-    else if (strcmp(lit->suffix, "u16") == 0) type = ast_type_from_builtin(TYPE_U16);
-    else if (strcmp(lit->suffix, "u32") == 0) type = ast_type_from_builtin(TYPE_U32);
-    else if (strcmp(lit->suffix, "u64") == 0) type = ast_type_from_builtin(TYPE_U64);
+    ast_type_t* type = ast_type_builtin(TYPE_I32);
+    if (strcmp(lit->suffix, "i8") == 0) type = ast_type_builtin(TYPE_I8);
+    else if (strcmp(lit->suffix, "i16") == 0) type = ast_type_builtin(TYPE_I16);
+    else if (strcmp(lit->suffix, "i32") == 0) type = ast_type_builtin(TYPE_I32);
+    else if (strcmp(lit->suffix, "i64") == 0) type = ast_type_builtin(TYPE_I64);
+    else if (strcmp(lit->suffix, "u8") == 0) type = ast_type_builtin(TYPE_U8);
+    else if (strcmp(lit->suffix, "u16") == 0) type = ast_type_builtin(TYPE_U16);
+    else if (strcmp(lit->suffix, "u32") == 0) type = ast_type_builtin(TYPE_U32);
+    else if (strcmp(lit->suffix, "u64") == 0) type = ast_type_builtin(TYPE_U64);
     else if (strlen(lit->suffix) > 0)
     {
         semantic_context_add_error(sema->ctx, lit, ssprintf("invalid suffix '%s' for integer literal", lit->suffix));
@@ -361,9 +395,9 @@ static void analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
     if (is_signed)
     {
         uint64_t max_magnitude;
-        if (type == ast_type_from_builtin(TYPE_I8)) max_magnitude = (uint64_t)INT8_MAX;
-        else if (type == ast_type_from_builtin(TYPE_I16)) max_magnitude = (uint64_t)INT16_MAX;
-        else if (type == ast_type_from_builtin(TYPE_I32)) max_magnitude = (uint64_t)INT32_MAX;
+        if (type == ast_type_builtin(TYPE_I8)) max_magnitude = (uint64_t)INT8_MAX;
+        else if (type == ast_type_builtin(TYPE_I16)) max_magnitude = (uint64_t)INT16_MAX;
+        else if (type == ast_type_builtin(TYPE_I32)) max_magnitude = (uint64_t)INT32_MAX;
         else /* i64 */ max_magnitude = (uint64_t)INT64_MAX;
 
         if (lit->has_minus_sign)
@@ -387,9 +421,9 @@ static void analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
         }
 
         uint64_t max_val;
-        if (type == ast_type_from_builtin(TYPE_U8)) max_val = UINT8_MAX;
-        else if (type == ast_type_from_builtin(TYPE_U16)) max_val = UINT16_MAX;
-        else if (type == ast_type_from_builtin(TYPE_U32)) max_val = UINT32_MAX;
+        if (type == ast_type_builtin(TYPE_U8)) max_val = UINT8_MAX;
+        else if (type == ast_type_builtin(TYPE_U16)) max_val = UINT16_MAX;
+        else if (type == ast_type_builtin(TYPE_U32)) max_val = UINT32_MAX;
         else /* u64 */ max_val = UINT64_MAX;
 
         fits = lit->value.magnitude <= max_val;
@@ -405,6 +439,14 @@ static void analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
     }
 
     lit->base.type = type;
+}
+
+static void analyze_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
+{
+    (void)self_;
+    (void)out_;
+
+    lit->base.type = ast_type_builtin(TYPE_NULL);
 }
 
 static void analyze_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
@@ -444,7 +486,47 @@ static void analyze_str_lit(void* self_, ast_str_lit_t* lit, void* out_)
     (void)self_;
     (void)out_;
 
-    lit->base.type = ast_type_from_builtin(TYPE_VOID);  // FIXME: We don't have a string type yet
+    lit->base.type = ast_type_builtin(TYPE_VOID);  // FIXME: We don't have a string type yet
+}
+
+static void analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
+{
+    (void)out_;
+    semantic_analyzer_t* sema = self_;
+
+    symbol_t* symbol = nullptr;
+    ast_visitor_visit(sema, unary_op->expr, &symbol);
+    const bool expr_is_variable =
+        symbol != nullptr && (symbol->kind == SYMBOL_VARIABLE || symbol->kind == SYMBOL_PARAMETER);
+
+    switch (unary_op->op)
+    {
+        case TOKEN_AMPERSAND:
+            if (!expr_is_variable)
+            {
+                semantic_context_add_error(sema->ctx, unary_op, "cannot take address of expression");
+                return;
+            }
+            if (sema->in_lvalue_context)
+            {
+                semantic_context_add_error(sema->ctx, unary_op, ssprintf("cannot take address of l-value '%s'",
+                    symbol->name));
+                return;
+            }
+            unary_op->base.type = ast_type_pointer(symbol->type);
+            break;
+        case TOKEN_STAR:
+            if (unary_op->expr->type->kind != AST_TYPE_POINTER)
+            {
+                semantic_context_add_error(sema->ctx, unary_op, ssprintf("cannot dereference type '%s'",
+                    ast_type_string(unary_op->expr->type)));
+                return;
+            }
+            unary_op->base.type = unary_op->expr->type->data.pointer.pointee;
+            break;
+        default:
+            panic("Unhandled op %d", unary_op->op);
+    }
 }
 
 static void analyze_compound_statement(void* self_, ast_compound_stmt_t* block, void* out_)
@@ -481,7 +563,7 @@ static void analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
     if (if_stmt->condition->type == ast_type_invalid())
         return;  // avoid cascading errors
 
-    if (!ast_type_equal(if_stmt->condition->type, ast_type_from_builtin(TYPE_BOOL)))
+    if (!ast_type_equal(if_stmt->condition->type, ast_type_builtin(TYPE_BOOL)))
     {
         semantic_context_add_error(sema->ctx, if_stmt->condition,
             ssprintf("invalid expression type '%s' in if-condition: must be bool",
@@ -524,7 +606,7 @@ static void analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* 
     if (while_stmt->condition->type == ast_type_invalid())
         return;  // avoid cascading errors
 
-    if (!ast_type_equal(while_stmt->condition->type, ast_type_from_builtin(TYPE_BOOL)))
+    if (!ast_type_equal(while_stmt->condition->type, ast_type_builtin(TYPE_BOOL)))
     {
         semantic_context_add_error(sema->ctx, while_stmt->condition,
             ssprintf("invalid expression type '%s' in while-condition: must be bool",
@@ -563,9 +645,11 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             .visit_call_expr = analyze_call_expr,
             .visit_float_lit = analyze_float_lit,
             .visit_int_lit = analyze_int_lit,
+            .visit_null_lit = analyze_null_lit,
             .visit_paren_expr = analyze_paren_expr,
             .visit_ref_expr = analyze_ref_expr,
             .visit_str_lit = analyze_str_lit,
+            .visit_unary_op = analyze_unary_op,
             // Statements
             .visit_compound_stmt = analyze_compound_statement,
             .visit_decl_stmt = analyze_decl_stmt,

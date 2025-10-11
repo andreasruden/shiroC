@@ -32,6 +32,7 @@ static keyword_t lexer_keywords[] =
     {"i16", TOKEN_I16},
     {"i32", TOKEN_I32},
     {"i64", TOKEN_I64},
+    {"null", TOKEN_NULL},
     {"return", TOKEN_RETURN},
     {"true", TOKEN_TRUE},
     {"u8", TOKEN_U8},
@@ -80,6 +81,8 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_AMPERSAND: return "&";
+        case TOKEN_NULL: return "null";
         case TOKEN_FALSE: return "false";
         case TOKEN_TRUE: return "true";
         case TOKEN_FLOAT: return "float";
@@ -448,6 +451,7 @@ static token_t* lex_symbol(lexer_t* lexer)
         case ';': return token_create(lexer, TOKEN_SEMICOLON, ";", line, col);
         case ':': return token_create(lexer, TOKEN_COLON, ":", line, col);
         case ',': return token_create(lexer, TOKEN_COMMA, ",", line, col);
+        case '&': return token_create(lexer, TOKEN_AMPERSAND, "&", line, col);
 
         case '+':
             if (lexer_peek(lexer) == '=') {
@@ -734,6 +738,19 @@ bool token_type_is_relation_op(token_type_t token_type)
         case TOKEN_GTE:
         case TOKEN_EQ:
         case TOKEN_NEQ:
+            return true;
+        default:
+            break;
+    }
+    return false;
+}
+
+bool token_type_is_unary_op(token_type_t token_type)
+{
+    switch (token_type)
+    {
+        case TOKEN_AMPERSAND:
+        case TOKEN_STAR:
             return true;
         default:
             break;

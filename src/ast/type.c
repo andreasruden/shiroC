@@ -1,7 +1,9 @@
 #include "type.h"
 
 #include "common/containers/hash_table.h"
+#include "common/containers/string.h"
 #include "common/debug/panic.h"
+#include "common/util/ssprintf.h"
 #include "parser/lexer.h"
 
 #include <string.h>
@@ -10,6 +12,7 @@
 ast_type_t* invalid_cache = nullptr;
 static ast_type_t* builtins_cache[TYPE_END] = {};
 static hash_table_t* user_cache = nullptr;
+static hash_table_t* pointer_cache = nullptr;  // Key: pointee type address -> Value: pointer type
 
 static void ast_type_destroy(void* type_)
 {
@@ -25,22 +28,21 @@ static void ast_type_destroy(void* type_)
 
     if (type->kind == AST_TYPE_USER)
         free(type->data.user.name);
+    else if (type->kind == AST_TYPE_POINTER)
+        free(type->data.pointer.str_repr);
 
     free(type);
 }
 
-ast_type_t* ast_type_from_builtin(type_t type)
+ast_type_t* ast_type_builtin(type_t type)
 {
     ast_type_t* ast_type = builtins_cache[type];
     panic_if(ast_type == nullptr);
     return ast_type;
 }
 
-ast_type_t* ast_type_from_user(const char* type_name)
+ast_type_t* ast_type_user(const char* type_name)
 {
-    if (user_cache == nullptr)
-        user_cache = hash_table_create(ast_type_destroy);
-
     ast_type_t* ast_type = hash_table_find(user_cache, type_name);
     if (ast_type != nullptr)
         return ast_type;
@@ -57,35 +59,53 @@ ast_type_t* ast_type_from_user(const char* type_name)
     return ast_type;
 }
 
-ast_type_t* ast_type_from_token(token_t* tok)
+ast_type_t* ast_type_pointer(ast_type_t* pointee)
 {
-    // Resolve token -> type
-    switch (tok->type)
-    {
-        case TOKEN_BOOL: return ast_type_from_builtin(TYPE_BOOL);
-        case TOKEN_VOID: return ast_type_from_builtin(TYPE_VOID);
-        case TOKEN_I8:   return ast_type_from_builtin(TYPE_I8);
-        case TOKEN_I16:  return ast_type_from_builtin(TYPE_I16);
-        case TOKEN_I32:  return ast_type_from_builtin(TYPE_I32);
-        case TOKEN_I64:  return ast_type_from_builtin(TYPE_I64);
-        case TOKEN_U8:   return ast_type_from_builtin(TYPE_U8);
-        case TOKEN_U16:  return ast_type_from_builtin(TYPE_U16);
-        case TOKEN_U32:  return ast_type_from_builtin(TYPE_U32);
-        case TOKEN_U64:  return ast_type_from_builtin(TYPE_U64);
-        case TOKEN_F32:  return ast_type_from_builtin(TYPE_F32);
-        case TOKEN_F64:  return ast_type_from_builtin(TYPE_F64);
+    ast_type_t* pointer = hash_table_find(pointer_cache, ssprintf("%p", pointee));
+    if (pointer != nullptr)
+        return pointer;
 
-        case TOKEN_IDENTIFIER:
-        return ast_type_from_user(tok->value);
+    pointer = malloc(sizeof(*pointer));
 
-        default:
-            return ast_type_invalid();
-    }
+    *pointer = (ast_type_t){
+        .kind = AST_TYPE_POINTER,
+        .data.pointer.pointee = pointee,
+    };
+
+    hash_table_insert(pointer_cache, ssprintf("%p", pointee), pointer);
+    return pointer;
 }
 
 ast_type_t* ast_type_invalid()
 {
     return invalid_cache;
+}
+
+ast_type_t* ast_type_from_token(token_t* tok)
+{
+    // Resolve token -> type
+    switch (tok->type)
+    {
+        case TOKEN_BOOL: return ast_type_builtin(TYPE_BOOL);
+        case TOKEN_VOID: return ast_type_builtin(TYPE_VOID);
+        case TOKEN_I8:   return ast_type_builtin(TYPE_I8);
+        case TOKEN_I16:  return ast_type_builtin(TYPE_I16);
+        case TOKEN_I32:  return ast_type_builtin(TYPE_I32);
+        case TOKEN_I64:  return ast_type_builtin(TYPE_I64);
+        case TOKEN_U8:   return ast_type_builtin(TYPE_U8);
+        case TOKEN_U16:  return ast_type_builtin(TYPE_U16);
+        case TOKEN_U32:  return ast_type_builtin(TYPE_U32);
+        case TOKEN_U64:  return ast_type_builtin(TYPE_U64);
+        case TOKEN_F32:  return ast_type_builtin(TYPE_F32);
+        case TOKEN_F64:  return ast_type_builtin(TYPE_F64);
+        case TOKEN_NULL: return ast_type_builtin(TYPE_NULL);
+
+        case TOKEN_IDENTIFIER:
+        return ast_type_user(tok->value);
+
+        default:
+            return ast_type_invalid();
+    }
 }
 
 bool ast_type_equal(ast_type_t* lhs, ast_type_t* rhs)
@@ -148,6 +168,15 @@ bool ast_type_is_signed(ast_type_t* type)
     }
 }
 
+bool ast_type_has_equality(ast_type_t* type)
+{
+    if (type->kind == AST_TYPE_BUILTIN)
+        return type->data.builtin.type != TYPE_VOID;
+    else if (type->kind == AST_TYPE_POINTER)
+        return true;
+    return false;
+}
+
 const char* ast_type_string(ast_type_t* type)
 {
     switch (type->kind)
@@ -159,7 +188,16 @@ const char* ast_type_string(ast_type_t* type)
         case AST_TYPE_INVALID:
             return "INVALID";
         case AST_TYPE_POINTER:
-            break;
+        {
+            if (type->data.pointer.str_repr == nullptr)
+            {
+                string_t tmp = STRING_INIT;
+                string_append_cstr(&tmp, ast_type_string(type->data.pointer.pointee));
+                string_append_char(&tmp, '*');
+                type->data.pointer.str_repr = string_release(&tmp);
+            }
+            return type->data.pointer.str_repr;
+        }
     }
 
     panic("Case %d not handled", type->kind);
@@ -181,6 +219,7 @@ const char* type_to_str(type_t type)
         case TYPE_U64:  return "u64";
         case TYPE_F32:  return "f32";
         case TYPE_F64:  return "f64";
+        case TYPE_NULL: return "null_t";
         case TYPE_END:  panic("Not a valid value");
     }
 
@@ -211,6 +250,9 @@ void ast_type_cache_init()
 
         builtins_cache[type] = ast_type;
     }
+
+    user_cache = hash_table_create(ast_type_destroy);
+    pointer_cache = hash_table_create(ast_type_destroy);
 }
 
 __attribute__((destructor))
@@ -220,4 +262,5 @@ void ast_type_cache_cleanup()
     for (int type = 0; type < TYPE_END; ++type)
         free(builtins_cache[type]);
     hash_table_destroy(user_cache);
+    hash_table_destroy(pointer_cache);
 }

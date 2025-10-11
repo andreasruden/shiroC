@@ -30,9 +30,11 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/expr/expr.c \
 	$(SRC_DIR)/ast/expr/float_lit.c \
 	$(SRC_DIR)/ast/expr/int_lit.c \
+	$(SRC_DIR)/ast/expr/null_lit.c \
 	$(SRC_DIR)/ast/expr/paren_expr.c \
 	$(SRC_DIR)/ast/expr/ref_expr.c \
 	$(SRC_DIR)/ast/expr/str_lit.c \
+	$(SRC_DIR)/ast/expr/unary_op.c \
 	$(SRC_DIR)/ast/stmt/compound_stmt.c \
 	$(SRC_DIR)/ast/stmt/decl_stmt.c \
 	$(SRC_DIR)/ast/stmt/expr_stmt.c \
