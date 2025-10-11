@@ -72,8 +72,6 @@ ast_type_t* ast_type_invalid();
 // Returned instance should not be edited.
 ast_type_t* ast_type_from_token(token_t* tok);
 
-bool ast_type_equal(ast_type_t* lhs, ast_type_t* rhs);
-
 bool ast_type_is_arithmetic(ast_type_t* type);
 
 bool ast_type_is_signed(ast_type_t* type);

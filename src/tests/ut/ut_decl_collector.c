@@ -44,20 +44,18 @@ TEST(decl_collector_fixture_t, collect_function_with_params)
     ASSERT_EQ("add", sym->name);
 
     // Verify function signature
-    ast_type_t* type_i32 = ast_type_builtin(TYPE_I32);
-    ASSERT_TRUE(ast_type_equal(type_i32, sym->type));
+    ASSERT_EQ(ast_type_builtin(TYPE_I32), sym->type);
 
     // Verify parameters
     ASSERT_EQ(2, vec_size(&sym->data.function.parameters));
 
     ast_param_decl_t* p1 = vec_get(&sym->data.function.parameters, 0);
     ASSERT_EQ("x", p1->name);
-    ASSERT_TRUE(ast_type_equal(type_i32, p1->type));
+    ASSERT_EQ(ast_type_builtin(TYPE_I32), p1->type);
 
     ast_param_decl_t* p2 = vec_get(&sym->data.function.parameters, 1);
     ASSERT_EQ("y", p2->name);
-    ast_type_t* type_f32 = ast_type_builtin(TYPE_F32);
-    ASSERT_TRUE(ast_type_equal(type_f32, p2->type));
+    ASSERT_EQ(ast_type_builtin(TYPE_F32), p2->type);
 
     ast_node_destroy(root);
 }

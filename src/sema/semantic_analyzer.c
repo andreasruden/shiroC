@@ -145,7 +145,7 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
 
     panic_if(AST_KIND(fn->body) != AST_STMT_COMPOUND);
     ast_compound_stmt_t* block = (ast_compound_stmt_t*)fn->body;
-    if (!ast_type_equal(fn->return_type, ast_type_builtin(TYPE_VOID)) &&
+    if (fn->return_type != ast_type_builtin(TYPE_VOID) &&
         AST_KIND(vec_last(&block->inner_stmts)) != AST_STMT_RETURN)
     {
         semantic_context_add_error(sema->ctx, fn, ssprintf("'%s' missing return statement", fn->base.name));
@@ -321,7 +321,7 @@ static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 
         ast_visitor_visit(sema, arg_expr, out_);
 
-        if (!ast_type_equal(param_decl->type, arg_expr->type))
+        if (param_decl->type != arg_expr->type)
         {
             semantic_context_add_error(sema->ctx, arg_expr,
                 ssprintf("arg type '%s' does not match parameter '%s' type '%s'", ast_type_string(arg_expr->type),
@@ -563,7 +563,7 @@ static void analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
     if (if_stmt->condition->type == ast_type_invalid())
         return;  // avoid cascading errors
 
-    if (!ast_type_equal(if_stmt->condition->type, ast_type_builtin(TYPE_BOOL)))
+    if (if_stmt->condition->type != ast_type_builtin(TYPE_BOOL))
     {
         semantic_context_add_error(sema->ctx, if_stmt->condition,
             ssprintf("invalid expression type '%s' in if-condition: must be bool",
@@ -590,7 +590,7 @@ static void analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void* 
     semantic_analyzer_t* sema = self_;
 
     ast_visitor_visit(sema, ret_stmt->value_expr, out_);
-    if (!ast_type_equal(sema->current_function->return_type, ret_stmt->value_expr->type))
+    if (sema->current_function->return_type != ret_stmt->value_expr->type)
     {
         semantic_context_add_error(sema->ctx, ret_stmt->value_expr,
             ssprintf("returned type '%s' does not match function's return type '%s'",
@@ -606,7 +606,7 @@ static void analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* 
     if (while_stmt->condition->type == ast_type_invalid())
         return;  // avoid cascading errors
 
-    if (!ast_type_equal(while_stmt->condition->type, ast_type_builtin(TYPE_BOOL)))
+    if (while_stmt->condition->type != ast_type_builtin(TYPE_BOOL))
     {
         semantic_context_add_error(sema->ctx, while_stmt->condition,
             ssprintf("invalid expression type '%s' in while-condition: must be bool",

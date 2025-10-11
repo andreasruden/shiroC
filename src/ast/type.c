@@ -108,26 +108,6 @@ ast_type_t* ast_type_from_token(token_t* tok)
     }
 }
 
-bool ast_type_equal(ast_type_t* lhs, ast_type_t* rhs)
-{
-    if (lhs->kind != rhs->kind)
-        return false;
-
-    switch (lhs->kind)
-    {
-        case AST_TYPE_BUILTIN:
-            return lhs->data.builtin.type == rhs->data.builtin.type;
-        case AST_TYPE_USER:
-            return strcmp(lhs->data.user.name, rhs->data.user.name);  // NOTE: equal name != equal type
-        case AST_TYPE_INVALID:
-            return true;
-        case AST_TYPE_POINTER:
-            break;
-    }
-
-    panic("Case %d not handled", lhs->kind);
-}
-
 bool ast_type_is_arithmetic(ast_type_t* type)
 {
     if (type->kind != AST_TYPE_BUILTIN)
