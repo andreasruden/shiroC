@@ -1,0 +1,5 @@
+//! compile
+
+/ main function  //! error "token (.*) is not valid in this context"
+fn main() -> i32 {
+}

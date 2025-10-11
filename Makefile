@@ -98,14 +98,20 @@ $(TEST_RUNNER_OBJ): $(TEST_RUNNER_SRC)
 $(UT_BIN_DIR)/%.test: $(UT_SRC_DIR)/%.c $(TEST_RUNNER_OBJ) $(COMMON_OBJS) | $(UT_BIN_DIR)
 	$(CC) $(DEBUGFLAGS) $(CFLAGS) -I$(TEST_RUNNER_INCLUDE) $^ -o $@
 
-tests: $(UT_TARGETS)
+test-ut: $(UT_TARGETS)
 	@for test in $(UT_TARGETS); do \
 		echo ""; \
 		echo "Running $$test..."; \
 		./$$test || exit 1; \
 	done
 
-valgrind-tests: $(UT_TARGETS)
+test-st: $(BIN_DIR)
+	cd build/ && python3 ../scripts/systemtester/tester.py -c ./bin/shiroc ../src/tests/st/
+
+.PHONY: tests
+tests: test-ut test-st
+
+valgrind-ut: $(UT_TARGETS)
 	@for test in $(UT_TARGETS); do \
 		echo ""; \
 		echo "Running $$test with valgrind..."; \
@@ -119,6 +125,12 @@ valgrind-tests: $(UT_TARGETS)
 			 --exit-on-first-error=yes \
 	         ./$$test || exit 1; \
 	done
+
+valgrind-st:  $(BIN_DIR)
+	cd build/ && python3 ../scripts/systemtester/tester.py --valgrind -c ./bin/shiroc ../src/tests/st/
+
+.PHONY: valgrind-tests
+valgrind-tests: valgrind-ut valgrind-st
 
 .PHONY: clean
 clean:
