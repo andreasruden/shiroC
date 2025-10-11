@@ -1,6 +1,7 @@
 #include "lexer.h"
 
 #include "ast/node.h"
+#include "common/containers/string.h"
 #include "common/containers/vec.h"
 #include "compiler_error.h"
 #include "common/util/ssprintf.h"
@@ -38,6 +39,23 @@ static keyword_t lexer_keywords[] =
     {"while", TOKEN_WHILE},
     {nullptr, TOKEN_UNKNOWN}
 };
+
+string_t token_str(token_t* tok)
+{
+    string_t out = STRING_INIT;
+    string_append_cstr(&out, token_type_str(tok->type));
+    switch (tok->type)
+    {
+        case TOKEN_IDENTIFIER:
+        case TOKEN_STRING:
+        case TOKEN_NUMBER:
+            string_append_cstr(&out, ssprintf(" (%s)", tok->value));
+            break;
+        default:
+            break;
+    }
+    return out;
+}
 
 const char* token_type_str(token_type_t type)
 {
@@ -479,8 +497,18 @@ void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t ex
     }
     else
     {
-        compiler_error_t* error = compiler_error_create_for_source(false,
-            ssprintf("expected '%s'", token_type_str(expected)), lexer->filename, line, column);
+        char* err;
+        if (expected == TOKEN_UNKNOWN)
+        {
+            string_t tok_str = token_str(actual);
+            err = ssprintf("token '%s' is not valid in this context", string_cstr(&tok_str));
+            string_deinit(&tok_str);
+        }
+        else
+        {
+            err = ssprintf("expected '%s'", token_type_str(expected));
+        }
+        compiler_error_t* error = compiler_error_create_for_source(false, err, lexer->filename, line, column);
         lexer->error_output(error, lexer->error_output_arg);
     }
 }

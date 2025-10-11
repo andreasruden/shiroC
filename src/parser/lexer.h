@@ -2,6 +2,7 @@
 #define LEXER__H
 
 #include "ast/node.h"
+#include "common/containers/string.h"
 #include "common/containers/vec.h"
 #include <stddef.h>
 
@@ -121,6 +122,8 @@ bool token_type_is_assignment_op(token_type_t token_type);
 bool token_type_is_arithmetic_op(token_type_t token_type);
 
 bool token_type_is_relation_op(token_type_t token_type);
+
+string_t token_str(token_t* tok);
 
 const char* token_type_str(token_type_t type);
 

@@ -552,7 +552,10 @@ ast_root_t* parser_parse(parser_t* parser)
         {
             // Consume the faulty token and try again:
             if (next_token == lexer_peek_token(parser->lexer))
+            {
+                lexer_emit_error_for_token(parser->lexer, next_token, TOKEN_UNKNOWN);
                 lexer_next_token(parser->lexer);
+            }
         }
         else
             vec_push(&tl_defs, tl_def);
