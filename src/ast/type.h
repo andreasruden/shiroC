@@ -71,6 +71,8 @@ bool ast_type_equal(ast_type_t* lhs, ast_type_t* rhs);
 
 bool ast_type_is_arithmetic(ast_type_t* type);
 
+bool ast_type_is_signed(ast_type_t* type);
+
 const char* ast_type_string(ast_type_t* type);
 
 const char* type_to_str(type_t type);

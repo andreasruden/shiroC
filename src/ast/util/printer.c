@@ -118,13 +118,46 @@ static void print_call_expr(void* self_, ast_call_expr_t* call_expr, void* out_)
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_bool_lit(void* self_, ast_bool_lit_t* bool_lit, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sBoolLit '%s'", self->indentation, "", bool_lit->value ? "true" : "false"));
+    print_source_location(self, bool_lit, out);
+    string_append_cstr(out, "\n");
+}
+
+static void print_float_lit(void* self_, ast_float_lit_t* float_lit, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sFloatLit '%lf'", self->indentation, "", float_lit->value));
+    print_source_location(self, float_lit, out);
+    string_append_cstr(out, "\n");
+}
+
 static void print_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
 {
     string_t* out = out_;
     ast_printer_t* self = self_;
 
-    string_append_cstr(out, ssprintf("%*sIntLit '%ld'", self->indentation, "", int_lit->value));
+    if (ast_type_is_signed(int_lit->base.type))
+        string_append_cstr(out, ssprintf("%*sIntLit '%ld'", self->indentation, "", int_lit->value.as_signed));
+    else
+        string_append_cstr(out, ssprintf("%*sIntLit '%lu'", self->indentation, "", int_lit->value.as_unsigned));
     print_source_location(self, int_lit, out);
+    string_append_cstr(out, "\n");
+}
+
+static void print_str_lit(void* self_, ast_str_lit_t* str_lit, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sStrLit '%s'", self->indentation, "", str_lit->value));
+    print_source_location(self, str_lit, out);
     string_append_cstr(out, "\n");
 }
 
@@ -258,10 +291,13 @@ ast_printer_t* ast_printer_create()
             .visit_fn_def = print_fn_def,
             // Expressions
             .visit_bin_op = print_bin_op,
+            .visit_bool_lit = print_bool_lit,
             .visit_call_expr = print_call_expr,
+            .visit_float_lit = print_float_lit,
             .visit_int_lit = print_int_lit,
             .visit_paren_expr = print_paren_expr,
             .visit_ref_expr = print_ref_expr,
+            .visit_str_lit = print_str_lit,
             // Statements
             .visit_compound_stmt = print_compound_stmt,
             .visit_decl_stmt = print_decl_stmt,

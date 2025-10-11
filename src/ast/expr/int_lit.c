@@ -4,6 +4,7 @@
 #include "ast/visitor.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 static void ast_int_lit_accept(void* self_, ast_visitor_t* visitor, void* out);
 static void ast_int_lit_destroy(void* self_);
@@ -14,18 +15,31 @@ static ast_node_vtable_t ast_int_lit_vtable =
     .destroy = ast_int_lit_destroy
 };
 
-ast_expr_t* ast_int_lit_create(int64_t value)
+ast_expr_t* ast_int_lit_create(bool has_minus_sign, uint64_t magnitude, const char* suffix)
 {
     ast_int_lit_t* int_lit = malloc(sizeof(*int_lit));
 
     *int_lit = (ast_int_lit_t){
         .base = AST_EXPR_INIT,
-        .value = value,
+        .has_minus_sign = has_minus_sign,
+        .value.magnitude = magnitude,
+        .suffix = strdup(suffix),
     };
     AST_NODE(int_lit)->vtable = &ast_int_lit_vtable;
     AST_NODE(int_lit)->kind = AST_EXPR_INT_LIT;
 
     return (ast_expr_t*)int_lit;
+}
+
+ast_expr_t* ast_int_lit_val(int64_t value)
+{
+    bool has_minus = value < 0;
+    uint64_t magnitude;
+    if (value >= 0)
+        magnitude = (uint64_t)value;
+    else
+        magnitude = -(uint64_t)value;
+    return ast_int_lit_create(has_minus, magnitude, "");
 }
 
 static void ast_int_lit_accept(void* self_, ast_visitor_t* visitor, void* out)

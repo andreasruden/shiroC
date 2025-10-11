@@ -3,6 +3,7 @@
 #include "ast/def/fn_def.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/call_expr.h"
+#include "ast/expr/float_lit.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
@@ -62,7 +63,7 @@ TEST(ut_parser_fixture_t, parse_basic_main_function)
         ast_fn_def_create_va("main", ast_type_from_builtin(TYPE_I32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
-                    ast_int_lit_create(0)),
+                    ast_int_lit_val(0)),
                 nullptr), nullptr),
         nullptr);
 
@@ -100,7 +101,7 @@ TEST(ut_parser_fixture_t, parse_fn_parameters_and_calls_with_args)
                 ast_expr_stmt_create(
                     ast_call_expr_create_va(ast_ref_expr_create("foo2"),
                         ast_ref_expr_create("arg"),
-                        ast_int_lit_create(5),
+                        ast_int_lit_val(5),
                         nullptr)),
                 nullptr),
             ast_param_decl_create("arg", ast_type_from_builtin(TYPE_I32)),
@@ -134,13 +135,13 @@ TEST(ut_parser_fixture_t, full_parse_with_simple_syntax_error)
         ast_fn_def_create_va("foo", ast_type_from_builtin(TYPE_F32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
-                    ast_int_lit_create(0)),
+                    ast_int_lit_val(0)),
                 nullptr),
             nullptr),
         ast_fn_def_create_va("foo2", ast_type_from_builtin(TYPE_I32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
-                    ast_int_lit_create(10)),
+                    ast_int_lit_val(10)),
                 nullptr),
             nullptr),
         nullptr);
@@ -178,13 +179,13 @@ TEST(ut_parser_fixture_t, partial_parse_with_structural_error)
         ast_fn_def_create_va("foo", ast_type_from_builtin(TYPE_I32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
-                    ast_int_lit_create(0)),
+                    ast_int_lit_val(0)),
                 nullptr),
             nullptr),
         ast_fn_def_create_va("foo3", ast_type_from_builtin(TYPE_I32),
             ast_compound_stmt_create_va(
                 ast_return_stmt_create(
-                    ast_int_lit_create(20)),
+                    ast_int_lit_val(20)),
                 nullptr),
             nullptr),
         nullptr);
@@ -441,7 +442,7 @@ TEST(ut_parser_fixture_t, parse_decl_stmt_with_init)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_decl_stmt_create(
-        ast_var_decl_create("x", nullptr, ast_int_lit_create(42)));
+        ast_var_decl_create("x", nullptr, ast_int_lit_val(42)));
 
     ASSERT_TREES_EQUAL(expected, stmt);
     ast_node_destroy(stmt);
@@ -472,7 +473,7 @@ TEST(ut_parser_fixture_t, parse_var_decls_force_type_inference)
     ASSERT_EQ(1, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_decl_stmt_create(
-        ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), ast_int_lit_create(42)));
+        ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(42)));
 
     ASSERT_TREES_EQUAL(expected, stmt);
     ast_node_destroy(stmt);
@@ -530,14 +531,14 @@ TEST(ut_parser_fixture_t, parse_if_stmt_with_else)
     ast_stmt_t* expected = ast_if_stmt_create(
         ast_bin_op_create(TOKEN_GT,
             ast_ref_expr_create("x"),
-            ast_int_lit_create(5)),
+            ast_int_lit_val(5)),
         ast_compound_stmt_create_va(
             ast_decl_stmt_create(
-                ast_var_decl_create("y", nullptr, ast_int_lit_create(10))),
+                ast_var_decl_create("y", nullptr, ast_int_lit_val(10))),
             nullptr),
         ast_compound_stmt_create_va(
             ast_decl_stmt_create(
-                ast_var_decl_create("z", nullptr, ast_int_lit_create(20))),
+                ast_var_decl_create("z", nullptr, ast_int_lit_val(20))),
             nullptr));
 
     ASSERT_TREES_EQUAL(expected, stmt);
@@ -560,7 +561,7 @@ TEST(ut_parser_fixture_t, parse_if_stmt_no_else)
         ast_ref_expr_create("flag"),
         ast_compound_stmt_create_va(
             ast_decl_stmt_create(
-                ast_var_decl_create("x", nullptr, ast_int_lit_create(1))),
+                ast_var_decl_create("x", nullptr, ast_int_lit_val(1))),
             nullptr),
         nullptr);  // No else branch
 
@@ -588,24 +589,24 @@ TEST(ut_parser_fixture_t, parse_if_stmt_else_if_chain)
     ast_stmt_t* inner_if = ast_if_stmt_create(
         ast_bin_op_create(TOKEN_GT,
             ast_ref_expr_create("x"),
-            ast_int_lit_create(5)),
+            ast_int_lit_val(5)),
         ast_compound_stmt_create_va(
             ast_decl_stmt_create(
-                ast_var_decl_create("b", nullptr, ast_int_lit_create(2))),
+                ast_var_decl_create("b", nullptr, ast_int_lit_val(2))),
             nullptr),
         ast_compound_stmt_create_va(
             ast_decl_stmt_create(
-                ast_var_decl_create("c", nullptr, ast_int_lit_create(3))),
+                ast_var_decl_create("c", nullptr, ast_int_lit_val(3))),
             nullptr));
 
     // Build outer if
     ast_stmt_t* expected = ast_if_stmt_create(
         ast_bin_op_create(TOKEN_GT,
             ast_ref_expr_create("x"),
-            ast_int_lit_create(10)),
+            ast_int_lit_val(10)),
         ast_compound_stmt_create_va(
             ast_decl_stmt_create(
-                ast_var_decl_create("a", nullptr, ast_int_lit_create(1))),
+                ast_var_decl_create("a", nullptr, ast_int_lit_val(1))),
             nullptr),
         inner_if);  // else branch is another if statement
 
@@ -621,7 +622,7 @@ TEST(ut_parser_fixture_t, parse_simple_assignment)
     ASSERT_NEQ(nullptr, expr);
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
-    ast_expr_t* expected = ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("x"), ast_int_lit_create(5));
+    ast_expr_t* expected = ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("x"), ast_int_lit_val(5));
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expected);
@@ -640,7 +641,7 @@ TEST(ut_parser_fixture_t, parse_chained_assignment)
         ast_ref_expr_create("x"),
         ast_bin_op_create(TOKEN_MUL_ASSIGN,
             ast_ref_expr_create("y"),
-            ast_int_lit_create(10)));
+            ast_int_lit_val(10)));
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expected);
@@ -683,7 +684,7 @@ TEST(ut_parser_fixture_t, parse_while_stmt_simple)
         ast_ref_expr_create("flag"),
         ast_compound_stmt_create_va(
             ast_decl_stmt_create(
-                ast_var_decl_create("y", nullptr, ast_int_lit_create(5))),
+                ast_var_decl_create("y", nullptr, ast_int_lit_val(5))),
             nullptr));
 
     ASSERT_TREES_EQUAL(expected, stmt);
@@ -717,4 +718,161 @@ TEST(ut_parser_fixture_t, parse_while_stmt_syntax_errors_but_valid_ast)
     ASSERT_EQ(AST_EXPR_CALL, AST_KIND(((ast_expr_stmt_t*)while_stmt->body)->expr));
 
     ast_node_destroy(stmt);
+}
+
+TEST(ut_parser_fixture_t, parse_int_literal)
+{
+    parser_set_source(fix->parser, "test", "1234567");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_int_lit_t* lit = (ast_int_lit_t*)expr;
+    ASSERT_EQ(AST_EXPR_INT_LIT, AST_KIND(lit));
+    ASSERT_EQ(1234567, lit->value.magnitude);
+    ASSERT_FALSE(lit->has_minus_sign);
+    ASSERT_EQ("", lit->suffix);
+
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_int_literal_negative)
+{
+    parser_set_source(fix->parser, "test", "-9876543");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_int_lit_t* lit = (ast_int_lit_t*)expr;
+    ASSERT_EQ(AST_EXPR_INT_LIT, AST_KIND(lit));
+    ASSERT_EQ(9876543, lit->value.magnitude);
+    ASSERT_TRUE(lit->has_minus_sign);
+    ASSERT_EQ("", lit->suffix);
+
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_int_literal_with_suffix)
+{
+    parser_set_source(fix->parser, "test", "580i16");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_int_lit_t* lit = (ast_int_lit_t*)expr;
+    ASSERT_EQ(AST_EXPR_INT_LIT, AST_KIND(lit));
+    ASSERT_EQ(580, lit->value.magnitude);
+    ASSERT_FALSE(lit->has_minus_sign);
+    ASSERT_EQ("i16", lit->suffix);
+
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_int_literal_with_separated_suffix)
+{
+    parser_set_source(fix->parser, "test", "-42_i8");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_int_lit_t* lit = (ast_int_lit_t*)expr;
+    ASSERT_EQ(AST_EXPR_INT_LIT, AST_KIND(lit));
+    ASSERT_EQ(42, lit->value.magnitude);
+    ASSERT_TRUE(lit->has_minus_sign);
+    ASSERT_EQ("i8", lit->suffix);
+
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_int_literal_with_underscore)
+{
+    parser_set_source(fix->parser, "test", "1_234_567");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_int_lit_t* lit = (ast_int_lit_t*)expr;
+    ASSERT_EQ(AST_EXPR_INT_LIT, AST_KIND(lit));
+    ASSERT_EQ(1234567, lit->value.magnitude);
+    ASSERT_FALSE(lit->has_minus_sign);
+    ASSERT_EQ("", lit->suffix);
+
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_int_literal_overflow)
+{
+    // 18446744073709551616 is UINT64_MAX + 1, too large for u64
+    parser_set_source(fix->parser, "test", "18446744073709551616");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+
+    // Parser should create the node but report an error
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(1, vec_size(parser_errors(fix->parser)));
+
+    // Check error message mentions overflow/too large
+    compiler_error_t* error = vec_get(parser_errors(fix->parser), 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "too large"));
+
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_float)
+{
+    parser_set_source(fix->parser, "test", "42.5");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_float_lit_t* lit = (ast_float_lit_t*)expr;
+    ASSERT_EQ(AST_EXPR_FLOAT_LIT, AST_KIND(lit));
+    ASSERT_EQ(42.5, lit->value);
+    ASSERT_EQ("", lit->suffix);
+
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_float_underscore)
+{
+    parser_set_source(fix->parser, "test", "42.500_000");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_float_lit_t* lit = (ast_float_lit_t*)expr;
+    ASSERT_EQ(AST_EXPR_FLOAT_LIT, AST_KIND(lit));
+    ASSERT_EQ(42.500000, lit->value);
+    ASSERT_EQ("", lit->suffix);
+
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_float_suffix)
+{
+    parser_set_source(fix->parser, "test", "0.5f32");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_float_lit_t* lit = (ast_float_lit_t*)expr;
+    ASSERT_EQ(AST_EXPR_FLOAT_LIT, AST_KIND(lit));
+    ASSERT_EQ(0.5, lit->value);
+    ASSERT_EQ("f32", lit->suffix);
+
+    ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_float_exponent_notation)
+{
+    parser_set_source(fix->parser, "test", "1e-3");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_float_lit_t* lit = (ast_float_lit_t*)expr;
+    ASSERT_EQ(AST_EXPR_FLOAT_LIT, AST_KIND(lit));
+    ASSERT_EQ(1e-3, lit->value);
+    ASSERT_EQ("", lit->suffix);
+
+    ast_node_destroy(expr);
 }

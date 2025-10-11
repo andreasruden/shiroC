@@ -5,11 +5,14 @@
 #include "ast/def/def.h"
 #include "ast/def/fn_def.h"
 #include "ast/expr/bin_op.h"
+#include "ast/expr/bool_lit.h"
 #include "ast/expr/call_expr.h"
 #include "ast/expr/expr.h"
+#include "ast/expr/float_lit.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
+#include "ast/expr/str_lit.h"
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
@@ -21,9 +24,12 @@
 #include "ast/stmt/while_stmt.h"
 #include "ast/type.h"
 #include "common/containers/vec.h"
+#include "common/debug/panic.h"
+#include "common/util/ssprintf.h"
 #include "compiler_error.h"
 #include "lexer.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -79,14 +85,79 @@ static ast_expr_t* parser_create_ref_expr(parser_t* parser, token_t* id)
     return expr;
 }
 
-static ast_expr_t* parse_int_lit(parser_t* parser)
+static ast_expr_t* parse_bool_lit(parser_t* parser)
 {
-    token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_NUMBER);
+    token_t* tok = lexer_peek_token(parser->lexer);
+
+    if (tok->type != TOKEN_FALSE && tok->type != TOKEN_TRUE)
+    {
+        lexer_emit_error_for_token(parser->lexer, tok, TOKEN_UNKNOWN);
+        return nullptr;
+    }
+
+    lexer_next_token(parser->lexer);
+    bool value = tok->type == TOKEN_TRUE;
+    ast_expr_t* expr = ast_bool_lit_create(value);
+    parser_set_source_tok_to_current(parser, expr, tok);
+
+    return expr;
+}
+
+static ast_expr_t* parse_float_lit(parser_t* parser)
+{
+    token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_FLOAT);
     if (tok == nullptr)
         return nullptr;
 
-    int64_t value = strtoll(tok->value, nullptr, 0);
-    ast_expr_t* expr = ast_int_lit_create(value);
+    errno = 0;
+    char* endptr;
+    double value = strtod(tok->value, &endptr);
+    ast_expr_t* expr = ast_float_lit_create(value, tok->suffix);
+    parser_set_source_tok_to_current(parser, expr, tok);
+
+    if (errno != 0)
+        parser_error(parser, expr, ssprintf("strtod failed for input %s", tok->value));
+
+    // Sanity check, but should not be possible if lexer does not have a bug:
+    panic_if(endptr == tok->value);
+    panic_if(*endptr != '\0');
+
+    return expr;
+}
+
+static ast_expr_t* parse_int_lit(parser_t* parser)
+{
+    token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_INTEGER);
+    if (tok == nullptr)
+        return nullptr;
+
+    bool has_minus_sign = tok->value[0] == '-';
+    errno = 0;
+    char* endptr;
+    const char* num_start = has_minus_sign ? tok->value + 1 : tok->value;
+    uint64_t magnitude = strtoull(num_start, &endptr, 0);
+
+    bool range_err = errno == ERANGE;
+
+    // Sanity check, but should not be possible if lexer does not have a bug:
+    panic_if(endptr == tok->value);
+    panic_if(*endptr != '\0');
+
+    ast_expr_t* expr = ast_int_lit_create(has_minus_sign, magnitude, tok->suffix);
+    parser_set_source_tok_to_current(parser, expr, tok);
+    if (range_err)
+        parser_error(parser, expr, ssprintf("integer literal value '%s' is too large", tok->value));
+
+    return expr;
+}
+
+static ast_expr_t* parse_str_lit(parser_t* parser)
+{
+    token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_STRING);
+    if (tok == nullptr)
+        return nullptr;
+
+    ast_expr_t* expr = ast_str_lit_create(tok->value);
     parser_set_source_tok_to_current(parser, expr, tok);
 
     return expr;
@@ -164,12 +235,19 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
 {
     switch (lexer_peek_token(parser->lexer)->type)
     {
-        case TOKEN_NUMBER:
+        case TOKEN_FLOAT:
+            return parse_float_lit(parser);
+        case TOKEN_INTEGER:
             return parse_int_lit(parser);
         case TOKEN_IDENTIFIER:
             return parse_identifier_expr(parser);
         case TOKEN_LPAREN:
             return parse_paren_expr(parser);
+        case TOKEN_TRUE:
+        case TOKEN_FALSE:
+            return parse_bool_lit(parser);
+        case TOKEN_STRING:
+            return parse_str_lit(parser);
         default:
             break;
     }

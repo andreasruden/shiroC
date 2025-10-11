@@ -39,10 +39,31 @@ static void ast_visitor_visit_call_expr(void* self_, ast_call_expr_t* call_expr,
         ast_visitor_visit(self_, vec_get(&call_expr->arguments, i), out_);
 }
 
+static void ast_visitor_visit_bool_lit(void* self_, ast_bool_lit_t* bool_lit, void* out_)
+{
+    (void)self_;
+    (void)bool_lit;
+    (void)out_;
+}
+
+static void ast_visitor_visit_float_lit(void* self_, ast_float_lit_t* float_lit, void* out_)
+{
+    (void)self_;
+    (void)float_lit;
+    (void)out_;
+}
+
 static void ast_visitor_visit_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
 {
     (void)self_;
     (void)int_lit;
+    (void)out_;
+}
+
+static void ast_visitor_visit_str_lit(void* self_, ast_str_lit_t* str_lit, void* out_)
+{
+    (void)self_;
+    (void)str_lit;
     (void)out_;
 }
 
@@ -104,10 +125,13 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_fn_def = ast_visitor_visit_fn_def,
         // Expressions
         .visit_bin_op = ast_visitor_visit_bin_op,
+        .visit_bool_lit = ast_visitor_visit_bool_lit,
         .visit_call_expr = ast_visitor_visit_call_expr,
+        .visit_float_lit = ast_visitor_visit_float_lit,
         .visit_int_lit = ast_visitor_visit_int_lit,
         .visit_paren_expr = ast_visitor_visit_paren_expr,
         .visit_ref_expr = ast_visitor_visit_ref_expr,
+        .visit_str_lit = ast_visitor_visit_str_lit,
         // Statements
         .visit_compound_stmt = ast_visitor_visit_compound_stmt,
         .visit_decl_stmt = ast_visitor_visit_decl_stmt,

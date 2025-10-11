@@ -1,0 +1,18 @@
+//! compile
+
+fn main() -> i32 {
+    var i_16: i16;
+    var i_32: i32;
+    var u_64: u64;
+    var f_32: f32;
+    var b: bool;
+
+    i_16 = 420i16;
+    i_32 = 420;
+    u_64 = 420u64;
+    f_32 = 0.0f32;
+    b = true;
+    b = false;
+
+    return 0;
+}

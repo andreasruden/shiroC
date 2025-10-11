@@ -87,11 +87,36 @@ static void present_call_expr(void* self_, ast_call_expr_t* call_expr, void* out
     string_append_cstr(out, ")");
 }
 
+static void present_bool_lit(void* self_, ast_bool_lit_t* bool_lit, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("%s", bool_lit->value ? "true" : "false"));
+}
+
+static void present_float_lit(void* self_, ast_float_lit_t* float_lit, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("%lf", float_lit->value));
+}
+
 static void present_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
 {
     PRELUDE
 
-    string_append_cstr(out, ssprintf("%ld", int_lit->value));
+    if (ast_type_is_signed(int_lit->base.type))
+        string_append_cstr(out, ssprintf("%ld", int_lit->value.as_signed));
+    else
+        string_append_cstr(out, ssprintf("%ld", int_lit->value.as_unsigned));
+}
+
+
+static void present_str_lit(void* self_, ast_str_lit_t* str_lit, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("%s", str_lit->value));
 }
 
 static void present_paren_expr(void* self_, ast_paren_expr_t* paren_expr, void* out_)
@@ -173,10 +198,13 @@ ast_presenter_t* ast_presenter_create()
             .visit_fn_def = present_fn_def,
             // Expressions
             .visit_bin_op = present_bin_op,
+            .visit_bool_lit = present_bool_lit,
             .visit_call_expr = present_call_expr,
+            .visit_float_lit = present_float_lit,
             .visit_int_lit = present_int_lit,
             .visit_paren_expr = present_paren_expr,
             .visit_ref_expr = present_ref_expr,
+            .visit_str_lit = present_str_lit,
             // Statements
             .visit_compound_stmt = present_compound_stmt,
             .visit_decl_stmt = present_decl_stmt,

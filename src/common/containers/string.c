@@ -109,3 +109,20 @@ void string_append_cstr(string_t* str, const char* cstr)
     memcpy(dest, cstr, cstr_len + 1); // +1 to copy null-terminator
     str->length += cstr_len;
 }
+
+void string_append_char(string_t* str, char c)
+{
+    size_t needed_capacity = str->length + 2;
+    if (str->capacity < needed_capacity)
+        string_grow(str, needed_capacity);
+
+    char* dest;
+    if (str->capacity > SMALL_STRING_OPTIMIZATION_SIZE)
+        dest = str->heap_mem + str->length;
+    else
+        dest = str->sso_buf + str->length;
+
+    *dest = c;
+    *(dest + 1) = '\0';
+    ++str->length;
+}

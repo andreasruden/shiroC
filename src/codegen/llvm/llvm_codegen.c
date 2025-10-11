@@ -158,9 +158,32 @@ static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     llvm->parameters = nullptr;
 }
 
+static void emit_bool_lit(void* self_, ast_bool_lit_t* lit, void* out_)
+{
+    if (lit->value)
+        EMIT("%s = add i1 0, 1", NEW_TMPVAR());
+    else
+        EMIT("%s = add i1 0, 0", NEW_TMPVAR());
+    EMIT_INLINE("  ");
+    EMIT_SRC_INLINE(lit);
+}
+
+static void emit_float_lit(void* self_, ast_float_lit_t* lit, void* out_)
+{
+    if (lit->base.type == ast_type_from_builtin(TYPE_F64))
+        EMIT("%s = add %s 0, %lf", NEW_TMPVAR(), llvm_type(lit->base.type), lit->value);
+    else
+        EMIT("%s = add %s 0, %f", NEW_TMPVAR(), llvm_type(lit->base.type), (float)lit->value);
+    EMIT_INLINE("  ");
+    EMIT_SRC_INLINE(lit);
+}
+
 static void emit_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
 {
-    EMIT("%s = add %s 0, %ld", NEW_TMPVAR(), llvm_type(lit->base.type), lit->value);
+    if (ast_type_is_signed(lit->base.type))
+        EMIT("%s = add %s 0, %ld", NEW_TMPVAR(), llvm_type(lit->base.type), lit->value.as_signed);
+    else
+        EMIT("%s = add %s 0, %lu", NEW_TMPVAR(), llvm_type(lit->base.type), lit->value.as_unsigned);
     EMIT_INLINE("  ");
     EMIT_SRC_INLINE(lit);
 }
@@ -429,10 +452,13 @@ llvm_codegen_t* llvm_codegen_create()
             .visit_fn_def = emit_fn_def,
             // Expressions
             .visit_bin_op = emit_bin_op,
+            .visit_bool_lit = emit_bool_lit,
             .visit_call_expr = emit_call_expr,
+            .visit_float_lit = emit_float_lit,
             .visit_int_lit = emit_int_lit,
             .visit_paren_expr = emit_paren_expr,
             .visit_ref_expr = emit_ref_expr,
+            // .visit_str_lit = emit_str_lit, FIXME:
             // Statements
             .visit_compound_stmt = emit_compound_stmt,
             .visit_decl_stmt = emit_decl_stmt,

@@ -11,6 +11,8 @@
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
 #include "sema/symbol_table.h"
+#include <math.h>
+#include <string.h>
 
 struct semantic_analyzer
 {
@@ -247,6 +249,14 @@ static void analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
     bin_op->base.type = result_type;
 }
 
+static void analyze_bool_lit(void* self_, ast_bool_lit_t* lit, void* out_)
+{
+    (void)self_;
+    (void)out_;
+
+    lit->base.type = ast_type_from_builtin(TYPE_BOOL);
+}
+
 static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 {
     semantic_analyzer_t* sema = self_;
@@ -289,15 +299,112 @@ static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
     call->base.type = symbol->type;
 }
 
+static void analyze_float_lit(void* self_, ast_float_lit_t* lit, void* out_)
+{
+    (void)out_;
+    semantic_analyzer_t* sema = self_;
+
+    ast_type_t* type = ast_type_from_builtin(TYPE_F64);
+    if (strcmp(lit->suffix, "f32") == 0) type = ast_type_from_builtin(TYPE_F32);
+    else if (strcmp(lit->suffix, "f64") == 0) type = ast_type_from_builtin(TYPE_F64);
+    else if (strlen(lit->suffix) > 0)
+    {
+        semantic_context_add_error(sema->ctx, lit, ssprintf("invalid suffix '%s' for integer literal", lit->suffix));
+        return;
+    }
+
+    if (type == ast_type_from_builtin(TYPE_F32))
+    {
+        float f32_value = (float)lit->value;
+
+        // Check for overflow when converting to f32
+        if (isinf(f32_value) && !isinf(lit->value))
+        {
+            semantic_context_add_error(sema->ctx, lit, "floating-point literal too large for f32");
+            return;
+        }
+
+        // Check for underflow (non-zero became zero)
+        if (f32_value == 0.0f && lit->value != 0.0)
+        {
+            semantic_context_add_error(sema->ctx, lit, "floating-point literal underflows to zero in f32");
+            return;
+        }
+    }
+
+    lit->base.type = type;
+}
+
 static void analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
 {
-    (void)self_;
     (void)out_;
+    semantic_analyzer_t* sema = self_;
 
-    if (lit->value > INT32_MAX)
-        lit->base.type = ast_type_from_builtin(TYPE_I64);
-    else
-        lit->base.type = ast_type_from_builtin(TYPE_I32);
+    ast_type_t* type = ast_type_from_builtin(TYPE_I32);
+    if (strcmp(lit->suffix, "i8") == 0) type = ast_type_from_builtin(TYPE_I8);
+    else if (strcmp(lit->suffix, "i16") == 0) type = ast_type_from_builtin(TYPE_I16);
+    else if (strcmp(lit->suffix, "i32") == 0) type = ast_type_from_builtin(TYPE_I32);
+    else if (strcmp(lit->suffix, "i64") == 0) type = ast_type_from_builtin(TYPE_I64);
+    else if (strcmp(lit->suffix, "u8") == 0) type = ast_type_from_builtin(TYPE_U8);
+    else if (strcmp(lit->suffix, "u16") == 0) type = ast_type_from_builtin(TYPE_U16);
+    else if (strcmp(lit->suffix, "u32") == 0) type = ast_type_from_builtin(TYPE_U32);
+    else if (strcmp(lit->suffix, "u64") == 0) type = ast_type_from_builtin(TYPE_U64);
+    else if (strlen(lit->suffix) > 0)
+    {
+        semantic_context_add_error(sema->ctx, lit, ssprintf("invalid suffix '%s' for integer literal", lit->suffix));
+        return;
+    }
+
+    bool is_signed = ast_type_is_signed(type);
+
+    bool fits;
+    if (is_signed)
+    {
+        uint64_t max_magnitude;
+        if (type == ast_type_from_builtin(TYPE_I8)) max_magnitude = (uint64_t)INT8_MAX;
+        else if (type == ast_type_from_builtin(TYPE_I16)) max_magnitude = (uint64_t)INT16_MAX;
+        else if (type == ast_type_from_builtin(TYPE_I32)) max_magnitude = (uint64_t)INT32_MAX;
+        else /* i64 */ max_magnitude = (uint64_t)INT64_MAX;
+
+        if (lit->has_minus_sign)
+            max_magnitude += 1;
+
+        fits = lit->value.magnitude <= max_magnitude;
+        if (fits)
+        {
+            if (lit->has_minus_sign)
+                lit->value.as_signed = -(int64_t)lit->value.magnitude;
+            else
+                lit->value.as_signed = (int64_t)lit->value.magnitude;
+        }
+    }
+    else  // unsigned
+    {
+        if (lit->has_minus_sign)
+        {
+            semantic_context_add_error(sema->ctx, lit, "literal cannot be negative");
+            return;
+        }
+
+        uint64_t max_val;
+        if (type == ast_type_from_builtin(TYPE_U8)) max_val = UINT8_MAX;
+        else if (type == ast_type_from_builtin(TYPE_U16)) max_val = UINT16_MAX;
+        else if (type == ast_type_from_builtin(TYPE_U32)) max_val = UINT32_MAX;
+        else /* u64 */ max_val = UINT64_MAX;
+
+        fits = lit->value.magnitude <= max_val;
+        if (fits)
+            lit->value.as_unsigned = lit->value.magnitude;
+    }
+
+    if (!fits)
+    {
+        semantic_context_add_error(sema->ctx, lit, ssprintf("integer literal does not fit in type '%s'",
+            ast_type_string(type)));
+        return;
+    }
+
+    lit->base.type = type;
 }
 
 static void analyze_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
@@ -330,6 +437,14 @@ static void analyze_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
     }
 
     ref_expr->base.type = symbol->type;
+}
+
+static void analyze_str_lit(void* self_, ast_str_lit_t* lit, void* out_)
+{
+    (void)self_;
+    (void)out_;
+
+    lit->base.type = ast_type_from_builtin(TYPE_VOID);  // FIXME: We don't have a string type yet
 }
 
 static void analyze_compound_statement(void* self_, ast_compound_stmt_t* block, void* out_)
@@ -444,10 +559,13 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             .visit_fn_def = analyze_fn_def,
             // Expressions
             .visit_bin_op = analyze_bin_op,
+            .visit_bool_lit = analyze_bool_lit,
             .visit_call_expr = analyze_call_expr,
+            .visit_float_lit = analyze_float_lit,
             .visit_int_lit = analyze_int_lit,
             .visit_paren_expr = analyze_paren_expr,
             .visit_ref_expr = analyze_ref_expr,
+            .visit_str_lit = analyze_str_lit,
             // Statements
             .visit_compound_stmt = analyze_compound_statement,
             .visit_decl_stmt = analyze_decl_stmt,

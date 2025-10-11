@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static constexpr char EMPTY_SUFFIX[] = "";
+
 typedef struct
 {
     const char* keyword;
@@ -23,6 +25,7 @@ static keyword_t lexer_keywords[] =
     {"else", TOKEN_ELSE},
     {"f32", TOKEN_F32},
     {"f64", TOKEN_F64},
+    {"false", TOKEN_FALSE},
     {"fn", TOKEN_FN},
     {"if", TOKEN_IF},
     {"i8", TOKEN_I8},
@@ -30,6 +33,7 @@ static keyword_t lexer_keywords[] =
     {"i32", TOKEN_I32},
     {"i64", TOKEN_I64},
     {"return", TOKEN_RETURN},
+    {"true", TOKEN_TRUE},
     {"u8", TOKEN_U8},
     {"u16", TOKEN_U16},
     {"u32", TOKEN_U32},
@@ -40,6 +44,20 @@ static keyword_t lexer_keywords[] =
     {nullptr, TOKEN_UNKNOWN}
 };
 
+static void emit_error(lexer_t* lexer, const char* description, int line, int col)
+{
+    if (lexer->error_output == nullptr)
+    {
+        printf("Error: %s at line %d, col %d\n", description, line, col);
+    }
+    else
+    {
+        compiler_error_t* error = compiler_error_create_for_source(false,
+            description, lexer->filename, line, col);
+        lexer->error_output(error, lexer->error_output_arg);
+    }
+}
+
 string_t token_str(token_t* tok)
 {
     string_t out = STRING_INIT;
@@ -48,7 +66,8 @@ string_t token_str(token_t* tok)
     {
         case TOKEN_IDENTIFIER:
         case TOKEN_STRING:
-        case TOKEN_NUMBER:
+        case TOKEN_INTEGER:
+        case TOKEN_FLOAT:
             string_append_cstr(&out, ssprintf(" (%s)", tok->value));
             break;
         default:
@@ -61,6 +80,9 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_FALSE: return "false";
+        case TOKEN_TRUE: return "true";
+        case TOKEN_FLOAT: return "float";
         case TOKEN_BOOL: return "bool";
         case TOKEN_VOID: return "void";
         case TOKEN_I8: return "i8";
@@ -73,7 +95,7 @@ const char* token_type_str(token_type_t type)
         case TOKEN_U64: return "u64";
         case TOKEN_RETURN: return "return";
         case TOKEN_IDENTIFIER: return "identifier";
-        case TOKEN_NUMBER: return "number";
+        case TOKEN_INTEGER: return "number";
         case TOKEN_STRING: return "string-literal";
         case TOKEN_LPAREN: return "(";
         case TOKEN_RPAREN: return ")";
@@ -119,6 +141,14 @@ static char lexer_peek(lexer_t* lexer)
     if (lexer->pos >= lexer->length)
         return '\0';
     return lexer->source[lexer->pos];
+}
+
+// lexer_peek_n(lexer, 0) is equivalent to lexer_peek(lexer)
+static char lexer_peek_n(lexer_t* lexer, size_t offset)
+{
+    if (lexer->pos + offset >= lexer->length)
+        return '\0';
+    return lexer->source[lexer->pos + offset];
 }
 
 static char lexer_advance(lexer_t* lexer)
@@ -176,16 +206,7 @@ static void lexer_skip_until_next_token(lexer_t* lexer)
             {
                 if (lexer_peek(lexer) == '\0')
                 {
-                    if (lexer->error_output == nullptr)
-                    {
-                        printf("Error: Unterminated multi-line comment at line %d, col %d\n", saved_line, saved_col);
-                    }
-                    else
-                    {
-                        compiler_error_t* error = compiler_error_create_for_source(false,
-                            "unterminated multi-line comment", lexer->filename, saved_line, saved_col);
-                        lexer->error_output(error, lexer->error_output_arg);
-                    }
+                    emit_error(lexer, "unterminated multi-line comment", saved_line, saved_col);
                     break;
                 }
                 if (lexer_peek(lexer) == '*')
@@ -221,6 +242,7 @@ static token_t* token_create(lexer_t* lexer, token_type_t type, const char* valu
     *tok = (token_t){
         .type = type,
         .value = value ? strdup(value) : nullptr,
+        .suffix = (char*)EMPTY_SUFFIX,
         .line = line,
         .column = col,
     };
@@ -236,6 +258,8 @@ static void token_destroy(void* tok_)
     if (tok != nullptr)
     {
         free(tok->value);
+        if (tok->suffix != EMPTY_SUFFIX)
+            free(tok->suffix);
         free(tok);
     }
 }
@@ -275,18 +299,80 @@ static token_t* lex_number(lexer_t* lexer)
 {
     int start_line = lexer->line;
     int start_col = lexer->column;
-    size_t start = lexer->pos;
+    token_type_t type = TOKEN_INTEGER;
+    string_t value = STRING_INIT;
+    string_t suffix = STRING_INIT;
 
-    while (isdigit(lexer_peek(lexer)))
-        lexer_advance(lexer);
+    // Check for minus sign
+    if (lexer_peek(lexer) == '-')
+        string_append_char(&value, lexer_advance(lexer));
 
-    size_t length = lexer->pos - start;
-    char* value = malloc(length + 1);
-    strncpy(value, lexer->source + start, length);
-    value[length] = '\0';
+    // Lex integer part
+    while (isdigit(lexer_peek(lexer)) || lexer_peek(lexer) == '_')
+    {
+        char c = lexer_advance(lexer);
+        if (isdigit(c))
+            string_append_char(&value, c);
+    }
 
-    token_t* tok = token_create(lexer, TOKEN_NUMBER, value, start_line, start_col);
-    free(value);
+    // Check for decimal point
+    if (lexer_peek(lexer) == '.')
+    {
+        type = TOKEN_FLOAT;
+        string_append_char(&value, lexer_advance(lexer));  // consume '.'
+
+        while (isdigit(lexer_peek(lexer)) || lexer_peek(lexer) == '_')
+        {
+            char c = lexer_advance(lexer);
+            if (isdigit(c))
+                string_append_char(&value, c);
+        }
+    }
+
+    // Check for exponent (e or E)
+    if (lexer_peek(lexer) == 'e' || lexer_peek(lexer) == 'E')
+    {
+        type = TOKEN_FLOAT;
+        string_append_char(&value, lexer_advance(lexer));
+
+        // Optional sign
+        if (lexer_peek(lexer) == '+' || lexer_peek(lexer) == '-')
+            string_append_char(&value, lexer_advance(lexer));
+
+        // Exponent digits (required)
+        if (!isdigit(lexer_peek(lexer)))
+        {
+            emit_error(lexer, "missing exponent", lexer->line, lexer->column);
+            type = TOKEN_UNKNOWN;
+            goto end;
+        }
+
+        while (isdigit(lexer_peek(lexer)) || lexer_peek(lexer) == '_')
+        {
+            char c = lexer_advance(lexer);
+            if (isdigit(c))
+                string_append_char(&value, c);
+        }
+    }
+
+    // Lex suffix (if present)
+    if (isalpha(lexer_peek(lexer)) || lexer_peek(lexer) == '_')
+    {
+        while (isalnum(lexer_peek(lexer)) || lexer_peek(lexer) == '_')
+        {
+            char c = lexer_advance(lexer);
+            if (isalnum(c))
+                string_append_char(&suffix, c);
+        }
+    }
+
+end:
+    token_t* tok = token_create(lexer, type, string_cstr(&value), start_line, start_col);
+    if (string_len(&suffix) > 0)
+        tok->suffix = string_release(&suffix);
+
+    string_deinit(&value);
+    string_deinit(&suffix);
     return tok;
 }
 
@@ -450,7 +536,7 @@ static token_t* lex_next_token(lexer_t* lexer)
     if (isalpha(c) || c == '_')
         return lex_identifier(lexer);
 
-    if (isdigit(c))
+    if (isdigit(c) || (c == '-' && isdigit(lexer_peek_n(lexer, 1))))
         return lex_number(lexer);
 
     if (c == '"')

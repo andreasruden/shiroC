@@ -42,4 +42,6 @@ size_t string_len(string_t* str);
 
 void string_append_cstr(string_t* str, const char* cstr);
 
+void string_append_char(string_t* str, char c);
+
 #endif

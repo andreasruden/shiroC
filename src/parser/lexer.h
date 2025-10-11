@@ -13,6 +13,7 @@ typedef enum
     TOKEN_ELSE,
     TOKEN_F32,
     TOKEN_F64,
+    TOKEN_FALSE,
     TOKEN_FN,
     TOKEN_IF,
     TOKEN_I8,
@@ -20,6 +21,7 @@ typedef enum
     TOKEN_I32,
     TOKEN_I64,
     TOKEN_RETURN,
+    TOKEN_TRUE,
     TOKEN_U8,
     TOKEN_U16,
     TOKEN_U32,
@@ -29,8 +31,9 @@ typedef enum
     TOKEN_WHILE,
 
     // Literals
-    TOKEN_NUMBER,
+    TOKEN_INTEGER,
     TOKEN_STRING,
+    TOKEN_FLOAT,
 
     // Delimiters
     TOKEN_LPAREN,
@@ -74,6 +77,7 @@ typedef struct token
 {
     token_type_t type;
     char* value;
+    char* suffix;  // Defaults to "". Used for TOKEN_INTEGER and TOKEN_FLOAT
     int line;
     int column;
 } token_t;

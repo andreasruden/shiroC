@@ -4,6 +4,7 @@
 #include "ast/def/fn_def.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/call_expr.h"
+#include "ast/expr/float_lit.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/node.h"
@@ -96,7 +97,7 @@ TEST(ut_sema_fixture_t, variable_read_requires_initialization)
     ast_expr_t* error_node = ast_ref_expr_create("x");
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
         ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), nullptr)),
-        ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS_ASSIGN, error_node, ast_int_lit_create(42))),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS_ASSIGN, error_node, ast_int_lit_val(42))),
         nullptr
     ), nullptr);
 
@@ -116,7 +117,7 @@ TEST(ut_sema_fixture_t, variable_write_only_requires_declaration)
 {
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
         ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), nullptr)),
-        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("x"), ast_int_lit_create(42))),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("x"), ast_int_lit_val(42))),
         nullptr
     ), nullptr);
 
@@ -132,7 +133,7 @@ TEST(ut_sema_fixture_t, assume_function_parameter_is_initialized)
 {
     ast_decl_t* param = ast_param_decl_create("param", ast_type_from_builtin(TYPE_I32));
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-            ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("param"), ast_int_lit_create(42))),
+            ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("param"), ast_int_lit_val(42))),
             nullptr),
     param, nullptr);
 
@@ -149,7 +150,7 @@ TEST(ut_sema_fixture_t, call_expr_must_be_ref_function_symbol)
     ast_expr_t* error_node = ast_ref_expr_create("not_a_function");
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
         ast_decl_stmt_create(ast_var_decl_create("not_a_function", ast_type_from_builtin(TYPE_I32),
-            ast_int_lit_create(5))),
+            ast_int_lit_val(5))),
         ast_expr_stmt_create(ast_call_expr_create_va(error_node, nullptr)),
         nullptr
     ), nullptr);
@@ -184,7 +185,7 @@ TEST(ut_sema_fixture_t, call_expr_arg_count_mismatch_error)
 
     // Call with only 1 arg, but bar expects 2
     ast_expr_t* error_node = ast_call_expr_create_va(ast_ref_expr_create("bar"),
-        ast_int_lit_create(42),
+        ast_int_lit_val(42),
         nullptr
     );
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
@@ -217,7 +218,7 @@ TEST(ut_sema_fixture_t, call_expr_arg_type_mismatch_error)
     vec_push(&bar_symbol->data.function.parameters, param_x);
     symbol_table_insert(fix->ctx->global, bar_symbol);
 
-    ast_expr_t* error_node = ast_int_lit_create(42);
+    ast_expr_t* error_node = ast_int_lit_val(42);
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
         ast_expr_stmt_create(ast_call_expr_create_va(
             ast_ref_expr_create("bar"), error_node,  // Passing int32, but expects bool
@@ -238,7 +239,7 @@ TEST(ut_sema_fixture_t, call_expr_arg_type_mismatch_error)
 // Returning wrong type from function
 TEST(ut_sema_fixture_t, return_stmt_type_mismatch_function_return_type_error)
 {
-    ast_expr_t* error_node = ast_int_lit_create(42);
+    ast_expr_t* error_node = ast_int_lit_val(42);
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", ast_type_from_builtin(TYPE_BOOL),
         ast_compound_stmt_create_va(
             ast_return_stmt_create(error_node),  // Returning bool, but function returns i32
@@ -261,7 +262,7 @@ TEST(ut_sema_fixture_t, function_with_return_type_has_path_without_return_error)
 {
     ast_def_t* error_node = ast_fn_def_create_va("foo", ast_type_from_builtin(TYPE_I32),
         ast_compound_stmt_create_va(
-            ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), ast_int_lit_create(5))),
+            ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(5))),
             nullptr  // No return statement
         ), nullptr);
 
@@ -279,7 +280,7 @@ TEST(ut_sema_fixture_t, function_with_return_type_has_path_without_return_error)
 // If statement with non-boolean condition
 TEST(ut_sema_fixture_t, if_condition_must_be_boolean_expr)
 {
-    ast_expr_t* error_node = ast_int_lit_create(42);
+    ast_expr_t* error_node = ast_int_lit_val(42);
 
     ast_stmt_t* if_stmt = ast_if_stmt_create(
         error_node,  // Should be boolean
@@ -301,7 +302,7 @@ TEST(ut_sema_fixture_t, if_condition_must_be_boolean_expr)
 // While statement with non-boolean condition
 TEST(ut_sema_fixture_t, while_condition_must_be_boolean_expr)
 {
-    ast_expr_t* error_node = ast_int_lit_create(42);
+    ast_expr_t* error_node = ast_int_lit_val(42);
 
     ast_stmt_t* while_stmt = ast_while_stmt_create(
         error_node,  // Should be boolean
@@ -326,7 +327,7 @@ TEST(ut_sema_fixture_t, assignment_with_mismatched_types)
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
         ast_decl_stmt_create(ast_var_decl_create("x", ast_type_from_builtin(TYPE_BOOL), nullptr)),
         // Error: assign i32 to bool
-        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_create(true))),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(true))),
         nullptr
     ), nullptr);
 
@@ -349,16 +350,16 @@ TEST(ut_sema_fixture_t, variable_init_in_if_both_branches)
         ast_if_stmt_create(
             ast_ref_expr_create("cond"),
             ast_compound_stmt_create_va(
-                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_create(23))),
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_val(23))),
                 nullptr
             ),
             ast_compound_stmt_create_va(
-                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_create(42))),
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_val(42))),
                 nullptr
             )
         ),
         // After if-statement, i should be initialized
-        ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("i"), ast_int_lit_create(23))),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("i"), ast_int_lit_val(23))),
         nullptr
     ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
 
@@ -378,19 +379,19 @@ TEST(ut_sema_fixture_t, variable_init_in_if_only_then_branch)
         ast_if_stmt_create(
             ast_ref_expr_create("cond"),
             ast_compound_stmt_create_va(
-                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_create(23))),
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_val(23))),
                 // Inside then-branch, i IS initialized, so this should be OK
-                ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("i"), ast_int_lit_create(5))),
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("i"), ast_int_lit_val(5))),
                 nullptr
             ),
             ast_compound_stmt_create_va(
                 // Else-branch doesn't initialize i
-                ast_expr_stmt_create(ast_int_lit_create(50)),
+                ast_expr_stmt_create(ast_int_lit_val(50)),
                 nullptr
             )
         ),
         // After if-statement, i is NOT initialized (error)
-        ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_int_lit_create(5), error_node)),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS, ast_int_lit_val(5), error_node)),
         nullptr
     ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
 
@@ -414,14 +415,14 @@ TEST(ut_sema_fixture_t, variable_init_in_if_no_else_branch)
         ast_if_stmt_create(
             ast_ref_expr_create("cond"),
             ast_compound_stmt_create_va(
-                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_create(23)
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_val(23)
                 )),
                 nullptr
             ),
             nullptr  // No else branch
         ),
         // After if-statement, i might not be initialized (error)
-        ast_expr_stmt_create(ast_bin_op_create(TOKEN_STAR, error_node, ast_int_lit_create(5))),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_STAR, error_node, ast_int_lit_val(5))),
         nullptr
     ), ast_param_decl_create("cond", ast_type_from_builtin(TYPE_BOOL)), nullptr);
 
@@ -445,7 +446,7 @@ TEST(ut_sema_fixture_t, variable_init_in_while_loop)
         ast_while_stmt_create(
             ast_ref_expr_create("cond"),
             ast_compound_stmt_create_va(
-                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_create(23))),
+                ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("i"), ast_int_lit_val(23))),
                 nullptr
             )
         ),
@@ -469,12 +470,12 @@ TEST(ut_sema_fixture_t, variable_init_in_while_loop)
 TEST(ut_sema_fixture_t, variable_init_before_if_remains_initialized)
 {
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_create(10))),
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(10))),
         ast_if_stmt_create(
             ast_ref_expr_create("cond"),
             ast_compound_stmt_create_va(
                 // Do something else in if
-                ast_expr_stmt_create(ast_int_lit_create(1)),
+                ast_expr_stmt_create(ast_int_lit_val(1)),
                 nullptr
             ),
             nullptr
@@ -521,14 +522,14 @@ TEST(ut_sema_fixture_t, variable_shadowing_does_not_affect_outer_scope_initializ
         ast_if_stmt_create(
             ast_ref_expr_create("cond"), ast_compound_stmt_create_va(
                 // Shadow outer 'i' with a new local 'i'
-                ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_create(10))),
+                ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(10))),
                 // This 'i' refers to the inner variable, which is initialized
                 ast_expr_stmt_create(ast_ref_expr_create("i")),
                 nullptr
             ),
             ast_compound_stmt_create_va(
                 // Shadow outer 'i' with another new local 'i'
-                ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_create(20))),
+                ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(20))),
                 // This 'i' also refers to the inner variable
                 ast_expr_stmt_create(ast_ref_expr_create("i")),
                 nullptr
@@ -563,7 +564,7 @@ TEST(ut_sema_fixture_t, assignment_to_function_error)
 
     // Try to assign to the function
     ast_expr_t* error_node = ast_ref_expr_create("foo");
-    ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_create(12));
+    ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(12));
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(expr));
     ASSERT_FALSE(res);
@@ -581,8 +582,8 @@ TEST(ut_sema_fixture_t, assignment_to_function_error)
 TEST(ut_sema_fixture_t, assignment_to_non_lvalue_expression_error)
 {
     // Try to assign to a binary expression (5 * 3 = 30)
-    ast_expr_t* error_node = ast_bin_op_create(TOKEN_STAR, ast_int_lit_create(5), ast_int_lit_create(3));;
-    ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_create(30));
+    ast_expr_t* error_node = ast_bin_op_create(TOKEN_STAR, ast_int_lit_val(5), ast_int_lit_val(3));;
+    ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(30));
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(expr));
     ASSERT_FALSE(res);
@@ -599,8 +600,8 @@ TEST(ut_sema_fixture_t, assignment_to_non_lvalue_expression_error)
 TEST(ut_sema_fixture_t, assignment_to_literal_error)
 {
     // Try to assign to a literal (42 = 10)
-    ast_expr_t* error_node = ast_int_lit_create(42);
-    ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_create(10));
+    ast_expr_t* error_node = ast_int_lit_val(42);
+    ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(10));
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(expr));
     ASSERT_FALSE(res);
@@ -617,7 +618,7 @@ TEST(ut_sema_fixture_t, assignment_to_literal_error)
 TEST(ut_sema_fixture_t, assignment_to_parameter_allowed)
 {
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
-        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("param"), ast_int_lit_create(42))),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("param"), ast_int_lit_val(42))),
         nullptr
     ), ast_param_decl_create("param", ast_type_from_builtin(TYPE_I32)), nullptr);
 
@@ -632,7 +633,7 @@ TEST(ut_sema_fixture_t, assignment_to_parameter_allowed)
 TEST(ut_sema_fixture_t, symbol_not_exist)
 {
     ast_def_t* main_fn = ast_fn_def_create_va("main", nullptr, ast_compound_stmt_create_va(
-        ast_if_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("inexistant"), ast_int_lit_create(5)),
+        ast_if_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("inexistant"), ast_int_lit_val(5)),
             ast_compound_stmt_create_empty(), nullptr),
         nullptr
     ), nullptr);
@@ -648,8 +649,8 @@ TEST(ut_sema_fixture_t, symbol_not_exist)
 TEST(ut_sema_fixture_t, comparison_in_if_condition)
 {
     ast_stmt_t* block = ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_create(3))),
-        ast_if_stmt_create(ast_bin_op_create(TOKEN_GT, ast_ref_expr_create("i"), ast_int_lit_create(5)),
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_from_builtin(TYPE_I32), ast_int_lit_val(3))),
+        ast_if_stmt_create(ast_bin_op_create(TOKEN_GT, ast_ref_expr_create("i"), ast_int_lit_val(5)),
             ast_compound_stmt_create_empty(), nullptr),
         nullptr);
 
@@ -680,4 +681,241 @@ TEST(ut_sema_fixture_t, local_variable_shadows_parameter_error)
     ASSERT_NEQ(nullptr, strstr(error->description, "redeclares function parameter"));
 
     ast_node_destroy(foo_fn);
+}
+
+// Test that various invalid combinations of integer literals and suffixes get rejected
+TEST(ut_sema_fixture_t, reject_invalid_int_literals)
+{
+    ast_expr_t* error_nodes[] =
+    {
+        ast_int_lit_create(false, 256, "i8"),        // 256i8 - too large for i8
+        ast_int_lit_create(false, 128, "i8"),        // 128i8 - too large for i8
+        ast_int_lit_create(true, 129, "i8"),         // -129i8 - too small for i8
+        ast_int_lit_create(false, 65536, "i16"),     // 65536i16 - too large for i16
+        ast_int_lit_create(false, 32768, "i16"),     // 32768i16 - too large for i16
+        ast_int_lit_create(true, 32769, "i16"),      // -32769i16 - too small for i16
+        ast_int_lit_create(false, 2147483648ULL, "i32"),  // 2^31 - too large for i32
+        ast_int_lit_create(true, 2147483649ULL, "i32"),   // -2147483649i32 - too small for i32
+        ast_int_lit_create(false, 9223372036854775808ULL, "i64"),  // 2^63 - too large for i64
+        ast_int_lit_create(true, 9223372036854775809ULL, "i64"),   // -(2^63+1) - too small for i64
+        ast_int_lit_create(true, 1, "u8"),           // -1u8 - negative with unsigned
+        ast_int_lit_create(true, 100, "u16"),        // -100u16 - negative with unsigned
+        ast_int_lit_create(true, 1000, "u32"),       // -1000u32 - negative with unsigned
+        ast_int_lit_create(true, 50000, "u64"),      // -50000u64 - negative with unsigned
+        ast_int_lit_create(false, 256, "u8"),        // 256u8 - too large for u8
+        ast_int_lit_create(false, 65536, "u16"),     // 65536u16 - too large for u16
+        ast_int_lit_create(false, 4294967296ULL, "u32"),  // 2^32 - too large for u32
+        // Overflow of u64 is handled in the parser due to restrictions of repr we're using.
+        ast_int_lit_create(false, 100, "i128"),      // invalid suffix
+        ast_int_lit_create(false, 100, "u128"),      // invalid suffix
+        ast_int_lit_create(false, 100, "int"),       // invalid suffix
+        ast_int_lit_create(false, 100, "f32"),       // invalid suffix (float)
+    };
+
+    size_t num_tests = sizeof(error_nodes) / sizeof(error_nodes[0]);
+
+    for (size_t i = 0; i < num_tests; ++i)
+    {
+        bool res = semantic_analyzer_run(fix->sema, AST_NODE(error_nodes[i]));
+        ASSERT_FALSE(res);
+        ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+        compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
+
+        // Check that error message is appropriate
+        bool has_overflow_error = strstr(error->description, "does not fit") != nullptr;
+        bool has_negative_error = strstr(error->description, "negative") != nullptr;
+        bool has_invalid_suffix = strstr(error->description, "invalid") != nullptr;
+
+        ASSERT_TRUE(has_overflow_error || has_negative_error || has_invalid_suffix);
+
+        // Reset error state:
+        vec_deinit(&fix->ctx->error_nodes);
+        fix->ctx->error_nodes = VEC_INIT(nullptr);
+    }
+
+    for (size_t i = 0; i < num_tests; ++i)
+        ast_node_destroy(AST_NODE(error_nodes[i]));
+}
+
+// Test that various valid integer literals are accepted and have correct values
+TEST(ut_sema_fixture_t, accept_valid_int_literals)
+{
+    struct test_case {
+        ast_expr_t* node;
+        bool is_signed;
+        union {
+            int64_t as_signed;
+            uint64_t as_unsigned;
+        } expected_value;
+    };
+
+    struct test_case test_cases[] =
+    {
+        // i8 cases
+        {ast_int_lit_create(false, 0, "i8"), true, .expected_value.as_signed = 0},
+        {ast_int_lit_create(false, 127, "i8"), true, .expected_value.as_signed = 127},
+        {ast_int_lit_create(true, 128, "i8"), true, .expected_value.as_signed = -128},
+        {ast_int_lit_create(true, 1, "i8"), true, .expected_value.as_signed = -1},
+
+        // i16 cases
+        {ast_int_lit_create(false, 32767, "i16"), true, .expected_value.as_signed = 32767},
+        {ast_int_lit_create(true, 32768, "i16"), true, .expected_value.as_signed = -32768},
+
+        // i32 cases
+        {ast_int_lit_create(false, 2147483647, "i32"), true, .expected_value.as_signed = 2147483647},
+        {ast_int_lit_create(true, 2147483648ULL, "i32"), true, .expected_value.as_signed = -2147483648LL},
+        {ast_int_lit_create(false, 42, ""), true, .expected_value.as_signed = 42},  // default i32
+        {ast_int_lit_create(true, 42, ""), true, .expected_value.as_signed = -42},  // default i32
+
+        // i64 cases
+        {ast_int_lit_create(false, 9223372036854775807ULL, "i64"), true, .expected_value.as_signed = 9223372036854775807LL},
+        {ast_int_lit_create(true, 9223372036854775808ULL, "i64"), true, .expected_value.as_signed = INT64_MIN},
+
+        // u8 cases
+        {ast_int_lit_create(false, 0, "u8"), false, .expected_value.as_unsigned = 0},
+        {ast_int_lit_create(false, 255, "u8"), false, .expected_value.as_unsigned = 255},
+
+        // u16 cases
+        {ast_int_lit_create(false, 65535, "u16"), false, .expected_value.as_unsigned = 65535},
+
+        // u32 cases
+        {ast_int_lit_create(false, 4294967295ULL, "u32"), false, .expected_value.as_unsigned = 4294967295ULL},
+
+        // u64 cases
+        {ast_int_lit_create(false, 18446744073709551615ULL, "u64"), false, .expected_value.as_unsigned = 18446744073709551615ULL},
+        {ast_int_lit_create(false, 0, "u64"), false, .expected_value.as_unsigned = 0},
+    };
+
+    size_t num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+
+    for (size_t i = 0; i < num_tests; ++i)
+    {
+        bool res = semantic_analyzer_run(fix->sema, AST_NODE(test_cases[i].node));
+        ASSERT_TRUE(res);
+        ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+        ast_int_lit_t* lit = (ast_int_lit_t*)test_cases[i].node;
+
+        // Verify type is set
+        ASSERT_NEQ(nullptr, lit->base.type);
+
+        // Verify value matches expected
+        if (test_cases[i].is_signed)
+        {
+            ASSERT_TRUE(ast_type_is_signed(lit->base.type));
+            ASSERT_EQ(test_cases[i].expected_value.as_signed, lit->value.as_signed);
+        }
+        else
+        {
+            ASSERT_FALSE(ast_type_is_signed(lit->base.type));
+            ASSERT_EQ(test_cases[i].expected_value.as_unsigned, lit->value.as_unsigned);
+        }
+    }
+
+    for (size_t i = 0; i < num_tests; ++i)
+        ast_node_destroy(AST_NODE(test_cases[i].node));
+}
+
+// Test that float literals that are too large for f32 are rejected
+TEST(ut_sema_fixture_t, reject_float_literal_overflow_f32)
+{
+    ast_expr_t* error_nodes[] =
+    {
+        // Values larger than FLT_MAX (~3.4e38)
+        ast_float_lit_create(1e39, "f32"),
+        ast_float_lit_create(3.5e38, "f32"),
+        ast_float_lit_create(-1e39, "f32"),
+        ast_float_lit_create(999999999999999999999999999999999999999.0, "f32"),
+
+        // Invalid suffixes
+        ast_float_lit_create(3.14, "f16"),
+        ast_float_lit_create(2.71, "float"),
+        ast_float_lit_create(1.0, "double"),
+        ast_float_lit_create(1.5, "i32"),
+    };
+
+    size_t num_tests = sizeof(error_nodes) / sizeof(error_nodes[0]);
+
+    for (size_t i = 0; i < num_tests; i++)
+    {
+        bool res = semantic_analyzer_run(fix->sema, AST_NODE(error_nodes[i]));
+        ASSERT_FALSE(res);
+        ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+        compiler_error_t* error = vec_get(AST_NODE(vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
+
+        // Check that error message mentions overflow or invalid suffix
+        bool has_overflow = strstr(error->description, "too large") != nullptr;
+        bool has_invalid_suffix = strstr(error->description, "invalid") != nullptr;
+
+        ASSERT_TRUE(has_overflow || has_invalid_suffix);
+
+        // Reset error state:
+        vec_deinit(&fix->ctx->error_nodes);
+        fix->ctx->error_nodes = VEC_INIT(nullptr);
+    }
+
+    for (size_t i = 0; i < num_tests; i++)
+        ast_node_destroy(AST_NODE(error_nodes[i]));
+}
+
+// Test that valid float literals are accepted and have correct values
+TEST(ut_sema_fixture_t, accept_valid_float_literals)
+{
+    struct test_case {
+        ast_expr_t* node;
+        bool is_f32;
+        union {
+            float as_f32;
+            double as_f64;
+        } expected_value;
+    };
+
+    struct test_case test_cases[] =
+    {
+        // f32 cases
+        {ast_float_lit_create(3.14, "f32"), true, .expected_value.as_f32 = 3.14f},
+        {ast_float_lit_create(0.0, "f32"), true, .expected_value.as_f32 = 0.0f},
+        {ast_float_lit_create(-2.5, "f32"), true, .expected_value.as_f32 = -2.5f},
+        {ast_float_lit_create(1e10, "f32"), true, .expected_value.as_f32 = 1e10f},
+        {ast_float_lit_create(1.5e-5, "f32"), true, .expected_value.as_f32 = 1.5e-5f},
+        {ast_float_lit_create(3.4e38, "f32"), true, .expected_value.as_f32 = 3.4e38f},  // Near FLT_MAX
+
+        // f64 cases
+        {ast_float_lit_create(3.14159265358979, "f64"), false, .expected_value.as_f64 = 3.14159265358979},
+        {ast_float_lit_create(2.718281828, "f64"), false, .expected_value.as_f64 = 2.718281828},
+        {ast_float_lit_create(1e100, "f64"), false, .expected_value.as_f64 = 1e100},
+        {ast_float_lit_create(-9.8, "f64"), false, .expected_value.as_f64 = -9.8},
+
+        // Default f64 (no suffix)
+        {ast_float_lit_create(42.0, ""), false, .expected_value.as_f64 = 42.0},
+        {ast_float_lit_create(1.23, ""), false, .expected_value.as_f64 = 1.23},
+    };
+
+    size_t num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+
+    for (size_t i = 0; i < num_tests; i++)
+    {
+        bool res = semantic_analyzer_run(fix->sema, AST_NODE(test_cases[i].node));
+        ASSERT_TRUE(res);
+        ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+        ast_float_lit_t* lit = (ast_float_lit_t*)test_cases[i].node;
+
+        // Verify type is set
+        ASSERT_NEQ(nullptr, lit->base.type);
+
+        if (test_cases[i].is_f32)
+        {
+            ASSERT_EQ(lit->base.type, ast_type_from_builtin(TYPE_F32));
+            ASSERT_EQ(test_cases[i].expected_value.as_f32, (float)lit->value);
+        }
+        else
+        {
+            ASSERT_EQ(lit->base.type, ast_type_from_builtin(TYPE_F64));
+            ASSERT_EQ(test_cases[i].expected_value.as_f64, lit->value);
+        }
+    }
+
+    for (size_t i = 0; i < num_tests; i++)
+        ast_node_destroy(AST_NODE(test_cases[i].node));
 }

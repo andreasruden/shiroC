@@ -131,6 +131,23 @@ bool ast_type_is_arithmetic(ast_type_t* type)
     }
 }
 
+bool ast_type_is_signed(ast_type_t* type)
+{
+    if (type->kind != AST_TYPE_BUILTIN)
+        return false;
+
+    switch (type->data.builtin.type)
+    {
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+            return true;
+        default:
+            return false;
+    }
+}
+
 const char* ast_type_string(ast_type_t* type)
 {
     switch (type->kind)
