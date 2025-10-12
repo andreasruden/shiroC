@@ -5,6 +5,7 @@
 #include "ast/util/presenter.h"
 #include "ast/visitor.h"
 #include "common/containers/hash_table.h"
+#include "common/containers/string.h"
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
 #include "common/util//ssprintf.h"
@@ -16,21 +17,26 @@
 struct llvm_codegen
 {
     ast_visitor_t base;
+    FILE* emit_to;
     ast_presenter_t* presenter;
-    hash_table_t* parameters;  // TODO: This should be a hash-set
+    hash_table_t* symbols;  // name (char*) -> alloca register name (char*)
     int indentation;
-    int label_count;
     int temporary_count;
+    int label_count;
     bool lvalue;
+    bool address_of_lvalue;
     bool function_name;
+
+    vec_t gc;  // garbage collection
 };
 
 #define EMIT_INLINE(fmt, ...) do { \
-    fprintf((FILE*)out_, fmt __VA_OPT__(,) __VA_ARGS__); \
+    fprintf((FILE*)((llvm_codegen_t*)self_)->emit_to, fmt __VA_OPT__(,) __VA_ARGS__); \
 } while (0)
 
 #define EMIT(fmt, ...) do { \
-    fprintf((FILE*)out_, "%*s" fmt, 2 * ((llvm_codegen_t*)self_)->indentation, "" __VA_OPT__(,) __VA_ARGS__); \
+    fprintf((FILE*)((llvm_codegen_t*)self_)->emit_to, "%*s" fmt, \
+        2 * ((llvm_codegen_t*)self_)->indentation, "" __VA_OPT__(,) __VA_ARGS__); \
 } while (0)
 
 #define EMITLN(fmt, ...) EMIT(fmt "\n" __VA_OPT__(,) __VA_ARGS__)
@@ -43,20 +49,6 @@ struct llvm_codegen
     char* label_str = malloc(strlen(label_tmp) + 1); \
     strcpy(label_str, label_tmp); \
     label_str; \
-})
-
-#define TMPVAR() ssprintf("%%t%d", ((llvm_codegen_t*)self_)->temporary_count)
-
-#define NEW_TMPVAR() ({ \
-    ++((llvm_codegen_t*)self_)->temporary_count; \
-    TMPVAR(); \
-})
-
-#define TMPVAR_SAVE() ({ \
-    char* var_tmp = TMPVAR(); \
-    char* var_str = malloc(strlen(var_tmp) + 1); \
-    strcpy(var_str, var_tmp); \
-    var_str; \
 })
 
 #define EMIT_SRC_INLINE(node) do { \
@@ -105,6 +97,16 @@ static const char* llvm_type(ast_type_t* type)
     return ast_type_string(type);
 }
 
+static char* new_tmpvar(llvm_codegen_t* llvm)
+{
+    string_t tmp = STRING_INIT;
+    string_append_cstr(&tmp, ssprintf("%%t.%d", llvm->temporary_count));
+    ++llvm->temporary_count;
+    char* str = string_release(&tmp);
+    vec_push(&llvm->gc, str);
+    return str;
+}
+
 static void emit_root(void* self_, ast_root_t* root, void* out_)
 {
     EMIT_PRELUDE(root);
@@ -118,6 +120,7 @@ static void emit_root(void* self_, ast_root_t* root, void* out_)
 
 static void emit_param_decl(void* self_, ast_param_decl_t* param, void* out_)
 {
+    (void)out_;
     (void)self_;
 
     EMIT_INLINE("%s %%%s", llvm_type(param->type), param->name);
@@ -127,7 +130,17 @@ static void emit_var_decl(void* self_, ast_var_decl_t* var, void* out_)
 {
     EMIT_PRELUDE(var);
 
-    EMITLN("%%%s = alloca %s", var->name, llvm_type(var->type));
+    ast_type_t* var_type = var->type == nullptr ? var->init_expr->type : var->type;
+    EMITLN("%%%s = alloca %s", var->name, llvm_type(var_type));
+
+    if (var->init_expr != nullptr)
+    {
+        char* ssa_val = nullptr;
+        ast_visitor_visit(llvm, var->init_expr, &ssa_val);
+        EMITLN("store %s %s, %s* %%%s", llvm_type(var_type), ssa_val, llvm_type(var_type), var->name);
+    }
+
+    hash_table_insert(llvm->symbols, var->name, strdup(ssprintf("%%%s", var->name)));
 }
 
 static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
@@ -136,7 +149,7 @@ static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 
     llvm->temporary_count = 0;
     llvm->label_count = 0;
-    llvm->parameters = hash_table_create(nullptr);
+    llvm->symbols = hash_table_create(free);
 
     EMIT("define %s @%s(", llvm_type(fn_def->return_type), fn_def->base.name);
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
@@ -154,10 +167,12 @@ static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
     {
         ast_param_decl_t* param = vec_get(&fn_def->params, i);
-        hash_table_insert(llvm->parameters, param->name, nullptr);
-        EMITLN("%%%s.addr = alloca %s", param->name, llvm_type(param->type));
-        EMITLN("store %s %%%s, %s* %%%s.addr", llvm_type(param->type), param->name, llvm_type(param->type),
-            param->name);
+        string_t tmp = STRING_INIT;
+        string_append_cstr(&tmp, ssprintf("%%%s.addr", param->name));
+        EMITLN("%s = alloca %s", string_cstr(&tmp), llvm_type(param->type));
+        EMITLN("store %s %%%s, %s* %s", llvm_type(param->type), param->name, llvm_type(param->type),
+            string_cstr(&tmp));
+        hash_table_insert(llvm->symbols, param->name, string_release(&tmp));
     }
     EMIT("\n");
 
@@ -167,71 +182,86 @@ static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     --llvm->indentation;
     EMITLN("}\n");
 
-    hash_table_destroy(llvm->parameters);
-    llvm->parameters = nullptr;
+    hash_table_destroy(llvm->symbols);
+    llvm->symbols = nullptr;
 }
 
 static void emit_bool_lit(void* self_, ast_bool_lit_t* lit, void* out_)
 {
+    EMIT_PRELUDE(lit);
+    char** ssa_val = out_;
+
     if (lit->value)
-        EMIT("%s = add i1 0, 1", NEW_TMPVAR());
+        *ssa_val = "true";
     else
-        EMIT("%s = add i1 0, 0", NEW_TMPVAR());
-    EMIT_INLINE("  ");
-    EMIT_SRC_INLINE(lit);
+        *ssa_val = "false";
 }
 
 static void emit_float_lit(void* self_, ast_float_lit_t* lit, void* out_)
 {
-    if (lit->base.type == ast_type_builtin(TYPE_F64))
-        EMIT("%s = add %s 0, %lf", NEW_TMPVAR(), llvm_type(lit->base.type), lit->value);
+    EMIT_PRELUDE(lit);
+    char** ssa_val = out_;
+
+    string_t tmp = STRING_INIT;
+    if (lit->base.type == ast_type_builtin(TYPE_F32))
+        string_append_cstr(&tmp, ssprintf("%f", (float)lit->value));
     else
-        EMIT("%s = add %s 0, %f", NEW_TMPVAR(), llvm_type(lit->base.type), (float)lit->value);
-    EMIT_INLINE("  ");
-    EMIT_SRC_INLINE(lit);
+        string_append_cstr(&tmp, ssprintf("%lf", lit->value));
+
+    *ssa_val = string_release(&tmp);
+    vec_push(&llvm->gc, *ssa_val);
 }
 
 static void emit_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
 {
+    EMIT_PRELUDE(lit);
+    char** ssa_val = out_;
+
+    string_t tmp = STRING_INIT;
     if (ast_type_is_signed(lit->base.type))
-        EMIT("%s = add %s 0, %ld", NEW_TMPVAR(), llvm_type(lit->base.type), lit->value.as_signed);
+        string_append_cstr(&tmp, ssprintf("%ld", lit->value.as_signed));
     else
-        EMIT("%s = add %s 0, %lu", NEW_TMPVAR(), llvm_type(lit->base.type), lit->value.as_unsigned);
-    EMIT_INLINE("  ");
-    EMIT_SRC_INLINE(lit);
+        string_append_cstr(&tmp, ssprintf("%lu", lit->value.as_unsigned));
+
+    *ssa_val = string_release(&tmp);
+    vec_push(&llvm->gc, *ssa_val);
 }
 
 static void emit_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
 {
-    (void)lit;
-    EMITLN("TODO");
+    EMIT_PRELUDE(lit);
+    char** ssa_val = out_;
+
+    *ssa_val = "null";
 }
 
 static void emit_simple_assignment(void* self_, ast_bin_op_t* bin_op, void* out_)
 {
     EMIT_PRELUDE(bin_op);
 
-    ast_visitor_visit(llvm, bin_op->rhs, out_);
+    char* ssa_val = nullptr;
+    ast_visitor_visit(llvm, bin_op->rhs, &ssa_val);
 
     EMITLN("; =");
-    // Store value into var
-    EMIT("store %s %s, %s* ", llvm_type(bin_op->lhs->type), TMPVAR(), llvm_type(bin_op->lhs->type));
+
     llvm->lvalue = true;
-    ast_visitor_visit(llvm, bin_op->lhs, out_);
+    char* ssa_reg = nullptr;
+    ast_visitor_visit(llvm, bin_op->lhs, &ssa_reg);
     llvm->lvalue = false;
 
-    EMIT("\n");
+    // Store value into var
+    EMITLN("store %s %s, %s* %s", llvm_type(bin_op->lhs->type), ssa_val, llvm_type(bin_op->lhs->type), ssa_reg);
 }
 
 static void emit_other_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
 {
     EMIT_PRELUDE(bin_op);
 
-    ast_visitor_visit(llvm, bin_op->lhs, out_);
-    char* lhs_val = TMPVAR_SAVE();
+    char* ssa_val_lhs = nullptr;
+    ast_visitor_visit(llvm, bin_op->lhs, &ssa_val_lhs);
 
-    ast_visitor_visit(llvm, bin_op->rhs, out_);
-    char* rhs_val = TMPVAR_SAVE();
+    char* ssa_val_rhs = nullptr;
+    ast_visitor_visit(llvm, bin_op->rhs, &ssa_val_rhs);
 
     const char* pre_op = "";
     const char* op;
@@ -260,19 +290,21 @@ static void emit_other_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
     }
 
     EMITLN("; %s", token_type_str(bin_op->op));
-    EMITLN("%s = %s%s %s %s, %s", NEW_TMPVAR(), pre_op, op, llvm_type(bin_op->lhs->type), lhs_val, rhs_val);
+    char* output_val = new_tmpvar(llvm);
+    EMITLN("%s = %s%s %s %s, %s", output_val, pre_op, op, llvm_type(bin_op->lhs->type), ssa_val_lhs,
+        ssa_val_rhs);
 
     if (token_type_is_assignment_op(bin_op->op))
     {
-        EMIT("store %s %s, %s* ", llvm_type(bin_op->lhs->type), TMPVAR(), llvm_type(bin_op->lhs->type));
         llvm->lvalue = true;
-        ast_visitor_visit(llvm, bin_op->lhs, out_);
+        char* ssa_val = nullptr;
+        ast_visitor_visit(llvm, bin_op->lhs, &ssa_val);
         llvm->lvalue = false;
-        EMIT_INLINE("\n");
+        EMIT("store %s %s, %s* %s", llvm_type(bin_op->lhs->type), output_val, llvm_type(bin_op->lhs->type), ssa_val);
     }
 
-    free(lhs_val);
-    free(rhs_val);
+    if (out_ != nullptr)
+        *((char**)out_) = output_val;
 }
 
 static void emit_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
@@ -289,39 +321,46 @@ static void emit_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 
     // Emit expression to derive arguments
     EMITLN("; Arguments");
-    vec_t arg_vars = VEC_INIT(free);
+    vec_t arg_ssa_vals = VEC_INIT(nullptr);
     for (size_t i = 0; i < vec_size(&call->arguments); ++i)
     {
         // TODO: It should be easier to lookup the function at this point, so that I can insert the name of the
         //       parameter here.
-        ast_visitor_visit(llvm, vec_get(&call->arguments, i), out_);
-        vec_push(&arg_vars, TMPVAR_SAVE());
+        char* ssa_val = nullptr;
+        ast_visitor_visit(llvm, vec_get(&call->arguments, i), &ssa_val);
+        vec_push(&arg_ssa_vals, ssa_val);
     }
 
     // Emit name of function
     EMITLN("; Call");
+    llvm->function_name = true;
+    char* fn_name = nullptr;
+    ast_visitor_visit(llvm, call->function, &fn_name);
+    llvm->function_name = false;
     if (call->base.type == ast_type_builtin(TYPE_VOID))
-        EMIT("call void @");
+        EMIT("call void @%s", fn_name);
     else
-        EMIT("%s = call %s @", NEW_TMPVAR(), llvm_type(call->base.type));
-
-    llvm->lvalue = llvm->function_name = true;
-    ast_visitor_visit(llvm, call->function, out_);
-    llvm->lvalue = llvm->function_name = false;
+    {
+        char** ssa_val_out = out_;
+        char* tmp_var = new_tmpvar(llvm);
+        EMIT("%s = call %s @%s", tmp_var, llvm_type(call->base.type), fn_name);
+        if (ssa_val_out != nullptr)
+            *ssa_val_out = tmp_var;
+    }
 
     // Emit tmpvar for every earlier derived argument
     EMIT_INLINE("(");
     for (size_t i = 0; i < vec_size(&call->arguments); ++i)
     {
         ast_expr_t* expr = vec_get(&call->arguments, i);
-        const char* tmpvar = vec_get(&arg_vars, i);
-        EMIT_INLINE("%s %s", llvm_type(expr->type), tmpvar);
+        const char* ssa_val = vec_get(&arg_ssa_vals, i);
+        EMIT_INLINE("%s %s", llvm_type(expr->type), ssa_val);
         if (i + 1 < vec_size(&call->arguments))
             EMIT_INLINE(", ");
     }
     EMIT_INLINE(")\n");
 
-    vec_deinit(&arg_vars);
+    vec_deinit(&arg_ssa_vals);
 }
 
 static void emit_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
@@ -334,32 +373,77 @@ static void emit_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
 static void emit_ref_expr(void* self_, ast_ref_expr_t* ref, void* out_)
 {
     llvm_codegen_t* llvm = self_;
+    const char** out = out_;
+    panic_if(out == nullptr);
 
-    if (llvm->lvalue)
+    const char* ssa_val = hash_table_find(llvm->symbols, ref->name);
+    panic_if(!llvm->function_name && ssa_val == nullptr);
+
+    if (llvm->function_name)
     {
-        if (llvm->function_name)
-            EMIT_INLINE("%s", ref->name);
-        else if (hash_table_contains(llvm->parameters, ref->name))
-            EMIT_INLINE("%%%s.addr", ref->name);
-        else
-            EMIT_INLINE("%%%s", ref->name);
+        *out = ref->name;
+    }
+    else if (llvm->lvalue)
+    {
+        *out = ssa_val;
     }
     else
     {
-        if (hash_table_contains(llvm->parameters, ref->name))
+        *out = new_tmpvar(llvm);
+        EMIT("%s = load %s, %s* %s", *out, llvm_type(ref->base.type), llvm_type(ref->base.type),
+            ssa_val);
+        EMIT_INLINE("  ");
+        EMIT_SRC_INLINE(ref);
+    }
+}
+
+static void unary_addr_of(void* self_, ast_unary_op_t* unary, char** out)
+{
+    llvm_codegen_t* llvm = self_;
+
+    llvm->lvalue = true;
+    char* ssa_val = nullptr;
+    ast_visitor_visit(llvm, unary->expr, &ssa_val);
+    llvm->lvalue = false;
+    *out = ssa_val;
+}
+
+static void unary_deref(void* self_, ast_unary_op_t* unary, char** out)
+{
+    llvm_codegen_t* llvm = self_;
+
+    char* ssa_val = nullptr;
+    ast_visitor_visit(llvm, unary->expr, &ssa_val);
+
+    if (llvm->lvalue)
+    {
+        *out = ssa_val;
+        return;
+    }
+
+    *out = new_tmpvar(llvm);
+    EMITLN("%s = load %s, %s* %s", *out, llvm_type(unary->base.type), llvm_type(unary->base.type), ssa_val);
+}
+
+static void emit_unary_op(void* self_, ast_unary_op_t* unary, void* out_)
+{
+    EMIT_PRELUDE(unary);
+    char** out = out_;
+
+    switch (unary->op)
+    {
+        case TOKEN_AMPERSAND:
         {
-            EMIT("%s = load %s, %s* %%%s.addr", NEW_TMPVAR(), llvm_type(ref->base.type), llvm_type(ref->base.type),
-                ref->name);
-            EMIT_INLINE("  ");
-            EMIT_SRC_INLINE(ref);
+            unary_addr_of(llvm, unary, out);
+            break;
         }
-        else
+        case TOKEN_STAR:
         {
-            EMIT("%s = load %s, %s* %%%s", NEW_TMPVAR(), llvm_type(ref->base.type), llvm_type(ref->base.type),
-                ref->name);
-            EMIT_INLINE("  ");
-            EMIT_SRC_INLINE(ref);
+            unary_deref(llvm, unary, out);
+            break;
         }
+        default:
+            panic("Unhandled unary op: %d", unary->op);
     }
 }
 
@@ -398,16 +482,18 @@ static void emit_if_stmt(void* self_, ast_if_stmt_t* stmt, void* out_)
     char* else_label = NEW_LABEL("if_else");
     char* join_label = NEW_LABEL("if_join");
 
-    ast_visitor_visit(llvm, stmt->condition, out_);
+    char* ssa_val = nullptr;
+    ast_visitor_visit(llvm, stmt->condition, &ssa_val);
     EMIT("\n");
-    EMITLN("br i1 %s, label %%%s, label %%%s\n", TMPVAR(), then_label, else_label);
+    EMITLN("br i1 %s, label %%%s, label %%%s\n", ssa_val, then_label, else_label);
 
     EMIT_LABEL(then_label);
     ast_visitor_visit(llvm, stmt->then_branch, out_);
     EMITLN("br label %%%s\n", join_label);
 
     EMIT_LABEL(else_label);
-    ast_visitor_visit(llvm, stmt->else_branch, out_);
+    if (stmt->else_branch != nullptr)
+        ast_visitor_visit(llvm, stmt->else_branch, out_);
     EMITLN("br label %%%s\n", join_label);
 
     EMIT_LABEL(join_label);
@@ -423,8 +509,9 @@ static void emit_return_stmt(void* self_, ast_return_stmt_t* stmt, void* out_)
 {
     EMIT_PRELUDE(stmt);
 
-    ast_visitor_visit(self_, stmt->value_expr, out_);
-    EMITLN("ret %s %s", llvm_type(stmt->value_expr->type), TMPVAR());
+    char* ssa_val = nullptr;
+    ast_visitor_visit(self_, stmt->value_expr, &ssa_val);
+    EMITLN("ret %s %s", llvm_type(stmt->value_expr->type), ssa_val);
 }
 
 static void emit_while_stmt(void* self_, ast_while_stmt_t* stmt, void* out_)
@@ -439,9 +526,10 @@ static void emit_while_stmt(void* self_, ast_while_stmt_t* stmt, void* out_)
     EMITLN("br label %%%s\n", cond_label);
 
     EMIT_LABEL(cond_label);
-    ast_visitor_visit(llvm, stmt->condition, out_);
+    char* ssa_val = nullptr;
+    ast_visitor_visit(llvm, stmt->condition, &ssa_val);
     EMIT("\n");
-    EMITLN("br i1 %s, label %%%s, label %%%s\n", TMPVAR(), body_label, end_label);
+    EMITLN("br i1 %s, label %%%s, label %%%s\n", ssa_val, body_label, end_label);
 
     EMIT_LABEL(body_label);
     ast_visitor_visit(llvm, stmt->body, out_);
@@ -462,6 +550,7 @@ llvm_codegen_t* llvm_codegen_create()
     // NOTE: We do not need to init the visitor because we override every implementation
     *llvm = (llvm_codegen_t){
         .presenter = ast_presenter_create(),
+        .gc = VEC_INIT(free),
         .base = (ast_visitor_t){
             .visit_root = emit_root,
             // Declarations
@@ -478,6 +567,7 @@ llvm_codegen_t* llvm_codegen_create()
             .visit_null_lit = emit_null_lit,
             .visit_paren_expr = emit_paren_expr,
             .visit_ref_expr = emit_ref_expr,
+            .visit_unary_op = emit_unary_op,
             // .visit_str_lit = emit_str_lit, FIXME:
             // Statements
             .visit_compound_stmt = emit_compound_stmt,
@@ -498,11 +588,13 @@ void llvm_codegen_destroy(llvm_codegen_t* llvm)
         return;
 
     ast_presenter_destroy(llvm->presenter);
+    vec_deinit(&llvm->gc);
 
     free(llvm);
 }
 
 void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, FILE* out)
 {
-    ast_visitor_visit(llvm, root, out);
+    llvm->emit_to = out;
+    ast_visitor_visit(llvm, root, nullptr);
 }

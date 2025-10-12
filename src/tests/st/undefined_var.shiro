@@ -5,5 +5,5 @@ fn f(b: bool) -> i32 {
     if (b) {
         my_var = 12;
     }
-    return my_var;  //! error "(.*)my_var(.*) not initialized"
+    return my_var;  //! error: "(.*)my_var(.*) not initialized"
 }

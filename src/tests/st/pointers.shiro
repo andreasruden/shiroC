@@ -1,0 +1,15 @@
+//! compile
+
+fn main() -> i32 {
+    var i = 42;
+    var ptr: i32* = null;
+
+    if (ptr == null) {
+	    ptr = &i;
+    }
+
+    i = *ptr * 2;
+    *ptr += 32;
+
+    return i;
+}

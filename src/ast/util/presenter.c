@@ -42,6 +42,10 @@ static void present_var_decl(void* self_, ast_var_decl_t* var_decl, void* out_)
     string_append_cstr(out, ssprintf("var %s", var_decl->name));
     if (var_decl->type != nullptr)
         string_append_cstr(out, ssprintf(": %s", ast_type_string(var_decl->type)));
+    if (var_decl->init_expr != nullptr) {
+        string_append_cstr(out, " = ");
+        ast_visitor_visit(self, var_decl->init_expr, out);
+    }
 }
 
 static void present_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
