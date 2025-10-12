@@ -1106,3 +1106,23 @@ TEST(ut_sema_fixture_t, assign_to_lvalue_deref)
 
     ast_node_destroy(block);
 }
+
+// Verify ptr is assumed to be initialized with null
+TEST(ut_sema_fixture_t, initialize_ptr_with_null)
+{
+    // var ptr: f32* = null;
+    // if (ptr == null) {}
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("ptr", ast_type_pointer(ast_type_builtin(TYPE_F32)),
+            ast_null_lit_create())),
+        ast_if_stmt_create(ast_bin_op_create(TOKEN_EQ, ast_ref_expr_create("ptr"), ast_null_lit_create()),
+            ast_compound_stmt_create_empty(), nullptr),
+        nullptr
+        );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(block);
+}
