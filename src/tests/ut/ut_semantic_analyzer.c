@@ -1126,3 +1126,22 @@ TEST(ut_sema_fixture_t, initialize_ptr_with_null)
 
     ast_node_destroy(block);
 }
+
+// Verify empty function body with return type
+TEST(ut_sema_fixture_t, fn_with_ret_type_no_body)
+{
+    ast_def_t* error_node = ast_fn_def_create_va("foo", ast_type_builtin(TYPE_I32),
+        ast_compound_stmt_create_empty(),  // Empty body
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(error_node));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "missing return"));
+
+    ast_node_destroy(error_node);
+}

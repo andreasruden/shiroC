@@ -146,7 +146,7 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     panic_if(AST_KIND(fn->body) != AST_STMT_COMPOUND);
     ast_compound_stmt_t* block = (ast_compound_stmt_t*)fn->body;
     if (fn->return_type != ast_type_builtin(TYPE_VOID) &&
-        AST_KIND(vec_last(&block->inner_stmts)) != AST_STMT_RETURN)
+        (vec_size(&block->inner_stmts) == 0 || AST_KIND(vec_last(&block->inner_stmts)) != AST_STMT_RETURN))
     {
         semantic_context_add_error(sema->ctx, fn, ssprintf("'%s' missing return statement", fn->base.name));
     }
