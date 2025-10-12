@@ -21,6 +21,7 @@
 #include "ast/type.h"
 #include "common/containers/vec.h"
 #include "parser/lexer.h"
+#include "sema/init_tracker.h"
 #include "sema/semantic_analyzer.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
@@ -33,6 +34,7 @@ TEST_FIXTURE(ut_sema_fixture_t)
 {
     semantic_analyzer_t* sema;
     semantic_context_t* ctx;
+    init_tracker_t* init_tracker;  // to allow us analyzing smaller units than functions
 };
 
 TEST_SETUP(ut_sema_fixture_t)
@@ -1193,6 +1195,64 @@ TEST(ut_sema_fixture_t, nested_if_initialization_outer_branch_missing)
             nullptr  // No else branch for outer if
         ),
         // ptr is NOT guaranteed to be initialized here
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+
+    ast_node_destroy(block);
+}
+
+// Variable initialized in all paths inside while loop body, but loop might not execute
+TEST(ut_sema_fixture_t, variable_initialized_in_while_loop_not_guaranteed)
+{
+    // var i = 40;
+    // var j;
+    // while (i < 20) {
+    //     if (i < 40) {
+    //         j = 20;
+    //     } else {
+    //         j = 30;
+    //     }
+    // }
+    // j; // error: not guaranteed to be initialized
+    ast_expr_t* error_node = ast_ref_expr_create("j");
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", nullptr, ast_int_lit_val(40))),
+        ast_decl_stmt_create(ast_var_decl_create("j", ast_type_builtin(TYPE_I32), nullptr)),
+        ast_while_stmt_create(
+            ast_bin_op_create(TOKEN_LT, ast_ref_expr_create("i"), ast_int_lit_val(20)),
+            ast_compound_stmt_create_va(
+                ast_if_stmt_create(
+                    ast_bin_op_create(TOKEN_LT, ast_ref_expr_create("i"), ast_int_lit_val(40)),
+                    ast_compound_stmt_create_va(
+                        ast_expr_stmt_create(ast_bin_op_create(
+                            TOKEN_ASSIGN,
+                            ast_ref_expr_create("j"),
+                            ast_int_lit_val(20)
+                        )),
+                        nullptr
+                    ),
+                    ast_compound_stmt_create_va(
+                        ast_expr_stmt_create(ast_bin_op_create(
+                            TOKEN_ASSIGN,
+                            ast_ref_expr_create("j"),
+                            ast_int_lit_val(30)
+                        )),
+                        nullptr
+                    )
+                ),
+                nullptr
+            )
+        ),
+        // j is NOT guaranteed to be initialized (loop might not execute)
         ast_expr_stmt_create(error_node),
         nullptr
     );

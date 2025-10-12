@@ -37,8 +37,7 @@ static void* clone_symbol_state(void* value)
 
 init_tracker_t* init_tracker_clone(init_tracker_t* tracker)
 {
-    init_tracker_t* new_tracker = init_tracker_create();
-    hash_table_deinit(&new_tracker->symbol_state);
+    init_tracker_t* new_tracker = malloc(sizeof(*new_tracker));
     hash_table_clone(&new_tracker->symbol_state, &tracker->symbol_state, clone_symbol_state);
     return new_tracker;
 }

@@ -15,16 +15,6 @@
 #include <math.h>
 #include <string.h>
 
-struct semantic_analyzer
-{
-    ast_visitor_t base;
-    semantic_context_t* ctx;  // decl_collector does not own ctx
-    ast_fn_def_t* current_function;
-    symbol_table_t* current_function_scope;
-    init_tracker_t* init_tracker;
-    bool in_lvalue_context;
-};
-
 static symbol_t* add_variable_to_scope(semantic_analyzer_t* sema, void* node, const char* name, ast_type_t* type)
 {
     // Error: same scope redeclaration
@@ -132,8 +122,6 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     semantic_context_push_scope(sema->ctx, SCOPE_FUNCTION);
     sema->current_function = fn;
     sema->current_function_scope = sema->ctx->current;
-    init_tracker_t* previous_tracker = sema->init_tracker;
-    sema->init_tracker = init_tracker_create();
 
     if (fn->return_type == nullptr)
         fn->return_type = ast_type_builtin(TYPE_VOID);
@@ -152,7 +140,7 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     }
 
     init_tracker_destroy(sema->init_tracker);
-    sema->init_tracker = previous_tracker;
+    sema->init_tracker = init_tracker_create();
     semantic_context_pop_scope(sema->ctx);
     sema->current_function = nullptr;
     sema->current_function_scope = nullptr;
@@ -586,16 +574,18 @@ static void analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
                 ast_type_string(if_stmt->condition->type)));
     }
 
-    init_tracker_t* then_tracker = init_tracker_clone(sema->init_tracker);
+    init_tracker_t* then_tracker = sema->init_tracker;
     init_tracker_t* else_tracker = init_tracker_clone(sema->init_tracker);
 
     sema->init_tracker = then_tracker;
     ast_visitor_visit(sema, if_stmt->then_branch, out_);
+    then_tracker = sema->init_tracker;
 
     if (if_stmt->else_branch != nullptr)
     {
         sema->init_tracker = else_tracker;
         ast_visitor_visit(sema, if_stmt->else_branch, out_);
+        else_tracker = sema->init_tracker;
     }
 
     sema->init_tracker = init_tracker_merge(&then_tracker, &else_tracker);
@@ -639,7 +629,7 @@ static void analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* 
     ast_visitor_visit(sema, while_stmt->body, out_);
 
     // Discard init_tracker state changes inside while
-    init_tracker_destroy(body_tracker);
+    init_tracker_destroy(sema->init_tracker);
     sema->init_tracker = entry_state;
 }
 
@@ -688,7 +678,6 @@ void semantic_analyzer_destroy(semantic_analyzer_t* sema)
         return;
 
     init_tracker_destroy(sema->init_tracker);
-
     free(sema);
 }
 
