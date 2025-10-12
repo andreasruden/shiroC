@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Set
 
 # Global configuration
 COMPILER = "shiroc"       # can be overriden by args
@@ -27,8 +27,9 @@ VALGRIND_CMD = ["valgrind", "--error-exitcode=1", "--leak-check=full",
 
 class TestInstruction:
     """Base class for test instructions"""
-    def __init__(self, args: str):
+    def __init__(self, args: str, line_number: int = 0):
         self.args = args
+        self.line_number = line_number
 
     def execute(self, context: 'TestContext') -> bool:
         """Execute the instruction. Returns True if successful."""
@@ -57,22 +58,52 @@ class OptionsInstruction(TestInstruction):
 
 
 class ErrorInstruction(TestInstruction):
-    """Expect a compiler error matching the regex"""
+    """Expect a compiler error matching the regex at the instruction's line"""
     def execute(self, context: 'TestContext') -> bool:
-        pattern = self.args.strip().strip('"').strip("'")
-        if not re.search(pattern, context.compile_output):
-            context.error_message = f"Expected error pattern not found: {pattern}"
+        pattern = self.args.strip().strip('"')
+        filename = context.filepath.name
+
+        # Find all error messages at this line number
+        matching_errors = []
+        for line_num, msg in context.errors_by_line.get(self.line_number, []):
+            if re.search(pattern, msg):
+                matching_errors.append((line_num, msg))
+
+        if not matching_errors:
+            context.error_message = (
+                f"Expected error pattern `{pattern}` at line {self.line_number} not found"
+            )
             return False
+
+        # Mark these errors as covered
+        for line_num, msg in matching_errors:
+            context.covered_errors.add((line_num, msg))
+
         return True
 
 
 class WarningInstruction(TestInstruction):
-    """Expect a compiler warning matching the regex"""
+    """Expect a compiler warning matching the regex at the instruction's line"""
     def execute(self, context: 'TestContext') -> bool:
-        pattern = self.args.strip().strip('"').strip("'")
-        if not re.search(pattern, context.compile_output):
-            context.error_message = f"Expected warning pattern not found: {pattern}"
+        pattern = self.args.strip().strip('"')
+        filename = context.filepath.name
+
+        # Find all warning messages at this line number
+        matching_warnings = []
+        for line_num, msg in context.warnings_by_line.get(self.line_number, []):
+            if re.search(pattern, msg):
+                matching_warnings.append((line_num, msg))
+
+        if not matching_warnings:
+            context.error_message = (
+                f"Expected warning pattern `{pattern}` at line {self.line_number} not found"
+            )
             return False
+
+        # Mark these warnings as covered
+        for line_num, msg in matching_warnings:
+            context.covered_warnings.add((line_num, msg))
+
         return True
 
 
@@ -113,6 +144,52 @@ class TestContext:
         self.executable = None
         self.has_error_instruction = False
 
+        # Track errors and warnings by line number
+        self.errors_by_line: Dict[int, List[Tuple[int, str]]] = {}
+        self.warnings_by_line: Dict[int, List[Tuple[int, str]]] = {}
+        self.all_errors: List[Tuple[int, str]] = []
+        self.all_warnings: List[Tuple[int, str]] = []
+        self.covered_errors: Set[Tuple[int, str]] = set()
+        self.covered_warnings: Set[Tuple[int, str]] = set()
+
+    def parse_compiler_messages(self):
+        """Parse compiler output for errors and warnings"""
+        filename = self.filepath.name
+
+        # Remove color from compiler output
+        ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
+        clean_output = ansi_escape.sub('', self.compile_output)
+
+        # Pattern: path/to/filename:line:col error: message
+        # or: path/to/filename:line:col warning: message
+        # Match paths that end with the filename
+        error_pattern = re.compile(
+            rf'(?:^|[/\\]){re.escape(filename)}:(\d+):\d+:\s+error:\s*(.*)$',
+            re.MULTILINE
+        )
+        warning_pattern = re.compile(
+            rf'(?:^|[/\\]){re.escape(filename)}:(\d+):\d+:\s+warning:\s*(.*)$',
+            re.MULTILINE
+        )
+
+        # Find all errors
+        for match in error_pattern.finditer(clean_output):
+            line_num = int(match.group(1))
+            message = match.group(2).strip()
+            self.all_errors.append((line_num, message))
+            if line_num not in self.errors_by_line:
+                self.errors_by_line[line_num] = []
+            self.errors_by_line[line_num].append((line_num, message))
+
+        # Find all warnings
+        for match in warning_pattern.finditer(clean_output):
+            line_num = int(match.group(1))
+            message = match.group(2).strip()
+            self.all_warnings.append((line_num, message))
+            if line_num not in self.warnings_by_line:
+                self.warnings_by_line[line_num] = []
+            self.warnings_by_line[line_num].append((line_num, message))
+
     def compile(self) -> bool:
         """Compile the file. Returns True if compilation succeeded as expected."""
         with tempfile.NamedTemporaryFile(suffix='', delete=False) as tmp:
@@ -132,7 +209,11 @@ class TestContext:
                 timeout=COMPILE_TIMEOUT
             )
             self.compile_output = result.stdout + result.stderr
+            self.compile_output += "\n"
             self.compile_returncode = result.returncode
+
+            # Parse compiler messages
+            self.parse_compiler_messages()
 
             # If we have error instructions, we expect compilation to fail
             if self.has_error_instruction:
@@ -150,6 +231,31 @@ class TestContext:
         except Exception as e:
             self.error_message = f"Compilation error: {e}"
             return False
+
+    def check_uncovered_messages(self) -> bool:
+        """Check if there are any uncovered errors or warnings"""
+        uncovered_errors = [
+            (line, msg) for line, msg in self.all_errors
+            if (line, msg) not in self.covered_errors
+        ]
+        uncovered_warnings = [
+            (line, msg) for line, msg in self.all_warnings
+            if (line, msg) not in self.covered_warnings
+        ]
+
+        if uncovered_errors:
+            self.error_message = "Uncovered errors found:\n"
+            for line, msg in uncovered_errors:
+                self.error_message += f"  Line {line}: {msg}\n"
+            return False
+
+        if uncovered_warnings:
+            self.error_message = "Uncovered warnings found:\n"
+            for line, msg in uncovered_warnings:
+                self.error_message += f"  Line {line}: {msg}\n"
+            return False
+
+        return True
 
     def run(self) -> bool:
         """Run the compiled executable. Returns True if run succeeded as expected."""
@@ -199,8 +305,8 @@ class TestContext:
                 pass
 
 
-def parse_instructions(filepath: Path) -> List[Tuple[str, str]]:
-    """Parse test instructions from a file. Returns list of (instruction_name, args) tuples."""
+def parse_instructions(filepath: Path) -> List[Tuple[str, str, int]]:
+    """Parse test instructions from a file. Returns list of (instruction_name, args, line_number) tuples."""
     instructions = []
 
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -234,7 +340,7 @@ def parse_instructions(filepath: Path) -> List[Tuple[str, str]]:
                         print(f"  WARNING: {filepath}:{line_num} - Instruction '{instruction_name}' requires arguments but none provided. Ignoring instruction.")
                         continue
 
-                instructions.append((instruction_name, args))
+                instructions.append((instruction_name, args, line_num))
 
     return instructions
 
@@ -257,13 +363,13 @@ def run_test(filepath: Path) -> bool:
         'stdout': [],
     }
 
-    for inst_name, args in instructions:
+    for inst_name, args, line_num in instructions:
         if inst_name not in INSTRUCTION_REGISTRY:
             print(f"  ERROR: {filepath} - Unknown instruction: {inst_name}")
             return False
 
         inst_class = INSTRUCTION_REGISTRY[inst_name]
-        inst_obj = inst_class(args)
+        inst_obj = inst_class(args, line_num)
         instruction_objects[inst_name].append(inst_obj)
 
     # Validate single-instance instructions
@@ -314,6 +420,13 @@ def run_test(filepath: Path) -> bool:
                 print(f"    {context.error_message}")
                 print(f"    Compile output:\n{context.compile_output}")
                 return False
+
+        # Check for uncovered errors/warnings
+        if not context.check_uncovered_messages():
+            print(f"  FAIL: {filepath}")
+            print(f"    {context.error_message}")
+            print(f"    Compile output:\n{context.compile_output}")
+            return False
 
         # Validate stdout expectations
         for stdout_inst in instruction_objects['stdout']:

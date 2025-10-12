@@ -578,8 +578,8 @@ token_t* lexer_peek_token(lexer_t* lexer)
 
 void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t expected)
 {
-    const int line = lexer->last_consumed_end_line;
-    const int column = lexer->last_consumed_end_column;
+    int line = lexer->last_consumed_end_line;
+    int column = lexer->last_consumed_end_column;
     if (lexer->error_output == nullptr)
     {
         printf("Error: Expected token %s, but found %s in File %s at Line %d, Col %d\n", token_type_str(expected),
@@ -590,6 +590,8 @@ void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t ex
         char* err;
         if (expected == TOKEN_UNKNOWN)
         {
+            line = actual->line;
+            column = actual->column;
             string_t tok_str = token_str(actual);
             err = ssprintf("token '%s' is not valid in this context", string_cstr(&tok_str));
             string_deinit(&tok_str);

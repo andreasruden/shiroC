@@ -606,6 +606,9 @@ static void analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void* 
     semantic_analyzer_t* sema = self_;
 
     ast_visitor_visit(sema, ret_stmt->value_expr, out_);
+    if (ret_stmt->value_expr->type == ast_type_invalid())
+        return;  // avoid propagating error
+
     if (sema->current_function->return_type != ret_stmt->value_expr->type)
     {
         semantic_context_add_error(sema->ctx, ret_stmt->value_expr,
