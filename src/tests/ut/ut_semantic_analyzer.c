@@ -576,7 +576,7 @@ TEST(ut_sema_fixture_t, assignment_to_function_error)
     ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
     ASSERT_EQ(error_node, offender);
     compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "cannot be assigned to"));
+    ASSERT_NEQ(nullptr, strstr(error->description, "not l-value"));
 
     ast_node_destroy(expr);
     ast_node_destroy(foo_fn);
@@ -595,7 +595,7 @@ TEST(ut_sema_fixture_t, assignment_to_non_lvalue_expression_error)
     ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
     ASSERT_EQ(error_node, offender);
     compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "cannot be assigned to"));
+    ASSERT_NEQ(nullptr, strstr(error->description, "not l-value"));
 
     ast_node_destroy(expr);
 }
@@ -613,7 +613,7 @@ TEST(ut_sema_fixture_t, assignment_to_literal_error)
     ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
     ASSERT_EQ(error_node, offender);
     compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "cannot be assigned to"));
+    ASSERT_NEQ(nullptr, strstr(error->description, "not l-value"));
 
     ast_node_destroy(expr);
 }
@@ -644,7 +644,9 @@ TEST(ut_sema_fixture_t, symbol_not_exist)
 
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(main_fn));
     ASSERT_FALSE(res);
-    ASSERT_LT(1, vec_size(&fix->ctx->error_nodes));
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "unknown symbol name 'inexistant'"));
 
     ast_node_destroy(main_fn);
 }
@@ -957,7 +959,7 @@ TEST(ut_sema_fixture_t, reject_assign_value_to_pointer)
     ASSERT_LT(0, vec_size(&fix->ctx->error_nodes));
 
     compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "type is 'i32*'"));
+    ASSERT_NEQ(nullptr, strstr(error->description, "type 'i32*'"));
 
     ast_node_destroy(AST_NODE(block));
 }
@@ -1081,4 +1083,26 @@ TEST(ut_sema_fixture_t, arithmetic_operation_on_booleans_error)
     ASSERT_NEQ(nullptr, strstr(error->description, "cannot apply '+' to 'bool'"));
 
     ast_node_destroy(error_node);
+}
+
+// Should be able to assign to lvalue dereference
+TEST(ut_sema_fixture_t, assign_to_lvalue_deref)
+{
+    // var f = 0.0;
+    // var ptr = &f;
+    // *ptr += 32.5;
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("f", nullptr, ast_float_lit_create(0, ""))),
+        ast_decl_stmt_create(ast_var_decl_create("ptr", nullptr, ast_unary_op_create(TOKEN_AMPERSAND,
+            ast_ref_expr_create("f")))),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_PLUS_ASSIGN,
+            ast_unary_op_create(TOKEN_STAR, ast_ref_expr_create("ptr")), ast_float_lit_create(32.5, ""))),
+        nullptr
+        );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(block);
 }

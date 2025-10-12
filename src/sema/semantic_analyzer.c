@@ -175,33 +175,49 @@ static bool is_type_equal_for_bin_op(ast_type_t* lhs_type, ast_type_t* rhs_type)
     return false;
 }
 
+static bool is_valid_lvalue(ast_expr_t* expr, symbol_t* symbol)
+{
+    if (AST_KIND(expr) == AST_EXPR_REF)
+        return symbol != nullptr && (symbol->kind == SYMBOL_VARIABLE || symbol->kind == SYMBOL_PARAMETER);
+
+    if (AST_KIND(expr) == AST_EXPR_UNARY_OP)
+        return true;
+
+    return false;
+}
+
 static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* bin_op)
 {
     symbol_t* lhs_symbol = nullptr;
     sema->in_lvalue_context = bin_op->op == TOKEN_ASSIGN;
     ast_visitor_visit(sema, bin_op->lhs, &lhs_symbol);
     sema->in_lvalue_context = false;
-    if (lhs_symbol == nullptr || (lhs_symbol->kind != SYMBOL_VARIABLE && lhs_symbol->kind != SYMBOL_PARAMETER))
+
+    if (bin_op->lhs->type == ast_type_invalid())
+        return;  // avoid cascading errors
+
+    if (!is_valid_lvalue(bin_op->lhs, lhs_symbol))
     {
-        semantic_context_add_error(sema->ctx, bin_op->lhs, "cannot be assigned to");
+        semantic_context_add_error(sema->ctx, bin_op->lhs, "expr is not l-value");
         return;
     }
 
-    init_tracker_set_initialized(sema->init_tracker, lhs_symbol, true);
+    if (lhs_symbol != nullptr)
+        init_tracker_set_initialized(sema->init_tracker, lhs_symbol, true);
 
     ast_visitor_visit(sema, bin_op->rhs, nullptr);
     if (bin_op->rhs->type == ast_type_invalid())
         return;  // avoid cascading errors
 
-    if (!is_type_equal_for_bin_op(lhs_symbol->type, bin_op->rhs->type))
+    if (!is_type_equal_for_bin_op(bin_op->lhs->type, bin_op->rhs->type))
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs,
-            ssprintf("'%s' type is '%s' but assigned expression type is '%s'", lhs_symbol->name,
-                ast_type_string(lhs_symbol->type), ast_type_string(bin_op->rhs->type)));
+            ssprintf("left-hand side type '%s' does not match right-hand side type '%s'",
+                ast_type_string(bin_op->lhs->type), ast_type_string(bin_op->rhs->type)));
         return;
     }
 
-    bin_op->base.type = lhs_symbol->type;
+    bin_op->base.type = bin_op->lhs->type;
 }
 
 static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, ast_type_t** result_type)
