@@ -302,7 +302,10 @@ static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
     symbol_t* symbol = nullptr;
     ast_visitor_visit(sema, call->function, &symbol);
 
-    if (symbol != nullptr && symbol->kind != SYMBOL_FUNCTION)
+    if (symbol == nullptr)
+        return;
+
+    if (symbol->kind != SYMBOL_FUNCTION)
     {
         semantic_context_add_error(sema->ctx, call->function,
             ssprintf("symbol '%s' is not callable", symbol->name));

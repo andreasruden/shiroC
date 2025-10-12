@@ -1267,3 +1267,24 @@ TEST(ut_sema_fixture_t, variable_initialized_in_while_loop_not_guaranteed)
 
     ast_node_destroy(block);
 }
+
+// Calling an undefined function should produce an error
+TEST(ut_sema_fixture_t, call_to_undefined_function_error)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("con");
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_expr_stmt_create(ast_call_expr_create_va(error_node, nullptr)),
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "unknown symbol"));
+
+    ast_node_destroy(block);
+}
