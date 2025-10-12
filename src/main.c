@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <sys/wait.h>
+
 static char* read_file(const char* filepath)
 {
     FILE* file = fopen(filepath, "rb");
@@ -63,23 +65,30 @@ static void print_ast_errors(vec_t* vec)
 
 static FILE* open_output_file_for(const char* sourcefile, char** output_path)
 {
-    // Find the last dot in the filename
-    const char *last_dot = strrchr(sourcefile, '.');
-    const char *last_slash = strrchr(sourcefile, '/');
+    // Extract just the filename (after the last '/')
+    const char *filename = strrchr(sourcefile, '/');
+    if (filename) {
+        filename++; // Skip the '/'
+    } else {
+        filename = sourcefile; // No slash found, use the whole path
+    }
 
-    // Make sure the dot is after any slash (i.e., in the filename, not directory)
-    if (last_dot && (!last_slash || last_dot > last_slash)) {
-        // Has an extension - replace it
-        size_t base_len = (size_t)last_dot - (size_t)sourcefile;
+    // Find the last dot in the filename
+    const char *last_dot = strrchr(filename, '.');
+
+    // Check if filename ends with ".shiro"
+    if (last_dot && strcmp(last_dot, ".shiro") == 0) {
+        // Has .shiro extension - replace it with .ll
+        size_t base_len = (size_t)last_dot - (size_t)filename;
         *output_path = malloc(base_len + 4);  // +4 for ".ll\0"
         panic_if(!*output_path);
-        memcpy(*output_path, sourcefile, base_len);
+        memcpy(*output_path, filename, base_len);
         strcpy(*output_path + base_len, ".ll");
     } else {
-        // No extension - append .ll
-        *output_path = malloc(strlen(sourcefile) + 4);  // +4 for ".ll\0"
+        // No .shiro extension - append .ll
+        *output_path = malloc(strlen(filename) + 4);  // +4 for ".ll\0"
         panic_if(!*output_path);
-        strcpy(*output_path, sourcefile);
+        strcpy(*output_path, filename);
         strcat(*output_path, ".ll");
     }
 
@@ -93,7 +102,7 @@ static FILE* open_output_file_for(const char* sourcefile, char** output_path)
     return file;
 }
 
-static void compile_with_clang(const char* filepath, const char* output_redirect)
+static int compile_with_clang(const char* filepath, const char* output_redirect)
 {
     char *output_name;
     if (output_redirect == nullptr)
@@ -118,12 +127,14 @@ static void compile_with_clang(const char* filepath, const char* output_redirect
     // Execute
     int result = system(command);
 
-    if (result != 0) {
-        fprintf(stderr, "clang compilation failed\n");
+    if (result == -1) {
+        fprintf(stderr, "failed to execute clang\n");
+        return 5;
     }
 
     free(command);
     free(output_name);
+    return WEXITSTATUS(result);
 }
 
 int main(int argc, char** argv)
@@ -204,7 +215,7 @@ int main(int argc, char** argv)
     llvm_codegen_destroy(llvm);
 
     // Invoke clang to compile LLVM IR into binary:
-    compile_with_clang(ir_path, output_redirect);
+    int clang_res = compile_with_clang(ir_path, output_redirect);
 
     // Cleanup
     if (output_redirect != nullptr)
@@ -214,5 +225,5 @@ int main(int argc, char** argv)
     ast_node_destroy(ast);
     free(source);
 
-    return 0;
+    return clang_res;
 }

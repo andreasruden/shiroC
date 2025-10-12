@@ -96,6 +96,9 @@ INSTRUCTION_REGISTRY = {
     'stdout': StdoutInstruction,
 }
 
+# Instructions that require arguments
+REQUIRED_ARGS_INSTRUCTIONS = {'options', 'error', 'warning', 'stdout'}
+
 
 class TestContext:
     """Context for executing a test"""
@@ -201,7 +204,7 @@ def parse_instructions(filepath: Path) -> List[Tuple[str, str]]:
     instructions = []
 
     with open(filepath, 'r', encoding='utf-8') as f:
-        for line in f:
+        for line_num, line in enumerate(f, 1):
             if '//!' in line:
                 # Extract instruction after "//! "
                 idx = line.find('//!')
@@ -209,13 +212,28 @@ def parse_instructions(filepath: Path) -> List[Tuple[str, str]]:
                 if not instruction_text:
                     continue
 
-                # Split into instruction name and arguments
-                parts = instruction_text.split(None, 1)
-                if not parts:
+                # Check if instruction has a colon
+                has_colon = ':' in instruction_text
+
+                if has_colon:
+                    # Split by colon to separate instruction name and args
+                    colon_idx = instruction_text.index(':')
+                    instruction_name = instruction_text[:colon_idx].strip().lower()
+                    args = instruction_text[colon_idx + 1:].strip()
+                else:
+                    # No colon means no arguments expected
+                    instruction_name = instruction_text.split()[0].lower() if instruction_text else ""
+                    args = ""
+
+                if not instruction_name:
                     continue
 
-                instruction_name = parts[0].lower()
-                args = parts[1] if len(parts) > 1 else ""
+                # Validate that required-args instructions have arguments
+                if instruction_name in REQUIRED_ARGS_INSTRUCTIONS:
+                    if not args:
+                        print(f"  WARNING: {filepath}:{line_num} - Instruction '{instruction_name}' requires arguments but none provided. Ignoring instruction.")
+                        continue
+
                 instructions.append((instruction_name, args))
 
     return instructions

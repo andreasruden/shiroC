@@ -87,8 +87,21 @@ static const char* llvm_type(ast_type_t* type)
 {
     if (type == nullptr)
         return "void";
-    if (type == ast_type_builtin(TYPE_BOOL))
+    else if (type == ast_type_builtin(TYPE_BOOL))
         return "i1";
+    else if (type == ast_type_builtin(TYPE_U8))
+        return "i8";
+    else if (type == ast_type_builtin(TYPE_U16))
+        return "i16";
+    else if (type == ast_type_builtin(TYPE_U32))
+        return "i32";
+    else if (type == ast_type_builtin(TYPE_U64))
+        return "i64";
+    else if (type == ast_type_builtin(TYPE_F32))
+        return "float";
+    else if (type == ast_type_builtin(TYPE_F64))
+        return "double";
+
     return ast_type_string(type);
 }
 
