@@ -12,6 +12,9 @@ CFLAGS = -Wall -Wextra -Werror=incompatible-pointer-types -Wsign-conversion -Wsh
 		 -std=c23 -I$(SRC_DIR)
 DEBUGFLAGS = -g -O0
 LD = ld
+FUZZ_CC = clang
+FUZZ_CFLAGS = -fsanitize=fuzzer,address,undefined -g -O1 -I$(SRC_DIR) -std=c23
+FUZZ_LFLAGS = -fsanitize=fuzzer,address,undefined
 
 # Common source files
 COMMON_SRCS = \
@@ -76,6 +79,14 @@ TEST_RUNNER_OBJ = $(BUILD_DIR)/test-runner.o
 TEST_RUNNER_SRC = $(SRC_DIR)/common/test-runner/test_runner.c
 TEST_RUNNER_INCLUDE = $(SRC_DIR)/common/test-runner
 
+# Fuzzer targets
+FUZZER_TARGET = $(BIN_DIR)/shiroc_fuzzer
+FUZZER_SRC = $(SRC_DIR)/common/fuzzer/fuzzer_harness.c
+FUZZER_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/fuzzer/%.o,$(COMMON_SRCS))
+FUZZER_HARNESS_OBJ = $(BUILD_DIR)/fuzzer/common/fuzzer/fuzzer_harness.o
+FUZZ_CORPUS_DIR = $(BUILD_DIR)/fuzz_corpus
+FUZZ_CORPUS_MIN_DIR = $(BUILD_DIR)/fuzz_corpus_min
+
 # All targets
 TARGETS = $(COMPILER_TARGET) $(UT_TARGETS)
 
@@ -102,6 +113,13 @@ $(TEST_RUNNER_OBJ): $(TEST_RUNNER_SRC)
 
 $(UT_BIN_DIR)/%.test: $(UT_SRC_DIR)/%.c $(TEST_RUNNER_OBJ) $(COMMON_OBJS) | $(UT_BIN_DIR)
 	$(CC) $(DEBUGFLAGS) $(CFLAGS) -I$(TEST_RUNNER_INCLUDE) $^ -o $@
+
+$(BUILD_DIR)/fuzzer/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(FUZZ_CC) $(FUZZ_CFLAGS) -c $< -o $@
+
+$(FUZZER_TARGET): $(FUZZER_OBJS) $(FUZZER_HARNESS_OBJ) | $(BIN_DIR)
+	$(FUZZ_CC) $(FUZZ_LFLAGS) -o $@ $^
 
 test-ut: $(UT_TARGETS)
 	@for test in $(UT_TARGETS); do \
@@ -136,6 +154,21 @@ valgrind-st:  $(BIN_DIR)
 
 .PHONY: valgrind-tests
 valgrind-tests: valgrind-ut valgrind-st
+
+.PHONY: fuzzer
+fuzzer: $(FUZZER_TARGET)
+
+.PHONY: fuzzing
+fuzzing: $(FUZZER_TARGET)
+	mkdir -p $(FUZZ_CORPUS_DIR)
+	mkdir -p $(BUILD_DIR)/fuzz_artifacts
+	find src/tests/st -name "*.shiro" -exec cp {} $(FUZZ_CORPUS_DIR)/ \;
+	$(FUZZER_TARGET) $(FUZZ_CORPUS_DIR)/ -artifact_prefix=$(BUILD_DIR)/fuzz_artifacts/ -max_len=50000 -timeout=5
+
+.PHONY: fuzzing-minimize
+fuzzing-minimize: $(FUZZER_TARGET)
+	mkdir -p $(FUZZ_CORPUS_MIN_DIR)
+	$(FUZZER_TARGET) -merge=1 $(FUZZ_CORPUS_MIN_DIR)/ $(FUZZ_CORPUS_DIR)/
 
 .PHONY: clean
 clean:
