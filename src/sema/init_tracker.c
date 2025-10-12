@@ -80,6 +80,8 @@ static void merge_add_symbols_from(init_tracker_t* dst, init_tracker_t* src, ini
 
 init_tracker_t* init_tracker_merge(init_tracker_t** tracker1, init_tracker_t** tracker2)
 {
+    panic_if(*tracker1 == *tracker2);
+
     init_tracker_t* new_tracker = init_tracker_create();
 
     merge_add_symbols_from(new_tracker, *tracker1, *tracker2);

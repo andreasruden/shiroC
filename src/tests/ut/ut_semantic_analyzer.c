@@ -1145,3 +1145,65 @@ TEST(ut_sema_fixture_t, fn_with_ret_type_no_body)
 
     ast_node_destroy(error_node);
 }
+
+// Variable initialized in all paths of inner if, but outer if has no else branch, therefore initialized afterwards
+TEST(ut_sema_fixture_t, nested_if_initialization_outer_branch_missing)
+{
+    // var ptr: i32*;
+    // var i = 42;
+    // if (i > 30) {
+    //     if (i < 60) {
+    //         ptr = &i;
+    //     } else {
+    //         ptr = &i;
+    //     }
+    // }
+    // ptr;  // error: not guaranteed to be initialized
+    ast_expr_t* error_node = ast_ref_expr_create("ptr");
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("ptr", ast_type_pointer(ast_type_builtin(TYPE_I32)),
+            nullptr)),
+        ast_decl_stmt_create(ast_var_decl_create("i", nullptr,
+            ast_int_lit_val(42))),
+        ast_if_stmt_create(
+            ast_bin_op_create(TOKEN_GT, ast_ref_expr_create("i"), ast_int_lit_val(30)),
+            ast_compound_stmt_create_va(
+                // Inner if with both branches initializing ptr
+                ast_if_stmt_create(
+                    ast_bin_op_create(TOKEN_LT, ast_ref_expr_create("i"), ast_int_lit_val(60)),
+                    ast_compound_stmt_create_va(
+                        ast_expr_stmt_create(ast_bin_op_create(
+                            TOKEN_ASSIGN,
+                            ast_ref_expr_create("ptr"),
+                            ast_unary_op_create(TOKEN_AMPERSAND, ast_ref_expr_create("i"))
+                        )),
+                        nullptr
+                    ),
+                    ast_compound_stmt_create_va(
+                        ast_expr_stmt_create(ast_bin_op_create(
+                            TOKEN_ASSIGN,
+                            ast_ref_expr_create("ptr"),
+                            ast_unary_op_create(TOKEN_AMPERSAND, ast_ref_expr_create("i"))
+                        )),
+                        nullptr
+                    )
+                ),
+                nullptr
+            ),
+            nullptr  // No else branch for outer if
+        ),
+        // ptr is NOT guaranteed to be initialized here
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+
+    ast_node_destroy(block);
+}

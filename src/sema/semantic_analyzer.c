@@ -586,7 +586,7 @@ static void analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
                 ast_type_string(if_stmt->condition->type)));
     }
 
-    init_tracker_t* then_tracker = sema->init_tracker;
+    init_tracker_t* then_tracker = init_tracker_clone(sema->init_tracker);
     init_tracker_t* else_tracker = init_tracker_clone(sema->init_tracker);
 
     sema->init_tracker = then_tracker;
