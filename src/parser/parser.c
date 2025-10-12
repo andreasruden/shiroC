@@ -141,9 +141,11 @@ static ast_expr_t* parse_int_lit(parser_t* parser)
 
     bool range_err = errno == ERANGE;
 
-    // Sanity check, but should not be possible if lexer does not have a bug:
-    panic_if(endptr == tok->value);
-    panic_if(*endptr != '\0');
+    if (endptr == tok->value || *endptr != '\0')
+    {
+        lexer_emit_token_malformed(parser->lexer, tok, "invalid integer literal");
+        return nullptr;
+    }
 
     ast_expr_t* expr = ast_int_lit_create(has_minus_sign, magnitude, tok->suffix);
     parser_set_source_tok_to_current(parser, expr, tok);

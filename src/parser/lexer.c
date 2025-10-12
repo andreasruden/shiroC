@@ -576,6 +576,25 @@ token_t* lexer_peek_token(lexer_t* lexer)
     return lexer->peeked_token;
 }
 
+void lexer_emit_token_malformed(lexer_t* lexer, token_t* tok, const char* description)
+{
+    string_t err = token_str(tok);
+    if (lexer->error_output == nullptr)
+    {
+        printf("Error: %s for tok '%s' in File %s at Line %d, Col %d\n", description, string_cstr(&err),
+            lexer->filename, tok->line, tok->column);
+    }
+    else
+    {
+        string_append_cstr(&err, ": ");
+        string_append_cstr(&err, description);
+        compiler_error_t* error = compiler_error_create_for_source(false, string_cstr(&err), lexer->filename,
+            tok->line, tok->column);
+        lexer->error_output(error, lexer->error_output_arg);
+    }
+    string_deinit(&err);
+}
+
 void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t expected)
 {
     int line = lexer->last_consumed_end_line;

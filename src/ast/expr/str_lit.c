@@ -42,5 +42,6 @@ static void ast_str_lit_destroy(void* self_)
         return;
 
     ast_expr_deconstruct((ast_expr_t*)self);
+    free(self->value);
     free(self);
 }

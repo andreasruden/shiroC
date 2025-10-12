@@ -111,6 +111,8 @@ void lexer_destroy(lexer_t* lexer);
 
 token_t* lexer_next_token(lexer_t* lexer);
 
+void lexer_emit_token_malformed(lexer_t* lexer, token_t* tok, const char* description);
+
 void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t expected);
 
 token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type);

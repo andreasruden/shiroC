@@ -950,3 +950,15 @@ TEST(ut_parser_fixture_t, type_annotation_valid_when_init_expr_is_null_lit)
     ast_node_destroy(expected);
     ast_node_destroy(stmt);
 }
+
+TEST(ut_parser_fixture_t, invalid_int_literal)
+{
+    parser_set_source(fix->parser, "test", "var i = 08;");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_LT(0, vec_size(parser_errors(fix->parser)));
+    compiler_error_t* error = vec_get(&fix->parser->lex_errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "invalid integer literal"));
+
+    ast_node_destroy(stmt);
+}
