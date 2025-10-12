@@ -3,6 +3,7 @@
 #include "ast/decl/var_decl.h"
 #include "ast/def/fn_def.h"
 #include "ast/expr/bin_op.h"
+#include "ast/expr/bool_lit.h"
 #include "ast/expr/call_expr.h"
 #include "ast/expr/float_lit.h"
 #include "ast/expr/int_lit.h"
@@ -1065,4 +1066,19 @@ TEST(ut_sema_fixture_t, accept_null_comparison_in_function)
     ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
 
     ast_node_destroy(AST_NODE(func));
+}
+
+// Arithmetic operations on boolean operands should produce an error
+TEST(ut_sema_fixture_t, arithmetic_operation_on_booleans_error)
+{
+    ast_expr_t* error_node = ast_bin_op_create(TOKEN_PLUS, ast_bool_lit_create(true), ast_bool_lit_create(false));
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(error_node));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+
+    compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "cannot apply '+' to 'bool'"));
+
+    ast_node_destroy(error_node);
 }

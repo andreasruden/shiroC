@@ -275,7 +275,7 @@ static void analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
     ast_type_t* result_type = nullptr;
     if (!is_type_valid_for_operator(bin_op->lhs->type, bin_op->op, &result_type))
     {
-        semantic_context_add_error(sema->ctx, bin_op, ssprintf("cannot apply '%s' to LHS type and '%s' RHS type '%s'",
+        semantic_context_add_error(sema->ctx, bin_op, ssprintf("cannot apply '%s' to '%s' and '%s'",
             token_type_str(bin_op->op), ast_type_string(bin_op->lhs->type), ast_type_string(bin_op->rhs->type)));
         return;
     }
