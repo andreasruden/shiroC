@@ -1,5 +1,7 @@
 #include "hash_table.h"
 
+#include "common/debug/panic.h"
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -97,6 +99,8 @@ static void hash_table_grow(hash_table_t* table)
 
 void hash_table_insert(hash_table_t* table, const char* key, void* value)
 {
+    panic_if(hash_table_contains(table, key));
+
     if ((float)table->size / table->num_buckets >= LOAD_FACTOR_THRESHOLD)
         hash_table_grow(table);
 
@@ -159,7 +163,7 @@ void hash_table_remove(hash_table_t* table, const char* key)
         if (prev_entry != nullptr)
             prev_entry->next = entry->next;
         else
-            table->buckets[bucket] = nullptr;
+            table->buckets[bucket] = entry->next;
         hash_table_entry_destroy(entry, table->delete_fn);
         --table->size;
     }

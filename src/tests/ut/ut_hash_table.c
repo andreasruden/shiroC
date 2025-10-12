@@ -134,3 +134,26 @@ TEST(hash_table_fixture_t, clone_deep_copy)
     hash_table_destroy(table);
     hash_table_deinit(&clone);
 }
+
+TEST(hash_table_fixture_t, remove_first_entry_in_collision_chain)
+{
+    // These two keys collide in bucket 4 (with 16 buckets)
+    const char* key_first = "collision_test_key_9";   // First in chain
+    const char* key_second = "collision_test_key_10"; // Second in chain
+
+    hash_table_insert(fix->table, key_first, (void*)100);
+    hash_table_insert(fix->table, key_second, (void*)200);
+
+    // Verify both exist
+    ASSERT_EQ((void*)100, hash_table_find(fix->table, key_first));
+    ASSERT_EQ((void*)200, hash_table_find(fix->table, key_second));
+
+    // Remove the first entry in the collision chain
+    hash_table_remove(fix->table, key_first);
+
+    // First key should be gone
+    ASSERT_EQ(nullptr, hash_table_find(fix->table, key_first));
+
+    // Verify: Second key should still exist
+    ASSERT_EQ((void*)200, hash_table_find(fix->table, key_second));
+}
