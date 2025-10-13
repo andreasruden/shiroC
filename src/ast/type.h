@@ -120,6 +120,8 @@ bool ast_type_is_signed(ast_type_t* type);
 
 bool ast_type_has_equality(ast_type_t* type);
 
+bool ast_type_is_instantiable(ast_type_t* type);
+
 const char* ast_type_string(ast_type_t* type);
 
 const char* type_to_str(type_t type);

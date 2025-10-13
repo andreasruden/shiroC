@@ -243,6 +243,20 @@ bool ast_type_has_equality(ast_type_t* type)
     return false;
 }
 
+bool ast_type_is_instantiable(ast_type_t* type)
+{
+    switch (type->kind)
+    {
+        case AST_TYPE_BUILTIN:
+            return type->data.builtin.type != TYPE_VOID;
+        case AST_TYPE_INVALID:
+            return false;
+        default:
+            break;
+    }
+    return true;
+}
+
 const char* ast_type_string(ast_type_t* type)
 {
     switch (type->kind)

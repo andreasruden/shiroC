@@ -82,6 +82,13 @@ static void analyze_param_decl(void* self_, ast_param_decl_t* param, void* out_)
     if (param->type == ast_type_invalid())
         return;  // don't propagate errors
 
+    if (!ast_type_is_instantiable(param->type))
+    {
+        semantic_context_add_error(sema->ctx, param, ssprintf("cannot instantiate type '%s'",
+            ast_type_string(param->type)));
+        return;
+    }
+
     symbol_t* symbol = add_variable_to_scope(sema, param, param->name, param->type);
     if (symbol != nullptr)
     {
@@ -140,7 +147,15 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
             semantic_context_add_warning(sema->ctx, var, "type annotation is superfluous");
     }
 
-    symbol_t* symbol = add_variable_to_scope(sema, var, var->name, annotated_type ? annotated_type : inferred_type);
+    ast_type_t* actual_type = annotated_type ? annotated_type : inferred_type;
+    if (!ast_type_is_instantiable(actual_type))
+    {
+        semantic_context_add_error(sema->ctx, var, ssprintf("cannot instantiate type '%s'",
+            ast_type_string(actual_type)));
+        return;
+    }
+
+    symbol_t* symbol = add_variable_to_scope(sema, var, var->name, actual_type);
     if (symbol != nullptr)
         init_tracker_set_initialized(sema->init_tracker, symbol, var->init_expr != nullptr);
 }

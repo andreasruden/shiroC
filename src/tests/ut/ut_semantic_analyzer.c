@@ -53,6 +53,28 @@ TEST_TEARDOWN(ut_sema_fixture_t)
     semantic_context_destroy(fix->ctx);
 }
 
+#define ASSERT_SEMA_ERROR(node, offender_node, error_substring) \
+    do { \
+        bool res = semantic_analyzer_run((fix->sema), (node)); \
+        ASSERT_FALSE(res); \
+        ASSERT_LT(0, vec_size(&(fix->ctx)->error_nodes)); \
+        ast_node_t* offender = vec_get(&(fix->ctx)->error_nodes, 0); \
+        ASSERT_EQ((offender_node), offender); \
+        compiler_error_t* error = vec_get(offender->errors, 0); \
+        ASSERT_NEQ(nullptr, strstr(error->description, (error_substring))); \
+    } while(0)
+
+#define ASSERT_SEMA_WARNING(node, offender_node, warning_substring) \
+    do { \
+        bool res = semantic_analyzer_run((fix->sema), (node)); \
+        ASSERT_FALSE(res); \
+        ASSERT_LT(0, vec_size(&(fix->ctx)->warning_nodes)); \
+        ast_node_t* offender = vec_get(&(fix->ctx)->error_nodes, 0); \
+        ASSERT_EQ((offender_node), offender); \
+        compiler_error_t* error = vec_get(offender->errors, 0); \
+        ASSERT_NEQ(nullptr, strstr(error->description, (warning_substring))); \
+    } while(0)
+
 // Emit an error when a name in the same scope is redeclared
 TEST(ut_sema_fixture_t, variable_redeclaration_error)
 {
@@ -1389,4 +1411,27 @@ TEST(ut_sema_fixture_t, function_return_array_type_size_mismatch)
     ASSERT_NEQ(nullptr, strstr(error->description, "return type"));
 
     ast_node_destroy(fn_def);
+}
+
+
+TEST(ut_sema_fixture_t, function_parameter_with_void_type_error)
+{
+    // fn foo(x: void) { }
+    ast_decl_t* error_node = ast_param_decl_create("x", ast_type_builtin(TYPE_VOID));
+    ast_def_t* foo = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_empty(), error_node, nullptr );
+
+    ASSERT_SEMA_ERROR(AST_NODE(foo), error_node, "cannot instantiate type 'void'");
+
+    ast_node_destroy(foo);
+}
+
+TEST(ut_sema_fixture_t, variable_declaration_with_void_type_error)
+{
+    // var x: void;
+    ast_decl_t* error_node = ast_var_decl_create("x", ast_type_builtin(TYPE_VOID), nullptr);
+    ast_stmt_t* stmt = ast_decl_stmt_create(error_node);
+
+    ASSERT_SEMA_ERROR(AST_NODE(stmt), error_node, "cannot instantiate type 'void'");
+
+    ast_node_destroy(stmt);
 }
