@@ -28,6 +28,7 @@ typedef enum
     TOKEN_U32,
     TOKEN_U64,
     TOKEN_VAR,
+    TOKEN_VIEW,
     TOKEN_VOID,
     TOKEN_WHILE,
 
@@ -41,6 +42,8 @@ typedef enum
     TOKEN_RPAREN,
     TOKEN_LBRACE,
     TOKEN_RBRACE,
+    TOKEN_LBRACKET,
+    TOKEN_RBRACKET,
     TOKEN_SEMICOLON,
     TOKEN_COLON,
     TOKEN_COMMA,

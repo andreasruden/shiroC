@@ -9,6 +9,7 @@
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
 #include "sema/symbol_table.h"
+#include "sema/type_expr_solver.h"
 
 struct decl_collector
 {
@@ -30,6 +31,15 @@ void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
         return;
     }
 
+    if (fn_def->return_type == nullptr)
+        fn_def->return_type = ast_type_builtin(TYPE_VOID);
+    else
+    {
+        fn_def->return_type = type_expr_solver_solve(collector->ctx, fn_def->return_type, fn_def);
+        if (fn_def->return_type == ast_type_invalid())
+            return;
+    }
+
     symbol_t* symbol = symbol_create(fn_def->base.name, SYMBOL_FUNCTION, fn_def);
     symbol->type = fn_def->return_type == nullptr ? ast_type_builtin(TYPE_VOID) : fn_def->return_type;
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
@@ -40,8 +50,12 @@ void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 
 void collect_param_decl(void* self_, ast_param_decl_t* param_decl, void* out_)
 {
-    (void)self_;
+    decl_collector_t* collector = self_;
     symbol_t* fn = out_;
+
+    param_decl->type = type_expr_solver_solve(collector->ctx, param_decl->type, param_decl);
+    if (param_decl->type == ast_type_invalid())
+        return;
 
     vec_push(&fn->data.function.parameters, param_decl);
 }

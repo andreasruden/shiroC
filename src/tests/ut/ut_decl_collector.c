@@ -1,5 +1,6 @@
 #include "ast/def/fn_def.h"
 #include "ast/decl/param_decl.h"
+#include "ast/expr/int_lit.h"
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/type.h"
@@ -100,6 +101,35 @@ TEST(decl_collector_fixture_t, collect_implicit_void_function)
 
     // Verify function signature
     ASSERT_EQ(ast_type_builtin(TYPE_VOID), sym->type);
+    ASSERT_EQ(0, vec_size(&sym->data.function.parameters));
+
+    ast_node_destroy(root);
+}
+
+TEST(decl_collector_fixture_t, collect_function_with_array_ptr_and_view)
+{
+    // Build AST: fn foo(arr: [i32, 5]*) -> view[i32]
+    ast_def_t* fn = ast_fn_def_create_va("foo",
+        ast_type_view(ast_type_builtin(TYPE_I32)), nullptr,
+        ast_param_decl_create("arr",
+            ast_type_pointer(ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(5)))),
+        nullptr);
+    ast_root_t* root = ast_root_create_va(fn, nullptr);
+
+    bool result = decl_collector_run(fix->collector, AST_NODE(root));
+    ASSERT_TRUE(result);
+
+    // Verify symbol was added to global scope
+    symbol_t* sym = symbol_table_lookup(fix->ctx->global, "foo");
+    ASSERT_NEQ(nullptr, sym);
+    ASSERT_EQ(SYMBOL_FUNCTION, sym->kind);
+    ASSERT_EQ("foo", sym->name);
+
+    // Verify function signature
+    ASSERT_EQ(ast_type_view(ast_type_builtin(TYPE_I32)), sym->type);
+    ASSERT_EQ(1, vec_size(&sym->data.function.parameters));
+    ASSERT_EQ(ast_type_pointer(ast_type_array(ast_type_builtin(TYPE_I32), 5)),
+        ((ast_param_decl_t*)vec_get(&sym->data.function.parameters, 0))->type);
 
     ast_node_destroy(root);
 }

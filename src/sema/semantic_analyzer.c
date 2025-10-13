@@ -12,6 +12,7 @@
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
 #include "sema/symbol_table.h"
+#include "sema/type_expr_solver.h"
 #include <math.h>
 #include <string.h>
 
@@ -77,6 +78,10 @@ static void analyze_param_decl(void* self_, ast_param_decl_t* param, void* out_)
     (void)out_;
     semantic_analyzer_t* sema = self_;
 
+    param->type = type_expr_solver_solve(sema->ctx, param->type, param);
+    if (param->type == ast_type_invalid())
+        return;  // don't propagate errors
+
     symbol_t* symbol = add_variable_to_scope(sema, param, param->name, param->type);
     if (symbol != nullptr)
     {
@@ -89,6 +94,13 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
+
+    if (var->type != nullptr)
+    {
+        var->type = type_expr_solver_solve(sema->ctx, var->type, var);
+        if (var->type == ast_type_invalid())
+            return;  // don't propagate errors
+    }
 
     if (var->init_expr != nullptr)
         ast_visitor_visit(sema, var->init_expr, nullptr);
@@ -137,12 +149,18 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
 {
     semantic_analyzer_t* sema = self_;
 
+    if (fn->return_type == nullptr)
+        fn->return_type = ast_type_builtin(TYPE_VOID);
+    else
+    {
+        fn->return_type = type_expr_solver_solve(sema->ctx, fn->return_type, fn);
+        if (fn->return_type == ast_type_invalid())
+            return; // don't propagate errors
+    }
+
     semantic_context_push_scope(sema->ctx, SCOPE_FUNCTION);
     sema->current_function = fn;
     sema->current_function_scope = sema->ctx->current;
-
-    if (fn->return_type == nullptr)
-        fn->return_type = ast_type_builtin(TYPE_VOID);
 
     for (size_t i = 0; i < vec_size(&fn->params); ++i)
         ast_visitor_visit(sema, vec_get(&fn->params, i), out_);

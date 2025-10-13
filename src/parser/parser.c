@@ -415,24 +415,89 @@ static ast_stmt_t* parse_compound_stmt(parser_t* parser)
     return stmt;
 }
 
+static ast_type_t* parse_type_annotation_array(parser_t* parser);
+static ast_type_t* parse_type_annotation_view(parser_t* parser);
+
 static ast_type_t* parse_type_annotation(parser_t* parser)
 {
     token_t* type_tok = lexer_peek_token(parser->lexer);
-    ast_type_t* type = ast_type_from_token(type_tok);
+
+    // Fundamental type
+    ast_type_t* type;
+    if (type_tok->type == TOKEN_LBRACKET)
+        type = parse_type_annotation_array(parser);
+    else if (type_tok->type == TOKEN_VIEW)
+        type = parse_type_annotation_view(parser);
+    else
+    {
+        type = ast_type_from_token(type_tok);
+        lexer_next_token(parser->lexer);
+    }
+
     if (type->kind == AST_TYPE_INVALID)
     {
         lexer_emit_error_for_token(parser->lexer, type_tok, TOKEN_IDENTIFIER);
     }
     else
     {
-        lexer_next_token(parser->lexer);
+        // Consume pointer wrappers
         while (lexer_peek_token(parser->lexer)->type == TOKEN_STAR)
         {
             lexer_next_token(parser->lexer);
             type = ast_type_pointer(type);
         }
     }
+
     return type;
+}
+
+static ast_type_t* parse_type_annotation_array(parser_t* parser)
+{
+    // [
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACKET))
+        return ast_type_invalid();
+
+    // T
+    ast_type_t* element_type = parse_type_annotation(parser);
+
+    // , size
+    ast_type_t* array_type;
+    if (lexer_peek_token(parser->lexer)->type == TOKEN_COMMA)
+    {
+        lexer_next_token(parser->lexer);
+        ast_expr_t* size_expr = parser_parse_expr(parser);
+        if (size_expr == nullptr)
+            return ast_type_invalid();
+        array_type = ast_type_array_size_unresolved(element_type, size_expr);
+    }
+    else
+        array_type = ast_type_heap_array(element_type);
+
+    // ]
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET))
+        return ast_type_invalid();
+
+    return array_type;
+}
+
+static ast_type_t* parse_type_annotation_view(parser_t* parser)
+{
+    // view
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_VIEW))
+        return ast_type_invalid();
+
+    // [
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACKET))
+        return ast_type_invalid();
+
+    // T
+    ast_type_t* element_type = parse_type_annotation(parser);
+
+    // ]
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET))
+        return ast_type_invalid();
+
+    return ast_type_view(element_type);
 }
 
 static ast_decl_t* parse_var_decl(parser_t* parser)

@@ -17,6 +17,7 @@
 #include "ast/stmt/if_stmt.h"
 #include "ast/stmt/return_stmt.h"
 #include "ast/stmt/while_stmt.h"
+#include "ast/type.h"
 #include "ast/util/printer.h"
 #include "compiler_error.h"
 #include "parser/lexer.h"
@@ -960,5 +961,56 @@ TEST(ut_parser_fixture_t, invalid_int_literal)
     compiler_error_t* error = vec_get(&fix->parser->lex_errors, 0);
     ASSERT_NEQ(nullptr, strstr(error->description, "invalid integer literal"));
 
+    ast_node_destroy(stmt);
+}
+
+TEST(ut_parser_fixture_t, parse_type_annotation_fixed_array)
+{
+    parser_set_source(fix->parser, "test", "var arr: [i32, 5];");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_decl_stmt_create(
+        ast_var_decl_create("arr", ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(5)),
+        nullptr));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
+}
+
+TEST(ut_parser_fixture_t, parse_type_annotation_heap_array)
+{
+    parser_set_source(fix->parser, "test", "var arr: [bool];");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_decl_stmt_create(
+        ast_var_decl_create("arr", ast_type_heap_array(ast_type_builtin(TYPE_BOOL)),
+        nullptr));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
+}
+
+TEST(ut_parser_fixture_t, parse_type_annotation_view)
+{
+    parser_set_source(fix->parser, "test", "var arr_view: view[f32*];");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_decl_stmt_create(
+        ast_var_decl_create("arr_view", ast_type_view(ast_type_pointer(ast_type_builtin(TYPE_F32))),
+        nullptr));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
     ast_node_destroy(stmt);
 }

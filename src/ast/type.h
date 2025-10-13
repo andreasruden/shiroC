@@ -1,6 +1,8 @@
 #ifndef AST_TYPE__H
 #define AST_TYPE__H
 
+#include <stdint.h>
+
 typedef enum type
 {
     TYPE_VOID,
@@ -26,9 +28,13 @@ typedef enum ast_type_kind
     AST_TYPE_BUILTIN,
     AST_TYPE_USER,      // unresolved until Semantic Analysis
     AST_TYPE_POINTER,
+    AST_TYPE_ARRAY,
+    AST_TYPE_HEAP_ARRAY,
+    AST_TYPE_VIEW,
 } ast_type_kind_t;
 
 typedef struct ast_type ast_type_t;
+typedef struct ast_expr ast_expr_t;
 typedef struct token token_t;
 
 // Instances of ast_type_t should always be assumed const and not edited.
@@ -54,6 +60,30 @@ struct ast_type
             ast_type_t* pointee;
             char* str_repr;
         } pointer;
+
+        struct
+        {
+            ast_type_t* element_type;
+            bool size_known;
+            union
+            {
+                ast_expr_t* size_expr; // result of parsing (NOTE: before SEMA array types never compare equally)
+                intptr_t size;         // calcualted by SEMA from size_expr
+            };
+            char* str_repr;
+        } array;
+
+        struct
+        {
+            ast_type_t* element_type;
+            char* str_repr;
+        } heap_array;
+
+        struct
+        {
+            ast_type_t* element_type;
+            char* str_repr;
+        } view;
     } data;
 };
 
@@ -65,6 +95,18 @@ ast_type_t* ast_type_user(const char* type_name);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_pointer(ast_type_t* pointee);
+
+// Returned instance should not be edited.
+ast_type_t* ast_type_array(ast_type_t* element_type, intptr_t size);
+
+// Returned instance should not be edited.
+ast_type_t* ast_type_array_size_unresolved(ast_type_t* element_type, ast_expr_t* size_expr);
+
+// Returned instance should not be edited.
+ast_type_t* ast_type_heap_array(ast_type_t* element_type);
+
+// Returned instance should not be edited.
+ast_type_t* ast_type_view(ast_type_t* element_type);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_invalid();

@@ -40,6 +40,7 @@ static keyword_t lexer_keywords[] =
     {"u32", TOKEN_U32},
     {"u64", TOKEN_U64},
     {"var", TOKEN_VAR},
+    {"view", TOKEN_VIEW},
     {"void", TOKEN_VOID},
     {"while", TOKEN_WHILE},
     {nullptr, TOKEN_UNKNOWN}
@@ -81,6 +82,9 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_VIEW: return "view";
+        case TOKEN_LBRACKET: return "[";
+        case TOKEN_RBRACKET: return "]";
         case TOKEN_AMPERSAND: return "&";
         case TOKEN_NULL: return "null";
         case TOKEN_FALSE: return "false";
@@ -448,6 +452,8 @@ static token_t* lex_symbol(lexer_t* lexer)
         case ')': return token_create(lexer, TOKEN_RPAREN, ")", line, col);
         case '{': return token_create(lexer, TOKEN_LBRACE, "{", line, col);
         case '}': return token_create(lexer, TOKEN_RBRACE, "}", line, col);
+        case '[': return token_create(lexer, TOKEN_LBRACKET, "[", line, col);
+        case ']': return token_create(lexer, TOKEN_RBRACKET, "]", line, col);
         case ';': return token_create(lexer, TOKEN_SEMICOLON, ";", line, col);
         case ':': return token_create(lexer, TOKEN_COLON, ":", line, col);
         case ',': return token_create(lexer, TOKEN_COMMA, ",", line, col);

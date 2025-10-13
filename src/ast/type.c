@@ -1,7 +1,10 @@
 #include "type.h"
 
+#include "ast/expr/expr.h"
+#include "ast/node.h"
 #include "common/containers/hash_table.h"
 #include "common/containers/string.h"
+#include "common/containers/vec.h"
 #include "common/debug/panic.h"
 #include "common/util/ssprintf.h"
 #include "parser/lexer.h"
@@ -13,6 +16,10 @@ ast_type_t* invalid_cache = nullptr;
 static ast_type_t* builtins_cache[TYPE_END] = {};
 static hash_table_t* user_cache = nullptr;
 static hash_table_t* pointer_cache = nullptr;  // Key: pointee type address -> Value: pointer type
+static hash_table_t* fixed_array_cache = nullptr;  // Key: element type address, size -> Value: array type
+static hash_table_t* heap_array_cache = nullptr;  // Key: element type address -> Value: array type
+static hash_table_t* view_cache = nullptr;  // Key: element type address -> Value: view type
+static vec_t* gc_array = nullptr; // unresolved fixed size arrays for garbage collection
 
 static void ast_type_destroy(void* type_)
 {
@@ -30,6 +37,16 @@ static void ast_type_destroy(void* type_)
         free(type->data.user.name);
     else if (type->kind == AST_TYPE_POINTER)
         free(type->data.pointer.str_repr);
+    else if (type->kind == AST_TYPE_ARRAY)
+    {
+        if (!type->data.array.size_known)
+            ast_node_destroy(type->data.array.size_expr);
+        free(type->data.array.str_repr);
+    }
+    else if (type->kind == AST_TYPE_HEAP_ARRAY)
+        free(type->data.heap_array.str_repr);
+    else if (type->kind == AST_TYPE_VIEW)
+        free(type->data.view.str_repr);
 
     free(type);
 }
@@ -74,6 +91,75 @@ ast_type_t* ast_type_pointer(ast_type_t* pointee)
 
     hash_table_insert(pointer_cache, ssprintf("%p", pointee), pointer);
     return pointer;
+}
+
+ast_type_t* ast_type_array(ast_type_t* element_type, intptr_t size)
+{
+    const char* key = ssprintf("%p, %lld", element_type, (long long)size);
+    ast_type_t* array = hash_table_find(fixed_array_cache, key);
+    if (array != nullptr)
+        return array;
+
+    array = malloc(sizeof(*array));
+
+    *array = (ast_type_t){
+        .kind = AST_TYPE_ARRAY,
+        .data.array.element_type = element_type,
+        .data.array.size_known = true,
+        .data.array.size = size,
+    };
+
+    hash_table_insert(fixed_array_cache, key, array);
+    return array;
+}
+
+ast_type_t* ast_type_array_size_unresolved(ast_type_t* element_type, ast_expr_t* size_expr)
+{
+    ast_type_t* tmp_array = malloc(sizeof(*tmp_array));
+
+    *tmp_array = (ast_type_t){
+        .kind = AST_TYPE_ARRAY,
+        .data.array.element_type = element_type,
+        .data.array.size_known = false,
+        .data.array.size_expr = size_expr,
+    };
+
+    vec_push(gc_array, tmp_array);
+    return tmp_array;
+}
+
+ast_type_t* ast_type_heap_array(ast_type_t* element_type)
+{
+    ast_type_t* array = hash_table_find(heap_array_cache, ssprintf("%p", element_type));
+    if (array != nullptr)
+        return array;
+
+    array = malloc(sizeof(*array));
+
+    *array = (ast_type_t){
+        .kind = AST_TYPE_HEAP_ARRAY,
+        .data.heap_array.element_type = element_type,
+    };
+
+    hash_table_insert(heap_array_cache, ssprintf("%p", element_type), array);
+    return array;
+}
+
+ast_type_t* ast_type_view(ast_type_t* element_type)
+{
+    ast_type_t* view = hash_table_find(view_cache, ssprintf("%p", element_type));
+    if (view != nullptr)
+        return view;
+
+    view = malloc(sizeof(*view));
+
+    *view = (ast_type_t){
+        .kind = AST_TYPE_VIEW,
+        .data.view.element_type = element_type,
+    };
+
+    hash_table_insert(view_cache, ssprintf("%p", element_type), view);
+    return view;
 }
 
 ast_type_t* ast_type_invalid()
@@ -178,6 +264,47 @@ const char* ast_type_string(ast_type_t* type)
             }
             return type->data.pointer.str_repr;
         }
+        case AST_TYPE_ARRAY:
+        {
+            if (type->data.array.str_repr == nullptr)
+            {
+                string_t tmp = STRING_INIT;
+                string_append_char(&tmp, '[');
+                string_append_cstr(&tmp, ast_type_string(type->data.array.element_type));
+                string_append_cstr(&tmp, ", ");
+                if (type->data.array.size_known)
+                    string_append_cstr(&tmp, ssprintf("%lld", (long long)type->data.array.size));
+                else
+                    string_append_cstr(&tmp, " <expr>");
+                string_append_char(&tmp, ']');
+                type->data.array.str_repr = string_release(&tmp);
+            }
+            return type->data.array.str_repr;
+        }
+        case AST_TYPE_HEAP_ARRAY:
+        {
+            if (type->data.heap_array.str_repr == nullptr)
+            {
+                string_t tmp = STRING_INIT;
+                string_append_char(&tmp, '[');
+                string_append_cstr(&tmp, ast_type_string(type->data.heap_array.element_type));
+                string_append_char(&tmp, ']');
+                type->data.heap_array.str_repr = string_release(&tmp);
+            }
+            return type->data.heap_array.str_repr;
+        }
+        case AST_TYPE_VIEW:
+        {
+            if (type->data.view.str_repr == nullptr)
+            {
+                string_t tmp = STRING_INIT;
+                string_append_cstr(&tmp, "view[");
+                string_append_cstr(&tmp, ast_type_string(type->data.view.element_type));
+                string_append_char(&tmp, ']');
+                type->data.view.str_repr = string_release(&tmp);
+            }
+            return type->data.view.str_repr;
+        }
     }
 
     panic("Case %d not handled", type->kind);
@@ -233,6 +360,10 @@ void ast_type_cache_init()
 
     user_cache = hash_table_create(ast_type_destroy);
     pointer_cache = hash_table_create(ast_type_destroy);
+    fixed_array_cache = hash_table_create(ast_type_destroy);
+    heap_array_cache = hash_table_create(ast_type_destroy);
+    view_cache = hash_table_create(ast_type_destroy);
+    gc_array = vec_create(ast_type_destroy);
 }
 
 __attribute__((destructor))
@@ -243,4 +374,8 @@ void ast_type_cache_cleanup()
         free(builtins_cache[type]);
     hash_table_destroy(user_cache);
     hash_table_destroy(pointer_cache);
+    hash_table_destroy(fixed_array_cache);
+    hash_table_destroy(heap_array_cache);
+    hash_table_destroy(view_cache);
+    vec_destroy(gc_array);
 }
