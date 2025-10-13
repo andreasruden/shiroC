@@ -3,6 +3,7 @@
 
 #include "ast/decl/param_decl.h"
 #include "ast/decl/var_decl.h"
+#include "ast/expr/array_subscript.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/bool_lit.h"
 #include "ast/expr/call_expr.h"
@@ -44,6 +45,7 @@ struct ast_visitor
     void (*visit_fn_def)(void* self_, ast_fn_def_t* fn_def, void *out_);
 
     // Expressions
+    void (*visit_array_subscript)(void* self_, ast_array_subscript_t* array_subscript, void *out_);
     void (*visit_bin_op)(void* self_, ast_bin_op_t* bin_op, void *out_);
     void (*visit_bool_lit)(void* self_, ast_bool_lit_t* bool_lit, void *out_);
     void (*visit_call_expr)(void* self_, ast_call_expr_t* call_expr, void *out_);

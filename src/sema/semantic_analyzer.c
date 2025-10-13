@@ -1,5 +1,6 @@
 #include "semantic_analyzer.h"
 
+#include "ast/expr/int_lit.h"
 #include "ast/expr/unary_op.h"
 #include "ast/node.h"
 #include "ast/stmt/compound_stmt.h"
@@ -14,6 +15,7 @@
 #include "sema/symbol_table.h"
 #include "sema/type_expr_solver.h"
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 
 static symbol_t* add_variable_to_scope(semantic_analyzer_t* sema, void* node, const char* name, ast_type_t* type)
@@ -197,6 +199,76 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     sema->current_function_scope = nullptr;
 }
 
+static bool analyze_fixed_size_array_index(semantic_analyzer_t* sema, ast_array_subscript_t* array_subscript)
+{
+    // TODO: More sophisticated logic
+    if (AST_KIND(array_subscript->index) != AST_EXPR_INT_LIT)
+    {
+        semantic_context_add_error(sema->ctx, array_subscript, "invalid index");
+        return false;
+    }
+
+    intptr_t index = ((ast_int_lit_t*)array_subscript->index)->value.as_signed;
+    if (index < 0 || index >= array_subscript->array->type->data.array.size)
+    {
+        semantic_context_add_error(sema->ctx, array_subscript, ssprintf("index '%lld' is out of bounds for '%s'",
+            (long long)index, ast_type_string(array_subscript->array->type)));
+        return false;
+    }
+
+    return true;
+}
+
+static void analyze_array_subscript(void* self_, ast_array_subscript_t* array_subscript, void* out_)
+{
+    semantic_analyzer_t* sema = self_;
+
+    // TODO: Init tracker for arrays?
+
+    sema->in_lvalue_context = true;
+    symbol_t* arr_symbol = nullptr;
+    ast_visitor_visit(sema, array_subscript->array, &arr_symbol);
+    sema->in_lvalue_context = false;
+    if (arr_symbol == nullptr)
+        return;  // don't propagate errors
+
+    ast_visitor_visit(sema, array_subscript->index, out_);
+    // FIXME: Here it should be enough to be convertible to some "isize" type
+    if (array_subscript->index->type != ast_type_builtin(TYPE_I32))
+    {
+        semantic_context_add_error(sema->ctx, array_subscript, ssprintf("type '%s' is not usable as an index",
+            ast_type_string(array_subscript->index->type)));
+        array_subscript->base.type = ast_type_invalid();
+        return;
+    }
+
+    ast_type_t* expr_type;
+    switch (array_subscript->array->type->kind)
+    {
+        case AST_TYPE_ARRAY:
+            if (!analyze_fixed_size_array_index(sema, array_subscript))
+                expr_type = ast_type_invalid();
+            else
+                expr_type = array_subscript->array->type->data.array.element_type;
+            break;
+        case AST_TYPE_HEAP_ARRAY:
+            expr_type = array_subscript->array->type->data.heap_array.element_type;
+            break;
+        case AST_TYPE_VIEW:
+            expr_type = array_subscript->array->type->data.view.element_type;
+            break;
+        case AST_TYPE_POINTER:
+            panic("TODO: implement this");
+        default:
+            semantic_context_add_error(sema->ctx, array_subscript, ssprintf("cannot subscript '%s'", arr_symbol->name));
+            expr_type = ast_type_invalid();
+            break;
+    }
+
+    array_subscript->base.type = expr_type;
+}
+
+
 // Returns true if via some coercion we can think of LHS and RHS as the same type
 // NOTE: This does not imply the types are valid for an operator, check that with is_type_valid_for_operator().
 static bool is_type_equal_for_bin_op(ast_type_t* lhs_type, ast_type_t* rhs_type)
@@ -214,12 +286,16 @@ static bool is_type_equal_for_bin_op(ast_type_t* lhs_type, ast_type_t* rhs_type)
     return false;
 }
 
+// FIXME: I think ast_expr_t should have an is_lvalue in it instead
 static bool is_valid_lvalue(ast_expr_t* expr, symbol_t* symbol)
 {
     if (AST_KIND(expr) == AST_EXPR_REF)
         return symbol != nullptr && (symbol->kind == SYMBOL_VARIABLE || symbol->kind == SYMBOL_PARAMETER);
 
     if (AST_KIND(expr) == AST_EXPR_UNARY_OP)
+        return true;
+
+    if (AST_KIND(expr) == AST_EXPR_ARRAY_SUBSCRIPT)
         return true;
 
     return false;
@@ -703,6 +779,7 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             // Definitions
             .visit_fn_def = analyze_fn_def,
             // Expressions
+            .visit_array_subscript = analyze_array_subscript,
             .visit_bin_op = analyze_bin_op,
             .visit_bool_lit = analyze_bool_lit,
             .visit_call_expr = analyze_call_expr,

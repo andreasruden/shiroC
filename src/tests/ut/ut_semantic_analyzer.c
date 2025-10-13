@@ -1435,3 +1435,98 @@ TEST(ut_sema_fixture_t, variable_declaration_with_void_type_error)
 
     ast_node_destroy(stmt);
 }
+
+TEST(ut_sema_fixture_t, array_subscript_index_must_be_integer)
+{
+    // var arr: [i32, 10];
+    // arr[true];  // Error: index must be integer type
+    ast_expr_t* error_node = ast_array_subscript_create(
+        ast_ref_expr_create("arr"),
+        ast_bool_lit_create(true)
+    );
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(10)), nullptr)),
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "'bool' is not usable as an index");
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_fixture_t, array_subscript_non_array_type_error)
+{
+    // var x: i32 = 42;
+    // x[0];  // Error: cannot subscript non-array type
+    ast_expr_t* error_node = ast_array_subscript_create(
+        ast_ref_expr_create("x"),
+        ast_int_lit_val(0)
+    );
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("x",
+            ast_type_builtin(TYPE_I32), ast_int_lit_val(42))),
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "subscript");
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_fixture_t, array_subscript_constant_out_of_bounds_error)
+{
+    // var arr: [i32, 10];
+    // arr[10];  // Error: index 10 out of bounds for array of size 10
+    ast_expr_t* error_node = ast_array_subscript_create(
+        ast_ref_expr_create("arr"),
+        ast_int_lit_val(10)
+    );
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(10)), nullptr)),
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "index '10' is out of bounds for '[i32, 10]'");
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_fixture_t, array_subscript_returns_element_type)
+{
+    // var arr: [i32, 10];
+    // arr[0] = 5;
+    // var x: i32 = arr[0];  // OK: arr[0] has type i32
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(10)), nullptr)),
+        ast_expr_stmt_create(ast_bin_op_create(
+            TOKEN_ASSIGN,
+            ast_array_subscript_create(
+                ast_ref_expr_create("arr"),
+                ast_int_lit_val(0)
+            ),
+            ast_int_lit_val(5)
+        )),
+        ast_decl_stmt_create(ast_var_decl_create("x",
+            ast_type_builtin(TYPE_I32),
+            ast_array_subscript_create(
+                ast_ref_expr_create("arr"),
+                ast_int_lit_val(0)
+            ))),
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(block);
+}

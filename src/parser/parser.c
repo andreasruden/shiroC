@@ -4,6 +4,7 @@
 #include "ast/decl/var_decl.h"
 #include "ast/def/def.h"
 #include "ast/def/fn_def.h"
+#include "ast/expr/array_subscript.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/bool_lit.h"
 #include "ast/expr/call_expr.h"
@@ -184,6 +185,21 @@ static ast_expr_t* parse_str_lit(parser_t* parser)
     return expr;
 }
 
+static ast_expr_t* parse_array_subscript(parser_t* parser, token_t* id)
+{
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACKET))
+        return nullptr;
+
+    ast_expr_t* index = parser_parse_expr(parser);
+    if (index == nullptr)
+        return nullptr;
+
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET))
+        return nullptr;
+
+    return ast_array_subscript_create(ast_ref_expr_create(id->value), index);
+}
+
 static ast_expr_t* parse_call_expr(parser_t* parser, token_t* id)
 {
     ast_expr_t* call = nullptr;
@@ -226,6 +242,8 @@ static ast_expr_t* parse_identifier_expr(parser_t* parser)
 
     if (lexer_peek_token(parser->lexer)->type == TOKEN_LPAREN)
         expr = parse_call_expr(parser, id);
+    else if (lexer_peek_token(parser->lexer)->type == TOKEN_LBRACKET)
+        expr = parse_array_subscript(parser, id);
     else
         expr = parser_create_ref_expr(parser, id);
 

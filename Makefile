@@ -27,6 +27,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/decl/var_decl.c \
 	$(SRC_DIR)/ast/def/def.c \
     $(SRC_DIR)/ast/def/fn_def.c \
+	$(SRC_DIR)/ast/expr/array_subscript.c \
 	$(SRC_DIR)/ast/expr/bin_op.c \
 	$(SRC_DIR)/ast/expr/bool_lit.c \
 	$(SRC_DIR)/ast/expr/call_expr.c \
