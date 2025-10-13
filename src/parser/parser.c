@@ -44,6 +44,9 @@ parser_t* parser_create()
         .errors = VEC_INIT(nullptr),  // mix of lex errors and AST node errors
     };
 
+    // Dummy lexer, will be replaced when source is set
+    parser->lexer = lexer_create("", "", nullptr, parser);
+
     return parser;
 }
 
@@ -52,7 +55,9 @@ void parser_destroy(parser_t* parser)
     if (parser == nullptr)
         return;
 
-    parser_reset(parser);
+    lexer_destroy(parser->lexer);
+    vec_deinit(&parser->lex_errors);
+    vec_deinit(&parser->errors);
     free(parser);
 }
 
