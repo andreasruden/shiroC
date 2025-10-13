@@ -464,18 +464,7 @@ static ast_decl_t* parse_var_decl(parser_t* parser)
     }
 
     if (var_decl->type == nullptr && var_decl->init_expr == nullptr)
-    {
         parser_error(parser, var_decl, "variable declaration must have either a type annotation or an initializer");
-    }
-    else if (var_decl->type != nullptr && var_decl->init_expr != nullptr)
-    {
-        if (AST_KIND(var_decl->init_expr) != AST_EXPR_NULL_LIT)  // exception: null lit
-        {
-            parser_error(parser, var_decl,
-                "variable declaration cannot have both a type annotation and an initializer");
-        }
-    }
-
     parser_set_source_tok_to_current(parser, var_decl, tok_var);
 
     return (ast_decl_t*)var_decl;

@@ -5,6 +5,7 @@
 #include "ast/expr/bin_op.h"
 #include "ast/expr/bool_lit.h"
 #include "ast/expr/call_expr.h"
+#include "ast/expr/expr.h"
 #include "ast/expr/float_lit.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/null_lit.h"
@@ -1287,4 +1288,55 @@ TEST(ut_sema_fixture_t, call_to_undefined_function_error)
     ASSERT_NEQ(nullptr, strstr(error->description, "unknown symbol"));
 
     ast_node_destroy(block);
+}
+
+// Error if inferred and annotated types disagree
+TEST(ut_sema_fixture_t, var_decl_type_annotation_and_inference_disagree_error)
+{
+    ast_decl_t* var_decl = ast_var_decl_create("i", ast_type_builtin(TYPE_I8), ast_int_lit_val(42));
+
+    ast_stmt_t* stmt = ast_decl_stmt_create(var_decl);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(stmt));
+    ASSERT_FALSE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(var_decl, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "inferred and annotated types differ"));
+
+    ast_node_destroy(stmt);
+}
+
+// Warn about unnecessary type annotation in variable declaration
+TEST(ut_sema_fixture_t, var_decl_unnecessary_type_annotation_warning)
+{
+    ast_decl_t* var_decl = ast_var_decl_create("i", ast_type_builtin(TYPE_I32), ast_int_lit_val(42));
+
+    ast_stmt_t* stmt = ast_decl_stmt_create(var_decl);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(stmt));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(1, vec_size(&fix->ctx->warning_nodes));
+    ast_node_t* offender = vec_get(&fix->ctx->warning_nodes, 0);
+    ASSERT_EQ(var_decl, offender);
+    compiler_error_t* error = vec_get(offender->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "type annotation is superfluous"));
+
+    ast_node_destroy(stmt);
+}
+
+// No warning when the type is necessary
+TEST(ut_sema_fixture_t, var_decl_necessary_type_annotation_ok)
+{
+    ast_decl_t* var_decl = ast_var_decl_create("p", ast_type_pointer(ast_type_builtin(TYPE_I32)),
+        ast_null_lit_create());
+
+    ast_stmt_t* stmt = ast_decl_stmt_create(var_decl);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(stmt));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->warning_nodes));
+
+    ast_node_destroy(stmt);
 }

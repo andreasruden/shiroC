@@ -466,13 +466,13 @@ TEST(ut_parser_fixture_t, parse_var_decls_with_no_type)
     ast_node_destroy(expected);
 }
 
-TEST(ut_parser_fixture_t, parse_var_decls_force_type_inference)
+TEST(ut_parser_fixture_t, parse_var_decls_type_and_init_expr)
 {
     parser_set_source(fix->parser, "test", "var x: i32 = 42;");
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
-    ASSERT_EQ(1, vec_size(parser_errors(fix->parser)));
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     ast_stmt_t* expected = ast_decl_stmt_create(
         ast_var_decl_create("x", ast_type_builtin(TYPE_I32), ast_int_lit_val(42)));

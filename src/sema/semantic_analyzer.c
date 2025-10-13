@@ -93,24 +93,42 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     if (var->init_expr != nullptr)
         ast_visitor_visit(sema, var->init_expr, nullptr);
 
-    ast_type_t* type = var->init_expr == nullptr ? var->type : var->init_expr->type;
-    if (var->init_expr != nullptr && type == ast_type_builtin(TYPE_NULL))
+    ast_type_t* inferred_type = var->init_expr == nullptr ? nullptr : var->init_expr->type;
+    ast_type_t* annotated_type = var->type;
+    bool inference_and_annotation_may_differ = false;
+    panic_if(inferred_type == nullptr && annotated_type == nullptr);  // parser disallows this
+
+    // If the inference is null_t, verify we have a valid annotation
+    if (inferred_type == ast_type_builtin(TYPE_NULL))
     {
-        if (var->type == nullptr)
+        inference_and_annotation_may_differ = true;
+        if (annotated_type == nullptr)
         {
             semantic_context_add_error(sema->ctx, var, "cannot infer type from 'null'");
             return;
         }
-        if (var->type->kind != AST_TYPE_POINTER)
+        if (annotated_type->kind != AST_TYPE_POINTER)
         {
             semantic_context_add_error(sema->ctx, var, ssprintf("cannot assign 'null' to non-pointer type '%s'",
                 ast_type_string(var->type)));
             return;
         }
-        type = var->type;
     }
 
-    symbol_t* symbol = add_variable_to_scope(sema, var, var->name, type);
+    // Do we have both an annotation and an inference?
+    if (annotated_type != nullptr && inferred_type != nullptr)
+    {
+        if (!inference_and_annotation_may_differ && annotated_type != inferred_type)
+        {
+            semantic_context_add_error(sema->ctx, var, "inferred and annotated types differ");
+            return;
+        }
+
+        if (annotated_type == inferred_type)
+            semantic_context_add_warning(sema->ctx, var, "type annotation is superfluous");
+    }
+
+    symbol_t* symbol = add_variable_to_scope(sema, var, var->name, annotated_type ? annotated_type : inferred_type);
     if (symbol != nullptr)
         init_tracker_set_initialized(sema->init_tracker, symbol, var->init_expr != nullptr);
 }
