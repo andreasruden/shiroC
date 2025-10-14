@@ -68,8 +68,12 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/ut_decl_collector.c \
 	$(UT_SRC_DIR)/ut_hash_table.c \
 	$(UT_SRC_DIR)/ut_parser.c \
-	$(UT_SRC_DIR)/ut_semantic_analyzer.c \
-	$(UT_SRC_DIR)/sema/ut_sema_arrays.c
+	$(UT_SRC_DIR)/sema/test_sema_arrays.c \
+	$(UT_SRC_DIR)/sema/test_sema_control_flow.c \
+	$(UT_SRC_DIR)/sema/test_sema_expressions.c \
+	$(UT_SRC_DIR)/sema/test_sema_functions.c \
+	$(UT_SRC_DIR)/sema/test_sema_types.c \
+	$(UT_SRC_DIR)/sema/test_sema_variables.c
 
 # Compiler target
 COMPILER_TARGET = $(BIN_DIR)/shiroc
