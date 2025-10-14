@@ -257,6 +257,20 @@ bool ast_type_is_instantiable(ast_type_t* type)
     return true;
 }
 
+bool ast_type_can_coerce(ast_type_t* from, ast_type_t* to)
+{
+    if (from == to)
+        return true;
+
+    if (from->kind == AST_TYPE_ARRAY && to->kind == AST_TYPE_VIEW)
+        return from->data.array.element_type == to->data.view.element_type;
+
+    if (from->kind == AST_TYPE_HEAP_ARRAY && to->kind == AST_TYPE_VIEW)
+        return from->data.heap_array.element_type == to->data.view.element_type;
+
+    return false;
+}
+
 const char* ast_type_string(ast_type_t* type)
 {
     switch (type->kind)

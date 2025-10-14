@@ -7,6 +7,8 @@
 #include "ast/expr/bin_op.h"
 #include "ast/expr/bool_lit.h"
 #include "ast/expr/call_expr.h"
+#include "ast/expr/cast_expr.h"
+#include "ast/expr/coercion_expr.h"
 #include "ast/expr/float_lit.h"
 #include "ast/expr/null_lit.h"
 #include "ast/expr/paren_expr.h"
@@ -49,6 +51,8 @@ struct ast_visitor
     void (*visit_bin_op)(void* self_, ast_bin_op_t* bin_op, void *out_);
     void (*visit_bool_lit)(void* self_, ast_bool_lit_t* bool_lit, void *out_);
     void (*visit_call_expr)(void* self_, ast_call_expr_t* call_expr, void *out_);
+    void (*visit_cast_expr)(void* self_, ast_cast_expr_t* cast, void *out_);
+    void (*visit_coercion_expr)(void* self_, ast_coercion_expr_t* coercion, void *out_);
     void (*visit_float_lit)(void* self_, ast_float_lit_t* float_lit, void *out_);
     void (*visit_int_lit)(void* self_, ast_int_lit_t* int_lit, void *out_);
     void (*visit_null_lit)(void* self_, ast_null_lit_t* null_lit, void *out_);

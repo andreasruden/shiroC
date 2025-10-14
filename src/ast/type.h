@@ -122,6 +122,8 @@ bool ast_type_has_equality(ast_type_t* type);
 
 bool ast_type_is_instantiable(ast_type_t* type);
 
+bool ast_type_can_coerce(ast_type_t* from, ast_type_t* to);
+
 const char* ast_type_string(ast_type_t* type);
 
 const char* type_to_str(type_t type);

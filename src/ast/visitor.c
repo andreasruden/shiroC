@@ -45,6 +45,16 @@ static void ast_visitor_visit_call_expr(void* self_, ast_call_expr_t* call_expr,
         ast_visitor_visit(self_, vec_get(&call_expr->arguments, i), out_);
 }
 
+static void ast_visitor_visit_cast_expr(void* self_, ast_cast_expr_t* cast, void* out_)
+{
+    ast_visitor_visit(self_, cast->expr, out_);
+}
+
+static void ast_visitor_visit_coercion_expr(void* self_, ast_coercion_expr_t* coercion, void* out_)
+{
+    ast_visitor_visit(self_, coercion->expr, out_);
+}
+
 static void ast_visitor_visit_bool_lit(void* self_, ast_bool_lit_t* bool_lit, void* out_)
 {
     (void)self_;
@@ -146,6 +156,8 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_bin_op = ast_visitor_visit_bin_op,
         .visit_bool_lit = ast_visitor_visit_bool_lit,
         .visit_call_expr = ast_visitor_visit_call_expr,
+        .visit_cast_expr = ast_visitor_visit_cast_expr,
+        .visit_coercion_expr = ast_visitor_visit_coercion_expr,
         .visit_float_lit = ast_visitor_visit_float_lit,
         .visit_int_lit = ast_visitor_visit_int_lit,
         .visit_null_lit = ast_visitor_visit_null_lit,

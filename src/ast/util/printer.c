@@ -132,6 +132,34 @@ static void print_call_expr(void* self_, ast_call_expr_t* call_expr, void* out_)
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_cast_expr(void* self_, ast_cast_expr_t* cast, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sCastExpr '%s'", self->indentation, "", ast_type_string(cast->target)));
+    print_source_location(self, cast, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self_, cast->expr, out_);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
+static void print_coercion_expr(void* self_, ast_coercion_expr_t* coercion, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sCoercionExpr '%s'", self->indentation, "", ast_type_string(coercion->target)));
+    print_source_location(self, coercion, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self_, coercion->expr, out_);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 static void print_bool_lit(void* self_, ast_bool_lit_t* bool_lit, void* out_)
 {
     string_t* out = out_;
@@ -326,6 +354,8 @@ ast_printer_t* ast_printer_create()
             .visit_bin_op = print_bin_op,
             .visit_bool_lit = print_bool_lit,
             .visit_call_expr = print_call_expr,
+            .visit_cast_expr = print_cast_expr,
+            .visit_coercion_expr = print_coercion_expr,
             .visit_float_lit = print_float_lit,
             .visit_int_lit = print_int_lit,
             .visit_null_lit = print_null_lit,

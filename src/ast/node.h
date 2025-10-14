@@ -25,6 +25,8 @@ typedef enum ast_node_kind
     AST_EXPR_BIN_OP,
     AST_EXPR_BOOL_LIT,
     AST_EXPR_CALL,
+    AST_EXPR_CAST,
+    AST_EXPR_COERCION,
     AST_EXPR_FLOAT_LIT,
     AST_EXPR_INT_LIT,
     AST_EXPR_NULL_LIT,

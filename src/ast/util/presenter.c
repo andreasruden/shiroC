@@ -102,6 +102,22 @@ static void present_call_expr(void* self_, ast_call_expr_t* call_expr, void* out
     string_append_cstr(out, ")");
 }
 
+static void present_cast_expr(void* self_, ast_cast_expr_t* cast, void* out_)
+{
+    PRELUDE
+
+    ast_visitor_visit(self, cast->expr, out);
+    string_append_cstr(out, ssprintf(" as %s", ast_type_string(cast->target)));
+}
+
+static void present_coercion_expr(void* self_, ast_coercion_expr_t* coercion, void* out_)
+{
+    PRELUDE
+    (void)coercion;
+
+    // Do not present anything for compiler-injected node
+}
+
 static void present_bool_lit(void* self_, ast_bool_lit_t* bool_lit, void* out_)
 {
     PRELUDE
@@ -230,6 +246,8 @@ ast_presenter_t* ast_presenter_create()
             .visit_bin_op = present_bin_op,
             .visit_bool_lit = present_bool_lit,
             .visit_call_expr = present_call_expr,
+            .visit_cast_expr = present_cast_expr,
+            .visit_coercion_expr = present_coercion_expr,
             .visit_float_lit = present_float_lit,
             .visit_int_lit = present_int_lit,
             .visit_null_lit = present_null_lit,
