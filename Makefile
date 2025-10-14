@@ -16,6 +16,17 @@ FUZZ_CC = clang
 FUZZ_CFLAGS = -fsanitize=fuzzer,address,undefined -g -O1 -I$(SRC_DIR) -std=c23
 FUZZ_LFLAGS = -fsanitize=fuzzer,address,undefined
 
+# Coverage tools & flags
+COV_CC = clang
+COV_CFLAGS = -fprofile-instr-generate -fcoverage-mapping -g -O0 -I$(SRC_DIR) \
+			 -Wall -Wextra -Wsign-conversion -Wshadow -std=c23
+COV_LDFLAGS = -fprofile-instr-generate -fcoverage-mapping
+COV_BUILD_DIR = $(BUILD_DIR)/coverage
+COV_BIN_DIR = $(BIN_DIR)/coverage
+COV_REPORT_DIR = $(BUILD_DIR)/coverage_report
+LLVM_PROFDATA = llvm-profdata
+LLVM_COV = llvm-cov
+
 # Common source files
 COMMON_SRCS = \
 	$(SRC_DIR)/compiler_error.c \
@@ -87,6 +98,11 @@ TEST_RUNNER_OBJ = $(BUILD_DIR)/test-runner.o
 TEST_RUNNER_SRC = $(SRC_DIR)/common/test-runner/test_runner.c
 TEST_RUNNER_INCLUDE = $(SRC_DIR)/common/test-runner
 
+# Coverage-instrumented unit tests
+COV_UT_TARGETS = $(patsubst $(UT_SRC_DIR)/%.c,$(COV_BIN_DIR)/%.test,$(UT_SRCS))
+COV_COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(COV_BUILD_DIR)/%.o,$(COMMON_SRCS))
+COV_TEST_RUNNER_OBJ = $(COV_BUILD_DIR)/test-runner.o
+
 # Fuzzer targets
 FUZZER_TARGET = $(BIN_DIR)/shiroc_fuzzer
 FUZZER_SRC = $(SRC_DIR)/common/fuzzer/fuzzer_harness.c
@@ -122,6 +138,22 @@ $(TEST_RUNNER_OBJ): $(TEST_RUNNER_SRC)
 $(UT_BIN_DIR)/%.test: $(UT_SRC_DIR)/%.c $(TEST_RUNNER_OBJ) $(COMMON_OBJS) | $(UT_BIN_DIR)
 	@mkdir -p $(dir $@)
 	$(CC) $(DEBUGFLAGS) $(CFLAGS) -I$(TEST_RUNNER_INCLUDE) $^ -o $@
+
+# Coverage-instrumented build rules
+$(COV_BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(COV_CC) $(COV_CFLAGS) -c $< -o $@
+
+$(COV_TEST_RUNNER_OBJ): $(TEST_RUNNER_SRC)
+	@mkdir -p $(dir $@)
+	$(COV_CC) $(COV_CFLAGS) -c $< -o $@
+
+$(COV_BIN_DIR):
+	mkdir -p $@
+
+$(COV_BIN_DIR)/%.test: $(UT_SRC_DIR)/%.c $(COV_TEST_RUNNER_OBJ) $(COV_COMMON_OBJS) | $(COV_BIN_DIR)
+	@mkdir -p $(dir $@)
+	$(COV_CC) $(COV_CFLAGS) $(COV_LDFLAGS) -I$(TEST_RUNNER_INCLUDE) $^ -o $@
 
 $(BUILD_DIR)/fuzzer/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
@@ -178,6 +210,35 @@ fuzzing: $(FUZZER_TARGET)
 fuzzing-minimize: $(FUZZER_TARGET)
 	mkdir -p $(FUZZ_CORPUS_MIN_DIR)
 	$(FUZZER_TARGET) -merge=1 $(FUZZ_CORPUS_MIN_DIR)/ $(FUZZ_CORPUS_DIR)/
+
+.PHONY: coverage
+coverage: $(COV_UT_TARGETS)
+	@echo "Running coverage-instrumented unit tests..."
+	@rm -rf $(COV_REPORT_DIR)
+	@mkdir -p $(COV_REPORT_DIR)
+	@rm -f $(BUILD_DIR)/*.profraw $(BUILD_DIR)/coverage.profdata
+	@for test in $(COV_UT_TARGETS); do \
+		echo ""; \
+		echo "Running $$test..."; \
+		LLVM_PROFILE_FILE=$(BUILD_DIR)/$$(basename $$test).profraw ./$$test || exit 1; \
+	done
+	@echo ""
+	@echo "Merging coverage data..."
+	$(LLVM_PROFDATA) merge -sparse $(BUILD_DIR)/*.profraw -o $(BUILD_DIR)/coverage.profdata
+	@echo "Generating coverage report..."
+	$(LLVM_COV) show $(COV_UT_TARGETS) \
+		-instr-profile=$(BUILD_DIR)/coverage.profdata \
+		-format=html \
+		-output-dir=$(COV_REPORT_DIR) \
+		-show-line-counts-or-regions \
+		-show-instantiations=false \
+		$(COMMON_SRCS)
+	@echo ""
+	@echo "Coverage report generated in $(COV_REPORT_DIR)/index.html"
+	@echo "Summary:"
+	@$(LLVM_COV) report $(COV_UT_TARGETS) \
+		-instr-profile=$(BUILD_DIR)/coverage.profdata \
+		$(COMMON_SRCS)
 
 .PHONY: clean
 clean:
