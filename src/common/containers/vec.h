@@ -24,9 +24,11 @@ vec_t* vec_create(vec_delete_fn delete_fn);
 
 void vec_destroy(vec_t* vec);
 
-void vec_push(vec_t* vec, void* ptr);
+void vec_push(vec_t* vec, void* elem);
 
 void* vec_pop(vec_t* vec);
+
+void* vec_replace(vec_t* vec, size_t index, void* elem);
 
 void vec_move(vec_t* dst, vec_t* src);
 

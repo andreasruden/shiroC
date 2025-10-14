@@ -43,6 +43,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/expr/bin_op.c \
 	$(SRC_DIR)/ast/expr/bool_lit.c \
 	$(SRC_DIR)/ast/expr/call_expr.c \
+	$(SRC_DIR)/ast/expr/coercion_expr.c \
 	$(SRC_DIR)/ast/expr/expr.c \
 	$(SRC_DIR)/ast/expr/float_lit.c \
 	$(SRC_DIR)/ast/expr/int_lit.c \

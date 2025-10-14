@@ -1,11 +1,13 @@
 #include "semantic_analyzer.h"
 
+#include "ast/expr/coercion_expr.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/unary_op.h"
 #include "ast/node.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/type.h"
 #include "ast/visitor.h"
+#include "common/containers/vec.h"
 #include "common/debug/panic.h"
 #include "common/util/ssprintf.h"
 #include "parser/lexer.h"
@@ -116,13 +118,11 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
 
     ast_type_t* inferred_type = var->init_expr == nullptr ? nullptr : var->init_expr->type;
     ast_type_t* annotated_type = var->type;
-    bool inference_and_annotation_may_differ = false;
     panic_if(inferred_type == nullptr && annotated_type == nullptr);  // parser disallows this
 
     // If the inference is null_t, verify we have a valid annotation
     if (inferred_type == ast_type_builtin(TYPE_NULL))
     {
-        inference_and_annotation_may_differ = true;
         if (annotated_type == nullptr)
         {
             semantic_context_add_error(sema->ctx, var, "cannot infer type from 'null'");
@@ -136,25 +136,31 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
         }
     }
 
-    // Do we have both an annotation and an inference?
-    if (annotated_type != nullptr && inferred_type != nullptr)
-    {
-        if (!inference_and_annotation_may_differ && annotated_type != inferred_type)
-        {
-            semantic_context_add_error(sema->ctx, var, "inferred and annotated types differ");
-            return;
-        }
-
-        if (annotated_type == inferred_type)
-            semantic_context_add_warning(sema->ctx, var, "type annotation is superfluous");
-    }
-
     // Empty arrays cannot let us infer a type on its own
     if (annotated_type == nullptr && inferred_type != nullptr && inferred_type->kind == AST_TYPE_ARRAY &&
         (!inferred_type->data.array.size_known || inferred_type->data.array.size == 0))
     {
         semantic_context_add_error(sema->ctx, var->init_expr, "cannot infer type of empty array");
         return;
+    }
+
+    // Do we have both an annotation and an inference?
+    if (annotated_type != nullptr && inferred_type != nullptr)
+    {
+        ast_coercion_kind_t coercion = ast_type_can_coerce(inferred_type, annotated_type);
+
+        if (coercion == COERCION_INVALID || coercion == COERCION_WIDEN)
+        {
+            semantic_context_add_error(sema->ctx, var, "inferred and annotated types differ");
+            return;
+        }
+        else if (coercion == COERCION_ALWAYS)
+        {
+            var->init_expr = ast_coercion_expr_create(var->init_expr, annotated_type);
+            inferred_type = annotated_type;
+        }
+        else if (coercion == COERCION_EQUAL && inferred_type != ast_type_builtin(TYPE_NULL))
+            semantic_context_add_warning(sema->ctx, var, "type annotation is superfluous");
     }
 
     ast_type_t* actual_type = annotated_type ? annotated_type : inferred_type;
@@ -304,7 +310,6 @@ static void analyze_array_subscript(void* self_, ast_array_subscript_t* array_su
     array_subscript->base.type = expr_type;
 }
 
-
 // Returns true if via some coercion we can think of LHS and RHS as the same type
 // NOTE: This does not imply the types are valid for an operator, check that with is_type_valid_for_operator().
 static bool is_type_equal_for_bin_op(ast_type_t* lhs_type, ast_type_t* rhs_type)
@@ -360,13 +365,17 @@ static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* b
     if (bin_op->rhs->type == ast_type_invalid())
         return;  // avoid cascading errors
 
-    if (!is_type_equal_for_bin_op(bin_op->lhs->type, bin_op->rhs->type))
+    ast_coercion_kind_t coercion = ast_type_can_coerce(bin_op->rhs->type, bin_op->lhs->type);
+    if (coercion == COERCION_INVALID || coercion == COERCION_WIDEN)
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs,
             ssprintf("left-hand side type '%s' does not match right-hand side type '%s'",
                 ast_type_string(bin_op->lhs->type), ast_type_string(bin_op->rhs->type)));
         return;
     }
+
+    if (coercion == COERCION_ALWAYS)
+        bin_op->rhs = ast_coercion_expr_create(bin_op->rhs, bin_op->lhs->type);
 
     bin_op->base.type = bin_op->lhs->type;
 }
@@ -491,12 +500,19 @@ static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 
         ast_visitor_visit(sema, arg_expr, out_);
 
-        if (param_decl->type != arg_expr->type)
+        ast_coercion_kind_t coercion = ast_type_can_coerce(arg_expr->type, param_decl->type);
+        if (coercion == COERCION_INVALID)
         {
             semantic_context_add_error(sema->ctx, arg_expr,
                 ssprintf("arg type '%s' does not match parameter '%s' type '%s'", ast_type_string(arg_expr->type),
                     param_decl->name, ast_type_string(param_decl->type)));
             return;
+        }
+
+        if (coercion != COERCION_EQUAL)
+        {
+            // Wrap arg in coercion expr (don't free the return of replace)
+            vec_replace(&call->arguments, (size_t)i, ast_coercion_expr_create(arg_expr, param_decl->type));
         }
     }
 

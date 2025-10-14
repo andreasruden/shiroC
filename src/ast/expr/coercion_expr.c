@@ -24,7 +24,7 @@ ast_expr_t* ast_coercion_expr_create(ast_expr_t* expr, ast_type_t* target)
         .target = target,
     };
     AST_NODE(coercion_expr)->vtable = &ast_coercion_expr_vtable;
-    AST_NODE(coercion_expr)->kind = AST_EXPR_REF;
+    AST_NODE(coercion_expr)->kind = AST_EXPR_COERCION;
 
     return (ast_expr_t*)coercion_expr;
 }

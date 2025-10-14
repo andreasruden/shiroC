@@ -257,18 +257,28 @@ bool ast_type_is_instantiable(ast_type_t* type)
     return true;
 }
 
-bool ast_type_can_coerce(ast_type_t* from, ast_type_t* to)
+ast_coercion_kind_t ast_type_can_coerce(ast_type_t* from, ast_type_t* to)
 {
     if (from == to)
-        return true;
+        return COERCION_EQUAL;
 
-    if (from->kind == AST_TYPE_ARRAY && to->kind == AST_TYPE_VIEW)
-        return from->data.array.element_type == to->data.view.element_type;
+    // From null to pointer type is considered "equal"
+    if (from->kind == AST_TYPE_BUILTIN && from->data.builtin.type == TYPE_NULL && to->kind == AST_TYPE_POINTER)
+        return COERCION_EQUAL;
 
-    if (from->kind == AST_TYPE_HEAP_ARRAY && to->kind == AST_TYPE_VIEW)
-        return from->data.heap_array.element_type == to->data.view.element_type;
+    // Array to View is always a valid implicit cast
+    if (from->kind == AST_TYPE_ARRAY && to->kind == AST_TYPE_VIEW &&
+        from->data.array.element_type == to->data.view.element_type)
+        return COERCION_ALWAYS;
 
-    return false;
+    // Heap Array to View is always a valid implicit cast
+    if (from->kind == AST_TYPE_HEAP_ARRAY && to->kind == AST_TYPE_VIEW  &&
+        from->data.heap_array.element_type == to->data.view.element_type)
+        return COERCION_ALWAYS;
+
+    // FIXME: Add COERCION_WIDEN support
+
+    return COERCION_INVALID;
 }
 
 const char* ast_type_string(ast_type_t* type)

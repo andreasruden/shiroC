@@ -29,9 +29,17 @@ typedef enum ast_type_kind
     AST_TYPE_USER,      // unresolved until Semantic Analysis
     AST_TYPE_POINTER,
     AST_TYPE_ARRAY,
-    AST_TYPE_HEAP_ARRAY,
+    AST_TYPE_HEAP_ARRAY,  // TODO: Dyn Array would probably be a better name (or flexible, ...?), heap gives wrong idea
     AST_TYPE_VIEW,
 } ast_type_kind_t;
+
+typedef enum ast_coercion_kind
+{
+    COERCION_INVALID,
+    COERCION_EQUAL,         // no coercion needed, already equal
+    COERCION_ALWAYS,        // coercion is always OK, e.g. array -> view
+    COERCION_WIDEN,         // smaller int/float -> bigger int/float of same signedness
+} ast_coercion_kind_t;
 
 typedef struct ast_type ast_type_t;
 typedef struct ast_expr ast_expr_t;
@@ -122,7 +130,7 @@ bool ast_type_has_equality(ast_type_t* type);
 
 bool ast_type_is_instantiable(ast_type_t* type);
 
-bool ast_type_can_coerce(ast_type_t* from, ast_type_t* to);
+ast_coercion_kind_t ast_type_can_coerce(ast_type_t* from, ast_type_t* to);
 
 const char* ast_type_string(ast_type_t* type);
 

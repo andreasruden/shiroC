@@ -1,4 +1,5 @@
 #include "vec.h"
+#include "common/debug/panic.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -69,6 +70,14 @@ void* vec_pop(vec_t* vec)
         return nullptr;  // TODO: Maybe panic if length == 0?
 
     return vec->mem[--vec->length];
+}
+
+void* vec_replace(vec_t* vec, size_t index, void* elem)
+{
+    panic_if(index >= vec->length);
+    void* old = vec->mem[index];
+    vec->mem[index] = elem;
+    return old;
 }
 
 void vec_move(vec_t* dst, vec_t* src)

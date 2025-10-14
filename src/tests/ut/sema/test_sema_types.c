@@ -1,3 +1,4 @@
+#include "ast/decl/param_decl.h"
 #include "ast/decl/var_decl.h"
 #include "ast/def/fn_def.h"
 #include "ast/expr/bin_op.h"
@@ -6,6 +7,7 @@
 #include "ast/expr/null_lit.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/expr/unary_op.h"
+#include "ast/node.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
@@ -434,4 +436,44 @@ TEST(ut_sema_type_fixture_t, initialize_ptr_with_null)
     ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
 
     ast_node_destroy(block);
+}
+
+TEST(ut_sema_type_fixture_t, implicit_conversion_array_to_view)
+{
+    // fn inspect(data: view[i32]);
+    // var arr = [5, 6, 7];
+    // inspect(arr);  // OK: implicit conversion from [i32, 3] to view[i32]
+
+    // Register inspect function in global symbol table
+    ast_decl_t* param = ast_param_decl_create("data", ast_type_view(ast_type_builtin(TYPE_I32)));
+    symbol_t* inspect_symbol = symbol_create("inspect", SYMBOL_FUNCTION, nullptr);
+    vec_push(&inspect_symbol->data.function.parameters, param);
+    inspect_symbol->type = ast_type_builtin(TYPE_VOID);
+    symbol_table_insert(fix->ctx->global, inspect_symbol);
+
+    // Test calling with array
+    ast_expr_t* call_expr = ast_call_expr_create_va(
+        ast_ref_expr_create("inspect"),
+        ast_ref_expr_create("arr"),
+        nullptr
+    );
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            nullptr,
+            ast_array_lit_create_va(ast_int_lit_val(5), ast_int_lit_val(6), ast_int_lit_val(7), nullptr))),
+        ast_expr_stmt_create(call_expr),
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    // Verify that a coercion node was inserted
+    ast_node_t* first_arg = vec_get(&((ast_call_expr_t*)call_expr)->arguments, 0);
+    ASSERT_EQ(AST_EXPR_COERCION, first_arg->kind);
+
+    ast_node_destroy(block);
+    ast_node_destroy(param);
 }

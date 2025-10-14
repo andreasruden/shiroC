@@ -24,7 +24,7 @@ ast_expr_t* ast_cast_expr_create(ast_expr_t* expr, ast_type_t* target)
         .target = target,
     };
     AST_NODE(cast_expr)->vtable = &ast_cast_expr_vtable;
-    AST_NODE(cast_expr)->kind = AST_EXPR_REF;
+    AST_NODE(cast_expr)->kind = AST_EXPR_CAST;
 
     return (ast_expr_t*)cast_expr;
 }
