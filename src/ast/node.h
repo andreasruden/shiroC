@@ -86,14 +86,6 @@ void ast_node_destroy(void* node);
 // begin and end ownership is transferred
 void ast_node_set_source(void* node, source_location_t* begin, source_location_t* end);
 
-// Set source location from begin to and including last child ast_node_t.
-// begin ownership is transferred
-void ast_node_set_source_upto(void* node, source_location_t* begin, void* last_node);
-
-// Set source location from first child ast_node_t to end.
-// begin ownership is transferred
-void ast_node_set_source_from(void* node, void* first_node, source_location_t* end);
-
 void ast_node_add_error(void* node, compiler_error_t* error);
 
 // Deconstruct data held in abstract class. Should be called by children inheriting from this class.

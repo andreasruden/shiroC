@@ -591,32 +591,28 @@ static ast_decl_t* parse_var_decl(parser_t* parser)
 
 static ast_stmt_t* parse_decl_stmt(parser_t* parser)
 {
+    token_t* tok_start = lexer_peek_token(parser->lexer);
     ast_decl_t* decl = parse_var_decl(parser);
     if (decl == nullptr)
         return nullptr;
 
     ast_stmt_t* stmt = ast_decl_stmt_create(decl);
     lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // do not fail stmt
-
-    source_location_t end_loc;
-    lexer_get_current_location(parser->lexer, &end_loc);
-    ast_node_set_source_from(stmt, decl, &end_loc);
+    parser_set_source_tok_to_current(parser, stmt, tok_start);
 
     return stmt;
 }
 
 static ast_stmt_t* parse_expr_stmt(parser_t* parser)
 {
+    token_t* tok_start = lexer_peek_token(parser->lexer);
     ast_expr_t* expr = parser_parse_expr(parser);
     if (expr == nullptr)
         return nullptr;
 
     ast_stmt_t* stmt = ast_expr_stmt_create(expr);
     lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
-
-    source_location_t end_loc;
-    lexer_get_current_location(parser->lexer, &end_loc);
-    ast_node_set_source_from(stmt, expr, &end_loc);
+    parser_set_source_tok_to_current(parser, stmt, tok_start);
 
     return stmt;
 }

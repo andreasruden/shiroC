@@ -20,24 +20,6 @@ void ast_node_set_source(void* node, source_location_t* begin, source_location_t
     source_location_move(&ast_node->source_end, end);
 }
 
-void ast_node_set_source_upto(void* node, source_location_t* begin, void* last_node)
-{
-    ast_node_t* ast_node = node;
-    ast_node_t* last_ast_node = last_node;
-    source_location_move(&ast_node->source_begin, begin);
-    set_source_location(&ast_node->source_end, last_ast_node->source_end.filename, last_ast_node->source_end.line,
-        last_ast_node->source_end.column);
-}
-
-void ast_node_set_source_from(void* node, void* begin_node, source_location_t* end)
-{
-    ast_node_t* ast_node = node;
-    ast_node_t* begin_ast_node = begin_node;
-    set_source_location(&ast_node->source_begin, begin_ast_node->source_begin.filename,
-        begin_ast_node->source_begin.line, begin_ast_node->source_begin.column);
-    source_location_move(&ast_node->source_end, end);
-}
-
 void ast_node_add_error(void* node, compiler_error_t* error)
 {
     ast_node_t* ast_node = node;
