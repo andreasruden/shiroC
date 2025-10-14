@@ -4,6 +4,7 @@
 #include "ast/decl/var_decl.h"
 #include "ast/def/def.h"
 #include "ast/def/fn_def.h"
+#include "ast/expr/array_lit.h"
 #include "ast/expr/array_subscript.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/bool_lit.h"
@@ -91,6 +92,34 @@ static ast_expr_t* parser_create_ref_expr(parser_t* parser, token_t* id)
     lexer_get_token_location(parser->lexer, id, &AST_NODE(expr)->source_end);
     AST_NODE(expr)->source_end.column += (int)strlen(id->value);
     return expr;
+}
+
+static ast_expr_t* parse_array_lit(parser_t* parser)
+{
+    vec_t exprs = VEC_INIT(ast_node_destroy);
+
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACKET))
+        goto error;
+
+    while (true)
+    {
+        ast_expr_t* expr = parser_parse_expr(parser);
+        if (expr == nullptr)
+            goto error;
+        vec_push(&exprs, expr);
+
+        if (lexer_peek_token(parser->lexer)->type != TOKEN_COMMA)
+            break;
+        lexer_next_token(parser->lexer);
+    }
+
+    lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET);  // emit error, but return node
+
+    return ast_array_lit_create(&exprs);  // ownership transfererd
+
+error:
+    vec_deinit(&exprs);
+    return nullptr;
 }
 
 static ast_expr_t* parse_bool_lit(parser_t* parser)
@@ -289,6 +318,8 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
             return parse_str_lit(parser);
         case TOKEN_NULL:
             return parse_null_lit(parser);
+        case TOKEN_LBRACKET:
+            return parse_array_lit(parser);
         default:
             break;
     }

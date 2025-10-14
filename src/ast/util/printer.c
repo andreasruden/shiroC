@@ -88,6 +88,21 @@ static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
+{
+    ast_printer_t* self = self_;
+    string_t* out = out_;
+
+    string_append_cstr(out, ssprintf("%*sArrayLit", self->indentation, ""));
+    print_source_location(self, lit, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    for (size_t i = 0; i < vec_size(&lit->exprs); ++i)
+        ast_visitor_visit(self, vec_get(&lit->exprs, i), out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 static void print_array_subscript(void* self_, ast_array_subscript_t* array_subscript, void* out_)
 {
     ast_printer_t* self = self_;
@@ -350,6 +365,7 @@ ast_printer_t* ast_printer_create()
             // Definitions
             .visit_fn_def = print_fn_def,
             // Expressions
+            .visit_array_lit = print_array_lit,
             .visit_array_subscript = print_array_subscript,
             .visit_bin_op = print_bin_op,
             .visit_bool_lit = print_bool_lit,

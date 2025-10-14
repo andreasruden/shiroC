@@ -1,6 +1,7 @@
 #include "ast/decl/param_decl.h"
 #include "ast/decl/var_decl.h"
 #include "ast/def/fn_def.h"
+#include "ast/expr/array_lit.h"
 #include "ast/expr/array_subscript.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/call_expr.h"
@@ -1030,4 +1031,20 @@ TEST(ut_parser_fixture_t, parse_array_subscript)
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expected);
     ast_node_destroy(expr);
+}
+
+TEST(ut_parser_fixture_t, parse_array_literal)
+{
+    parser_set_source(fix->parser, "test", "var arr = [1, 2, 3];");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_decl_stmt_create(ast_var_decl_create("arr", nullptr, ast_array_lit_create_va(
+        ast_int_lit_val(1), ast_int_lit_val(2), ast_int_lit_val(3), nullptr)));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
 }

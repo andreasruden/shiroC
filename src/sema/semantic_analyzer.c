@@ -149,6 +149,14 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
             semantic_context_add_warning(sema->ctx, var, "type annotation is superfluous");
     }
 
+    // Empty arrays cannot let us infer a type on its own
+    if (annotated_type == nullptr && inferred_type != nullptr && inferred_type->kind == AST_TYPE_ARRAY &&
+        (!inferred_type->data.array.size_known || inferred_type->data.array.size == 0))
+    {
+        semantic_context_add_error(sema->ctx, var->init_expr, "cannot infer type of empty array");
+        return;
+    }
+
     ast_type_t* actual_type = annotated_type ? annotated_type : inferred_type;
     if (!ast_type_is_instantiable(actual_type))
     {
@@ -217,6 +225,34 @@ static bool analyze_fixed_size_array_index(semantic_analyzer_t* sema, ast_array_
     }
 
     return true;
+}
+
+static void analyze_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
+{
+    semantic_analyzer_t* sema = self_;
+
+    ast_type_t* element_type = ast_type_invalid();
+    size_t size = vec_size(&lit->exprs);
+
+    for (size_t i = 0; i < size; ++i)
+    {
+        ast_expr_t* expr = vec_get(&lit->exprs, i);
+        ast_visitor_visit(sema, expr, out_);
+        if (element_type == ast_type_invalid())
+        {
+            element_type = expr->type;
+        }
+        else if (element_type != expr->type)
+        {
+            semantic_context_add_error(sema->ctx, lit, ssprintf(
+                "mixed types in array literal (first elem type is type '%s', elem at index '%lld' is type '%s')",
+                    ast_type_string(element_type), (long long)size, ast_type_string(expr->type)));
+            lit->base.type = ast_type_invalid();
+            return;
+        }
+    }
+
+    lit->base.type = ast_type_array(element_type, (intptr_t)size);
 }
 
 static void analyze_array_subscript(void* self_, ast_array_subscript_t* array_subscript, void* out_)
@@ -779,6 +815,7 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             // Definitions
             .visit_fn_def = analyze_fn_def,
             // Expressions
+            .visit_array_lit = analyze_array_lit,
             .visit_array_subscript = analyze_array_subscript,
             .visit_bin_op = analyze_bin_op,
             .visit_bool_lit = analyze_bool_lit,

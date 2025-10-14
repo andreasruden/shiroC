@@ -27,6 +27,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/decl/var_decl.c \
 	$(SRC_DIR)/ast/def/def.c \
     $(SRC_DIR)/ast/def/fn_def.c \
+	$(SRC_DIR)/ast/expr/array_lit.c \
 	$(SRC_DIR)/ast/expr/array_subscript.c \
 	$(SRC_DIR)/ast/expr/bin_op.c \
 	$(SRC_DIR)/ast/expr/bool_lit.c \
@@ -67,7 +68,8 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/ut_decl_collector.c \
 	$(UT_SRC_DIR)/ut_hash_table.c \
 	$(UT_SRC_DIR)/ut_parser.c \
-	$(UT_SRC_DIR)/ut_semantic_analyzer.c
+	$(UT_SRC_DIR)/ut_semantic_analyzer.c \
+	$(UT_SRC_DIR)/sema/ut_sema_arrays.c
 
 # Compiler target
 COMPILER_TARGET = $(BIN_DIR)/shiroc
@@ -114,6 +116,7 @@ $(TEST_RUNNER_OBJ): $(TEST_RUNNER_SRC)
 	$(CC) $(DEBUGFLAGS) $(CFLAGS) -c $< -o $@
 
 $(UT_BIN_DIR)/%.test: $(UT_SRC_DIR)/%.c $(TEST_RUNNER_OBJ) $(COMMON_OBJS) | $(UT_BIN_DIR)
+	@mkdir -p $(dir $@)
 	$(CC) $(DEBUGFLAGS) $(CFLAGS) -I$(TEST_RUNNER_INCLUDE) $^ -o $@
 
 $(BUILD_DIR)/fuzzer/%.o: $(SRC_DIR)/%.c

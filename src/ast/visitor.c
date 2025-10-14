@@ -25,6 +25,12 @@ static void ast_visitor_visit_fn_def(void* self_, ast_fn_def_t* fn_def, void* ou
     ast_visitor_visit(self_, fn_def->body, out_);
 }
 
+static void ast_visitor_visit_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
+{
+    for (size_t i = 0; i < vec_size(&lit->exprs); ++i)
+        ast_visitor_visit(self_, vec_get(&lit->exprs, i), out_);
+}
+
 static void ast_visitor_visit_array_subscript(void* self_, ast_array_subscript_t* array_subscript, void* out_)
 {
     ast_visitor_visit(self_, array_subscript->array, out_);
@@ -152,6 +158,7 @@ void ast_visitor_init(ast_visitor_t* visitor)
         // Definitions
         .visit_fn_def = ast_visitor_visit_fn_def,
         // Expressions
+        .visit_array_lit = ast_visitor_visit_array_lit,
         .visit_array_subscript = ast_visitor_visit_array_subscript,
         .visit_bin_op = ast_visitor_visit_bin_op,
         .visit_bool_lit = ast_visitor_visit_bool_lit,
