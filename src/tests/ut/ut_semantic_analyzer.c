@@ -85,14 +85,7 @@ TEST(ut_sema_fixture_t, variable_redeclaration_error)
         nullptr
     ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_FALSE(error->is_warning);
-    ASSERT_NEQ(nullptr, strstr(error->description, "'my_var' already declared"));
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "'my_var' already declared");
 
     ast_node_destroy(foo_fn);
 }
@@ -130,13 +123,7 @@ TEST(ut_sema_fixture_t, variable_read_requires_initialization)
         nullptr
     ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not initialized");
 
     ast_node_destroy(foo_fn);
 }
@@ -184,13 +171,7 @@ TEST(ut_sema_fixture_t, call_expr_must_be_ref_function_symbol)
         nullptr
     ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not callable"));
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not callable");
 
     ast_node_destroy(foo_fn);
 }
@@ -275,13 +256,7 @@ TEST(ut_sema_fixture_t, return_stmt_type_mismatch_function_return_type_error)
             nullptr
         ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "return type"));
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "return type");
 
     ast_node_destroy(foo_fn);
 }
@@ -295,13 +270,7 @@ TEST(ut_sema_fixture_t, function_with_return_type_has_path_without_return_error)
             nullptr  // No return statement
         ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(error_node));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "missing return"));
+    ASSERT_SEMA_ERROR(AST_NODE(error_node), error_node, "missing return");
 
     ast_node_destroy(error_node);
 }
@@ -317,13 +286,7 @@ TEST(ut_sema_fixture_t, if_condition_must_be_boolean_expr)
         nullptr
     );
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(if_stmt));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "must be bool"));
+    ASSERT_SEMA_ERROR(AST_NODE(if_stmt), error_node, "must be bool");
 
     ast_node_destroy(if_stmt);
 }
@@ -337,13 +300,7 @@ TEST(ut_sema_fixture_t, while_condition_must_be_boolean_expr)
         error_node,  // Should be boolean
         ast_compound_stmt_create_empty());
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(while_stmt));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "must be bool"));
+    ASSERT_SEMA_ERROR(AST_NODE(while_stmt), error_node, "must be bool");
 
     ast_node_destroy(while_stmt);
 }
@@ -360,13 +317,7 @@ TEST(ut_sema_fixture_t, assignment_with_mismatched_types)
         nullptr
     ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "type"));
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "type");
 
     ast_node_destroy(foo_fn);
 }
@@ -424,13 +375,7 @@ TEST(ut_sema_fixture_t, variable_init_in_if_only_then_branch)
         nullptr
     ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not initialized");
 
     ast_node_destroy(foo_fn);
 }
@@ -455,13 +400,7 @@ TEST(ut_sema_fixture_t, variable_init_in_if_no_else_branch)
         nullptr
     ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not initialized");
 
     ast_node_destroy(foo_fn);
 }
@@ -484,13 +423,7 @@ TEST(ut_sema_fixture_t, variable_init_in_while_loop)
         nullptr
     ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)),  nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not initialized");
 
     ast_node_destroy(foo_fn);
 }
@@ -531,13 +464,7 @@ TEST(ut_sema_fixture_t, uninitialized_variable_used_in_while_condition)
         nullptr
     );
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "not initialized");
 
     ast_node_destroy(block);
 }
@@ -570,13 +497,7 @@ TEST(ut_sema_fixture_t, variable_shadowing_does_not_affect_outer_scope_initializ
         nullptr
     ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not initialized");
 
     ast_node_destroy(foo_fn);
 }
@@ -595,13 +516,7 @@ TEST(ut_sema_fixture_t, assignment_to_function_error)
     ast_expr_t* error_node = ast_ref_expr_create("foo");
     ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(12));
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(expr));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not l-value"));
+    ASSERT_SEMA_ERROR(AST_NODE(expr), error_node, "not l-value");
 
     ast_node_destroy(expr);
     ast_node_destroy(foo_fn);
@@ -614,13 +529,7 @@ TEST(ut_sema_fixture_t, assignment_to_non_lvalue_expression_error)
     ast_expr_t* error_node = ast_bin_op_create(TOKEN_STAR, ast_int_lit_val(5), ast_int_lit_val(3));;
     ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(30));
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(expr));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not l-value"));
+    ASSERT_SEMA_ERROR(AST_NODE(expr), error_node, "not l-value");
 
     ast_node_destroy(expr);
 }
@@ -632,13 +541,7 @@ TEST(ut_sema_fixture_t, assignment_to_literal_error)
     ast_expr_t* error_node = ast_int_lit_val(42);
     ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(10));
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(expr));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not l-value"));
+    ASSERT_SEMA_ERROR(AST_NODE(expr), error_node, "not l-value");
 
     ast_node_destroy(expr);
 }
@@ -703,13 +606,7 @@ TEST(ut_sema_fixture_t, local_variable_shadows_parameter_error)
         ast_param_decl_create("i", ast_type_builtin(TYPE_I32)), nullptr
     );
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "redeclares function parameter"));
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "redeclares function parameter");
 
     ast_node_destroy(foo_fn);
 }
@@ -1222,13 +1119,7 @@ TEST(ut_sema_fixture_t, nested_if_initialization_outer_branch_missing)
         nullptr
     );
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "not initialized");
 
     ast_node_destroy(block);
 }
@@ -1280,13 +1171,7 @@ TEST(ut_sema_fixture_t, variable_initialized_in_while_loop_not_guaranteed)
         nullptr
     );
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "not initialized"));
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "not initialized");
 
     ast_node_destroy(block);
 }
@@ -1301,13 +1186,7 @@ TEST(ut_sema_fixture_t, call_to_undefined_function_error)
         nullptr
     );
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "unknown symbol"));
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "unknown symbol");
 
     ast_node_destroy(block);
 }
@@ -1319,13 +1198,7 @@ TEST(ut_sema_fixture_t, var_decl_type_annotation_and_inference_disagree_error)
 
     ast_stmt_t* stmt = ast_decl_stmt_create(var_decl);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(stmt));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(var_decl, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "inferred and annotated types differ"));
+    ASSERT_SEMA_ERROR(AST_NODE(stmt), var_decl, "inferred and annotated types differ");
 
     ast_node_destroy(stmt);
 }
