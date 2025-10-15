@@ -51,7 +51,7 @@ TEST(ut_sema_expr_fixture_t, assignment_to_function_error)
     ast_expr_t* error_node = ast_ref_expr_create("foo");
     ast_expr_t* expr = ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(12));
 
-    ASSERT_SEMA_ERROR(AST_NODE(expr), error_node, "not l-value");
+    ASSERT_SEMA_ERROR(AST_NODE(expr), error_node, "assign to function");
 
     ast_node_destroy(expr);
     ast_node_destroy(foo_fn);
@@ -96,7 +96,7 @@ TEST(ut_sema_expr_fixture_t, reject_assign_to_address_of_lvalue)
     ASSERT_LT(0, vec_size(&fix->ctx->error_nodes));
 
     compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "address of l-value"));
+    ASSERT_NEQ(nullptr, strstr(error->description, "l-value"));
 
     ast_node_destroy(AST_NODE(block));
 }

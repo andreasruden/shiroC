@@ -8,6 +8,7 @@ typedef struct ast_expr
 {
     ast_node_t base;
     ast_type_t* type;   // AST_TYPE_INVALID during parsing, filled in by semantic analysis
+    bool is_lvalue;     // filled in & used by semantic analysis
 } ast_expr_t;
 
 // Init data held in abstract class. Should be used by children inheriting from this class.

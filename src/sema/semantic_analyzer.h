@@ -19,7 +19,7 @@ typedef struct semantic_analyzer
     ast_fn_def_t* current_function;
     symbol_table_t* current_function_scope;
     init_tracker_t* init_tracker;
-    bool in_lvalue_context;
+    bool is_lvalue_context;
 } semantic_analyzer_t;
 
 semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx);

@@ -258,6 +258,7 @@ static void analyze_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
         }
     }
 
+    lit->base.is_lvalue = false;
     lit->base.type = ast_type_array(element_type, (intptr_t)size);
 }
 
@@ -267,10 +268,8 @@ static void analyze_array_subscript(void* self_, ast_array_subscript_t* array_su
 
     // TODO: Init tracker for arrays?
 
-    sema->in_lvalue_context = true;
     symbol_t* arr_symbol = nullptr;
     ast_visitor_visit(sema, array_subscript->array, &arr_symbol);
-    sema->in_lvalue_context = false;
     if (arr_symbol == nullptr)
         return;  // don't propagate errors
 
@@ -307,6 +306,7 @@ static void analyze_array_subscript(void* self_, ast_array_subscript_t* array_su
             break;
     }
 
+    array_subscript->base.is_lvalue = true;
     array_subscript->base.type = expr_type;
 }
 
@@ -327,35 +327,33 @@ static bool is_type_equal_for_bin_op(ast_type_t* lhs_type, ast_type_t* rhs_type)
     return false;
 }
 
-// FIXME: I think ast_expr_t should have an is_lvalue in it instead
-static bool is_valid_lvalue(ast_expr_t* expr, symbol_t* symbol)
-{
-    if (AST_KIND(expr) == AST_EXPR_REF)
-        return symbol != nullptr && (symbol->kind == SYMBOL_VARIABLE || symbol->kind == SYMBOL_PARAMETER);
-
-    if (AST_KIND(expr) == AST_EXPR_UNARY_OP)
-        return true;
-
-    if (AST_KIND(expr) == AST_EXPR_ARRAY_SUBSCRIPT)
-        return true;
-
-    return false;
-}
-
 static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* bin_op)
 {
     symbol_t* lhs_symbol = nullptr;
-    sema->in_lvalue_context = bin_op->op == TOKEN_ASSIGN;
+    sema->is_lvalue_context = true;
     ast_visitor_visit(sema, bin_op->lhs, &lhs_symbol);
-    sema->in_lvalue_context = false;
+    sema->is_lvalue_context = false;
 
     if (bin_op->lhs->type == ast_type_invalid())
         return;  // avoid cascading errors
 
-    if (!is_valid_lvalue(bin_op->lhs, lhs_symbol))
+    if (!bin_op->lhs->is_lvalue)
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs, "expr is not l-value");
         return;
+    }
+
+    if (lhs_symbol != nullptr && lhs_symbol->kind == SYMBOL_FUNCTION)
+    {
+        semantic_context_add_error(sema->ctx, bin_op->lhs, "cannot assign to function");
+        return;
+    }
+
+    // For compound assignments (+=, -=, etc.), check that LHS is initialized first
+    if (bin_op->op != TOKEN_ASSIGN && lhs_symbol != nullptr)
+    {
+        if (!require_variable_initialized(sema, lhs_symbol, bin_op->lhs))
+            return;
     }
 
     if (lhs_symbol != nullptr)
@@ -377,6 +375,7 @@ static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* b
     if (coercion == COERCION_ALWAYS)
         bin_op->rhs = ast_coercion_expr_create(bin_op->rhs, bin_op->lhs->type);
 
+    bin_op->base.is_lvalue = false;
     bin_op->base.type = bin_op->lhs->type;
 }
 
@@ -436,10 +435,17 @@ static void analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
         return;
     }
 
-    ast_visitor_visit(sema, bin_op->lhs, nullptr);
+    symbol_t* lhs_symbol = nullptr;
+    ast_visitor_visit(sema, bin_op->lhs, &lhs_symbol);
     ast_visitor_visit(sema, bin_op->rhs, nullptr);
     if (bin_op->lhs->type == ast_type_invalid() || bin_op->rhs->type == ast_type_invalid())
         return;  // avoid cascading errors
+
+    if (lhs_symbol != nullptr && lhs_symbol->kind == SYMBOL_FUNCTION && token_type_is_assignment_op(bin_op->op))
+    {
+        semantic_context_add_error(sema->ctx, bin_op->lhs, "cannot assign to function");
+        return;
+    }
 
     if (!is_type_equal_for_bin_op(bin_op->lhs->type, bin_op->rhs->type))
     {
@@ -456,6 +462,7 @@ static void analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
         return;
     }
 
+    bin_op->base.is_lvalue = false;
     bin_op->base.type = result_type;
 }
 
@@ -464,6 +471,7 @@ static void analyze_bool_lit(void* self_, ast_bool_lit_t* lit, void* out_)
     (void)self_;
     (void)out_;
 
+    lit->base.is_lvalue = false;
     lit->base.type = ast_type_builtin(TYPE_BOOL);
 }
 
@@ -516,6 +524,7 @@ static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
         }
     }
 
+    call->base.is_lvalue = false;
     call->base.type = symbol->type;
 }
 
@@ -552,6 +561,7 @@ static void analyze_float_lit(void* self_, ast_float_lit_t* lit, void* out_)
         }
     }
 
+    lit->base.is_lvalue = false;
     lit->base.type = type;
 }
 
@@ -624,6 +634,7 @@ static void analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
         return;
     }
 
+    lit->base.is_lvalue = false;
     lit->base.type = type;
 }
 
@@ -632,6 +643,7 @@ static void analyze_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
     (void)self_;
     (void)out_;
 
+    lit->base.is_lvalue = false;
     lit->base.type = ast_type_builtin(TYPE_NULL);
 }
 
@@ -640,6 +652,8 @@ static void analyze_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
     semantic_analyzer_t* sema = self_;
 
     ast_visitor_visit(sema, paren->expr, out_);
+
+    paren->base.is_lvalue = paren->expr->is_lvalue;
     paren->base.type = paren->expr->type;
 }
 
@@ -658,12 +672,13 @@ static void analyze_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
     if (symbol_out != nullptr)
         *symbol_out = symbol;
 
-    if (!sema->in_lvalue_context)
+    if (!sema->is_lvalue_context)
     {
         if (!require_variable_initialized(sema, symbol, ref_expr))
             return;
     }
 
+    ref_expr->base.is_lvalue = true;
     ref_expr->base.type = symbol->type;
 }
 
@@ -672,6 +687,7 @@ static void analyze_str_lit(void* self_, ast_str_lit_t* lit, void* out_)
     (void)self_;
     (void)out_;
 
+    lit->base.is_lvalue = false;
     lit->base.type = ast_type_builtin(TYPE_VOID);  // FIXME: We don't have a string type yet
 }
 
@@ -682,23 +698,17 @@ static void analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
 
     symbol_t* symbol = nullptr;
     ast_visitor_visit(sema, unary_op->expr, &symbol);
-    const bool expr_is_variable =
-        symbol != nullptr && (symbol->kind == SYMBOL_VARIABLE || symbol->kind == SYMBOL_PARAMETER);
 
     switch (unary_op->op)
     {
         case TOKEN_AMPERSAND:
-            if (!expr_is_variable)
+            if (!unary_op->expr->is_lvalue)
             {
-                semantic_context_add_error(sema->ctx, unary_op, "cannot take address of expression");
-                return;
-            }
-            if (sema->in_lvalue_context)
-            {
-                semantic_context_add_error(sema->ctx, unary_op, ssprintf("cannot take address of l-value '%s'",
+                semantic_context_add_error(sema->ctx, unary_op, ssprintf("cannot take address of r-value '%s'",
                     symbol->name));
                 return;
             }
+            unary_op->base.is_lvalue = false;
             unary_op->base.type = ast_type_pointer(symbol->type);
             break;
         case TOKEN_STAR:
@@ -708,6 +718,7 @@ static void analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
                     ast_type_string(unary_op->expr->type)));
                 return;
             }
+            unary_op->base.is_lvalue = true;
             unary_op->base.type = unary_op->expr->type->data.pointer.pointee;
             break;
         default:
