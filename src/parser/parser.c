@@ -5,6 +5,7 @@
 #include "ast/def/def.h"
 #include "ast/def/fn_def.h"
 #include "ast/expr/array_lit.h"
+#include "ast/expr/array_slice.h"
 #include "ast/expr/array_subscript.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/bool_lit.h"
@@ -227,14 +228,33 @@ static ast_expr_t* parse_str_lit(parser_t* parser)
     return expr;
 }
 
+static ast_expr_t* parse_array_slice(parser_t* parser, token_t* id, ast_expr_t* start)
+{
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_DOTDOT))
+        return nullptr;
+
+    ast_expr_t* end = parser_parse_expr(parser);  // OK to be nullptr
+
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET))
+        return nullptr;
+
+    return ast_array_slice_create(ast_ref_expr_create(id->value), start, end);
+}
+
 static ast_expr_t* parse_array_subscript(parser_t* parser, token_t* id)
 {
     if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACKET))
         return nullptr;
 
+    if (lexer_peek_token(parser->lexer)->type == TOKEN_DOTDOT)
+        return parse_array_slice(parser, id, nullptr);
+
     ast_expr_t* index = parser_parse_expr(parser);
     if (index == nullptr)
-        return nullptr;
+        return parse_array_slice(parser, id, nullptr);  // could still be a slice: arr[..end]
+
+    if (lexer_peek_token(parser->lexer)->type == TOKEN_DOTDOT)
+        return parse_array_slice(parser, id, index);
 
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET))
         return nullptr;

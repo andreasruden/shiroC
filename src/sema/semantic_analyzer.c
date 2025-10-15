@@ -222,20 +222,21 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     sema->current_function_scope = nullptr;
 }
 
-static bool analyze_fixed_size_array_index(semantic_analyzer_t* sema, ast_array_subscript_t* array_subscript)
+static bool analyze_fixed_size_array_index(semantic_analyzer_t* sema, void* node, ast_type_t* array_type,
+    ast_expr_t* index, bool is_end)
 {
     // TODO: More sophisticated logic
-    if (AST_KIND(array_subscript->index) != AST_EXPR_INT_LIT)
+    if (AST_KIND(index) != AST_EXPR_INT_LIT)
     {
-        semantic_context_add_error(sema->ctx, array_subscript, "invalid index");
+        semantic_context_add_error(sema->ctx, node, "invalid index");
         return false;
     }
 
-    intptr_t index = ((ast_int_lit_t*)array_subscript->index)->value.as_signed;
-    if (index < 0 || index >= array_subscript->array->type->data.array.size)
+    intptr_t index_val = ((ast_int_lit_t*)index)->value.as_signed - (is_end ? 1 : 0);
+    if (index_val < 0 || index_val >= array_type->data.array.size)
     {
-        semantic_context_add_error(sema->ctx, array_subscript, ssprintf("index '%lld' is out of bounds for '%s'",
-            (long long)index, ast_type_string(array_subscript->array->type)));
+        semantic_context_add_error(sema->ctx, node, ssprintf("index '%lld' is out of bounds for '%s'",
+            (long long)index_val, ast_type_string(array_type)));
         return false;
     }
 
@@ -271,52 +272,146 @@ static void analyze_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
     lit->base.type = ast_type_array(element_type, (intptr_t)size);
 }
 
-static void analyze_array_subscript(void* self_, ast_array_subscript_t* array_subscript, void* out_)
+static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out_)
 {
     semantic_analyzer_t* sema = self_;
 
-    // TODO: Init tracker for arrays?
-
-    symbol_t* arr_symbol = nullptr;
-    ast_visitor_visit(sema, array_subscript->array, &arr_symbol);
-    if (arr_symbol == nullptr)
+    ast_visitor_visit(sema, slice->array, out_);
+    if (slice->array->type == ast_type_invalid())
         return;  // don't propagate errors
 
-    ast_visitor_visit(sema, array_subscript->index, out_);
-    // FIXME: Here it should be enough to be convertible to some "isize" type
-    if (array_subscript->index->type != ast_type_builtin(TYPE_I32))
+    // Verify type is slicable & extract element-type
+    ast_type_t* element_type = ast_type_invalid();
+    switch (slice->array->type->kind)
     {
-        semantic_context_add_error(sema->ctx, array_subscript, ssprintf("type '%s' is not usable as an index",
-            ast_type_string(array_subscript->index->type)));
-        array_subscript->base.type = ast_type_invalid();
+        case AST_TYPE_ARRAY:
+            element_type = slice->array->type->data.array.element_type;
+            break;
+        case AST_TYPE_HEAP_ARRAY:
+            element_type = slice->array->type->data.heap_array.element_type;
+            break;
+        case AST_TYPE_VIEW:
+            element_type = slice->array->type->data.view.element_type;
+            break;
+        case AST_TYPE_POINTER:
+            element_type = slice->array->type->data.pointer.pointee;
+            break;
+        default:
+            semantic_context_add_error(sema->ctx, slice, ssprintf("cannot slice type '%s'",
+                ast_type_string(slice->array->type)));
+            slice->base.type = ast_type_invalid();
+            return;
+    }
+
+    // Verify type & bounds of start
+    if (slice->start != nullptr)
+    {
+        ast_visitor_visit(sema, slice->start, out_);
+        if (slice->start->type == ast_type_invalid())
+            return;  // don't propagate errors
+
+        // FIXME: Here it should be enough to be convertible to some integer type
+        if (slice->start->type != ast_type_builtin(TYPE_I32))
+        {
+            semantic_context_add_error(sema->ctx, slice, ssprintf("type '%s' is not usable as slice bounds",
+                ast_type_string(slice->start->type)));
+            slice->base.type = ast_type_invalid();
+            return;
+        }
+
+        if (slice->array->type->kind == AST_TYPE_ARRAY && !analyze_fixed_size_array_index(sema, slice,
+            slice->array->type, slice->start, false))
+        {
+            slice->base.type = ast_type_invalid();
+            return;
+        }
+    }
+
+    // Verify type & bounds of end
+    if (slice->end != nullptr)
+    {
+        ast_visitor_visit(sema, slice->end, out_);
+        if (slice->end->type == ast_type_invalid())
+            return;  // don't propagate errors
+
+        // FIXME: Here it should be enough to be convertible to some integer type
+        if (slice->end->type != ast_type_builtin(TYPE_I32))
+        {
+            semantic_context_add_error(sema->ctx, slice, ssprintf("type '%s' is not usable as slice bounds",
+                ast_type_string(slice->end->type)));
+            slice->base.type = ast_type_invalid();
+            return;
+        }
+
+        if (slice->array->type->kind == AST_TYPE_ARRAY && !analyze_fixed_size_array_index(sema, slice,
+            slice->array->type, slice->end, true))
+        {
+            slice->base.type = ast_type_invalid();
+            return;
+        }
+    }
+
+    // If we already know that start > end, error out
+    if (slice->start != nullptr && slice->end != nullptr)
+    {
+        // FIXME: dervied value should be added to the expr node when more complex constants can be handled
+        if (((ast_int_lit_t*)slice->start)->value.as_signed > ((ast_int_lit_t*)slice->end)->value.as_signed)
+        {
+            semantic_context_add_error(sema->ctx, slice, "invalid slice bounds: start > end");
+            slice->base.type = ast_type_invalid();
+            return;
+        }
+    }
+
+    slice->base.is_lvalue = false;
+    slice->base.type = ast_type_view(element_type);
+}
+
+static void analyze_array_subscript(void* self_, ast_array_subscript_t* subscript, void* out_)
+{
+    semantic_analyzer_t* sema = self_;
+
+    ast_visitor_visit(sema, subscript->array, out_);
+    if (subscript->array->type == ast_type_invalid())
+        return;  // don't propagate errors
+
+    ast_visitor_visit(sema, subscript->index, out_);
+    // FIXME: Here it should be enough to be convertible to some "isize" type
+    if (subscript->index->type != ast_type_builtin(TYPE_I32))
+    {
+        semantic_context_add_error(sema->ctx, subscript, ssprintf("type '%s' is not usable as an index",
+            ast_type_string(subscript->index->type)));
+        subscript->base.type = ast_type_invalid();
         return;
     }
 
     ast_type_t* expr_type;
-    switch (array_subscript->array->type->kind)
+    switch (subscript->array->type->kind)
     {
         case AST_TYPE_ARRAY:
-            if (!analyze_fixed_size_array_index(sema, array_subscript))
+            if (!analyze_fixed_size_array_index(sema, subscript, subscript->array->type, subscript->index, false))
                 expr_type = ast_type_invalid();
             else
-                expr_type = array_subscript->array->type->data.array.element_type;
+                expr_type = subscript->array->type->data.array.element_type;
             break;
         case AST_TYPE_HEAP_ARRAY:
-            expr_type = array_subscript->array->type->data.heap_array.element_type;
+            expr_type = subscript->array->type->data.heap_array.element_type;
             break;
         case AST_TYPE_VIEW:
-            expr_type = array_subscript->array->type->data.view.element_type;
+            expr_type = subscript->array->type->data.view.element_type;
             break;
         case AST_TYPE_POINTER:
-            panic("TODO: implement this");
+            expr_type = subscript->array->type->data.pointer.pointee;
+            break;
         default:
-            semantic_context_add_error(sema->ctx, array_subscript, ssprintf("cannot subscript '%s'", arr_symbol->name));
+            semantic_context_add_error(sema->ctx, subscript, ssprintf("cannot subscript type '%s'",
+                ast_type_string(subscript->array->type)));
             expr_type = ast_type_invalid();
             break;
     }
 
-    array_subscript->base.is_lvalue = true;
-    array_subscript->base.type = expr_type;
+    subscript->base.is_lvalue = true;
+    subscript->base.type = expr_type;
 }
 
 // Returns true if via some coercion we can think of LHS and RHS as the same type
@@ -860,6 +955,7 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             .visit_fn_def = analyze_fn_def,
             // Expressions
             .visit_array_lit = analyze_array_lit,
+            .visit_array_slice = analyze_array_slice,
             .visit_array_subscript = analyze_array_subscript,
             .visit_bin_op = analyze_bin_op,
             .visit_bool_lit = analyze_bool_lit,

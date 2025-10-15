@@ -82,6 +82,20 @@ static void present_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
     string_append_char(out, ']');
 }
 
+static void present_array_slice(void* self_, ast_array_slice_t* array_slice, void* out_)
+{
+    PRELUDE
+
+    ast_visitor_visit(self, array_slice->array, out);
+    string_append_char(out, '[');
+    if (array_slice->start != nullptr)
+        ast_visitor_visit(self, array_slice->start, out);
+    string_append_cstr(out, "..");
+    if (array_slice->end != nullptr)
+        ast_visitor_visit(self, array_slice->end, out);
+    string_append_char(out, ']');
+}
+
 static void present_array_subscript(void* self_, ast_array_subscript_t* array_subscript, void* out_)
 {
     PRELUDE
@@ -267,6 +281,7 @@ ast_presenter_t* ast_presenter_create()
             .visit_fn_def = present_fn_def,
             // Expressions
             .visit_array_lit = present_array_lit,
+            .visit_array_slice = present_array_slice,
             .visit_array_subscript = present_array_subscript,
             .visit_bin_op = present_bin_op,
             .visit_bool_lit = present_bool_lit,

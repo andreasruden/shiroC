@@ -31,6 +31,15 @@ static void ast_visitor_visit_array_lit(void* self_, ast_array_lit_t* lit, void*
         ast_visitor_visit(self_, vec_get(&lit->exprs, i), out_);
 }
 
+static void ast_visitor_visit_array_slice(void* self_, ast_array_slice_t* array_slice, void* out_)
+{
+    ast_visitor_visit(self_, array_slice->array, out_);
+    if (array_slice->start != nullptr)
+        ast_visitor_visit(self_, array_slice->start, out_);
+    if (array_slice->end != nullptr)
+        ast_visitor_visit(self_, array_slice->end, out_);
+}
+
 static void ast_visitor_visit_array_subscript(void* self_, ast_array_subscript_t* array_subscript, void* out_)
 {
     ast_visitor_visit(self_, array_subscript->array, out_);
@@ -166,6 +175,7 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_fn_def = ast_visitor_visit_fn_def,
         // Expressions
         .visit_array_lit = ast_visitor_visit_array_lit,
+        .visit_array_slice = ast_visitor_visit_array_slice,
         .visit_array_subscript = ast_visitor_visit_array_subscript,
         .visit_bin_op = ast_visitor_visit_bin_op,
         .visit_bool_lit = ast_visitor_visit_bool_lit,

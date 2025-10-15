@@ -49,6 +49,7 @@ typedef enum
     TOKEN_COLON,
     TOKEN_COMMA,
     TOKEN_ARROW,
+    TOKEN_DOTDOT,
 
     // Unary & Binary Operators
     TOKEN_PLUS,

@@ -132,6 +132,7 @@ const char* token_type_str(token_type_t type)
         case TOKEN_COLON: return ":";
         case TOKEN_COMMA: return ",";
         case TOKEN_ARROW: return "->";
+        case TOKEN_DOTDOT: return "..";
         case TOKEN_PLUS_ASSIGN: return "+=";
         case TOKEN_MINUS_ASSIGN: return "-=";
         case TOKEN_MUL_ASSIGN: return "*=";
@@ -325,7 +326,7 @@ static token_t* lex_number(lexer_t* lexer)
     }
 
     // Check for decimal point
-    if (lexer_peek(lexer) == '.')
+    if (lexer_peek_n(lexer, 0) == '.' && lexer_peek_n(lexer, 1) != '.')  // avoid misinterpreting ".."
     {
         type = TOKEN_FLOAT;
         string_append_char(&value, lexer_advance(lexer));  // consume '.'
@@ -527,6 +528,13 @@ static token_t* lex_symbol(lexer_t* lexer)
                 return token_create(lexer, TOKEN_GTE, ">=", line, col);
             }
             return token_create(lexer, TOKEN_GT, ">", line, col);
+
+        case '.':
+            if (lexer_peek(lexer) == '.') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_DOTDOT, "..", line, col);
+            }
+            [[fallthrough]];  // will be member/property access sometime
 
         default:
         {

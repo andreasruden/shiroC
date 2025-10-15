@@ -103,6 +103,24 @@ static void print_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_array_slice(void* self_, ast_array_slice_t* array_slice, void* out_)
+{
+    ast_printer_t* self = self_;
+    string_t* out = out_;
+
+    string_append_cstr(out, ssprintf("%*sArraySlice", self->indentation, ""));
+    print_source_location(self, array_slice, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self, array_slice->array, out);
+    if (array_slice->start != nullptr)
+        ast_visitor_visit(self, array_slice->start, out);
+    if (array_slice->end != nullptr)
+        ast_visitor_visit(self, array_slice->end, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 static void print_array_subscript(void* self_, ast_array_subscript_t* array_subscript, void* out_)
 {
     ast_printer_t* self = self_;
@@ -375,6 +393,7 @@ ast_printer_t* ast_printer_create()
             .visit_fn_def = print_fn_def,
             // Expressions
             .visit_array_lit = print_array_lit,
+            .visit_array_slice = print_array_slice,
             .visit_array_subscript = print_array_subscript,
             .visit_bin_op = print_bin_op,
             .visit_bool_lit = print_bool_lit,

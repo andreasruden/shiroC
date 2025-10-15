@@ -1,6 +1,7 @@
 #include "ast/decl/decl.h"
 #include "ast/decl/var_decl.h"
 #include "ast/expr/array_lit.h"
+#include "ast/expr/array_slice.h"
 #include "ast/expr/array_subscript.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/bool_lit.h"
@@ -322,6 +323,153 @@ TEST(ut_sema_array_fixture_t, array_uninit_without_type_annotation_error)
     );
 
     ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "missing type");
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_array_fixture_t, array_slice_returns_view_type)
+{
+    // var arr: [i32, 10] = uninit;
+    // var slice: view[i32] = arr[2..5];
+    ast_expr_t* slice_expr = ast_array_slice_create(
+        ast_ref_expr_create("arr"),
+        ast_int_lit_val(2),
+        ast_int_lit_val(5));
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(10)),
+            ast_uninit_lit_create())),
+        ast_decl_stmt_create(ast_var_decl_create("slice",
+            ast_type_view(ast_type_builtin(TYPE_I32)),
+            slice_expr)),
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    // Verify slice expression has view type
+    ASSERT_EQ(slice_expr->type, ast_type_view(ast_type_builtin(TYPE_I32)));
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_array_fixture_t, array_slice_requires_array_or_view)
+{
+    // var x: i32 = 42;
+    // x[2..5];  // Error: cannot slice non-array type
+    ast_expr_t* error_node = ast_array_slice_create(
+        ast_ref_expr_create("x"),
+        ast_int_lit_val(2),
+        ast_int_lit_val(5));
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("x",
+            ast_type_builtin(TYPE_I32),
+            ast_int_lit_val(42))),
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "cannot slice");
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_array_fixture_t, array_slice_bounds_must_be_integer)
+{
+    // var arr: [i32, 10] = uninit;
+    // arr[true..5];  // Error: slice bounds must be integer
+    ast_expr_t* error_node = ast_array_slice_create(
+        ast_ref_expr_create("arr"),
+        ast_bool_lit_create(true),
+        ast_int_lit_val(5));
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(10)),
+            ast_uninit_lit_create())),
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "not usable as slice bounds");
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_array_fixture_t, array_slice_start_greater_than_end_error)
+{
+    // var arr: [i32, 10] = uninit;
+    // arr[5..2];  // Error: start index greater than end index
+    ast_expr_t* error_node = ast_array_slice_create(
+        ast_ref_expr_create("arr"),
+        ast_int_lit_val(5),
+        ast_int_lit_val(2));
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(10)),
+            ast_uninit_lit_create())),
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "invalid slice bounds");
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_array_fixture_t, array_slice_constant_out_of_bounds_error)
+{
+    // var arr: [i32, 5] = uninit;
+    // arr[2..10];  // Error: end index out of bounds
+    ast_expr_t* error_node = ast_array_slice_create(
+        ast_ref_expr_create("arr"),
+        ast_int_lit_val(2),
+        ast_int_lit_val(10));
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(5)),
+            ast_uninit_lit_create())),
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "out of bounds");
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_array_fixture_t, array_slice_element_is_lvalue)
+{
+    // var arr: [i32, 10] = uninit;
+    // arr[2..5][0] = 42;  // OK: subscripting a view returns lvalue
+    ast_expr_t* slice_expr = ast_array_slice_create(
+        ast_ref_expr_create("arr"),
+        ast_int_lit_val(2),
+        ast_int_lit_val(5));
+
+    ast_expr_t* subscript_expr = ast_array_subscript_create(
+        slice_expr,
+        ast_int_lit_val(0));
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(10)),
+            ast_uninit_lit_create())),
+        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN,
+            subscript_expr,
+            ast_int_lit_val(42))),
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
 
     ast_node_destroy(block);
 }

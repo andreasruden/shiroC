@@ -22,6 +22,7 @@ typedef enum ast_node_kind
 
     // Expressions
     AST_EXPR_ARRAY_LIT,
+    AST_EXPR_ARRAY_SLICE,
     AST_EXPR_ARRAY_SUBSCRIPT,
     AST_EXPR_BIN_OP,
     AST_EXPR_BOOL_LIT,
