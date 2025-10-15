@@ -17,6 +17,7 @@
 #include "ast/expr/ref_expr.h"
 #include "ast/expr/str_lit.h"
 #include "ast/expr/unary_op.h"
+#include "ast/expr/uninit_lit.h"
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
@@ -202,6 +203,18 @@ static ast_expr_t* parse_null_lit(parser_t* parser)
     return expr;
 }
 
+static ast_expr_t* parse_uninit_lit(parser_t* parser)
+{
+    token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_UNINIT);
+    if (tok == nullptr)
+        return nullptr;
+
+    ast_expr_t* expr = ast_uninit_lit_create();
+    parser_set_source_tok_to_current(parser, expr, tok);
+
+    return expr;
+}
+
 static ast_expr_t* parse_str_lit(parser_t* parser)
 {
     token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_STRING);
@@ -318,6 +331,8 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
             return parse_str_lit(parser);
         case TOKEN_NULL:
             return parse_null_lit(parser);
+        case TOKEN_UNINIT:
+            return parse_uninit_lit(parser);
         case TOKEN_LBRACKET:
             return parse_array_lit(parser);
         default:

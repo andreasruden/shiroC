@@ -276,6 +276,10 @@ ast_coercion_kind_t ast_type_can_coerce(ast_type_t* from, ast_type_t* to)
         from->data.heap_array.element_type == to->data.view.element_type)
         return COERCION_ALWAYS;
 
+    // Uninit to Array
+    if (from->kind == AST_TYPE_BUILTIN && from->data.builtin.type == TYPE_UNINIT && to->kind == AST_TYPE_ARRAY)
+        return COERCION_ALWAYS;
+
     // FIXME: Add COERCION_WIDEN support
 
     return COERCION_INVALID;
@@ -352,20 +356,21 @@ const char* type_to_str(type_t type)
 {
     switch (type)
     {
-        case TYPE_VOID: return "void";
-        case TYPE_BOOL: return "bool";
-        case TYPE_I8:   return "i8";
-        case TYPE_I16:  return "i16";
-        case TYPE_I32:  return "i32";
-        case TYPE_I64:  return "i64";
-        case TYPE_U8:   return "u8";
-        case TYPE_U16:  return "u16";
-        case TYPE_U32:  return "u32";
-        case TYPE_U64:  return "u64";
-        case TYPE_F32:  return "f32";
-        case TYPE_F64:  return "f64";
-        case TYPE_NULL: return "null_t";
-        case TYPE_END:  panic("Not a valid value");
+        case TYPE_UNINIT: return "uninit";
+        case TYPE_VOID:   return "void";
+        case TYPE_BOOL:   return "bool";
+        case TYPE_I8:     return "i8";
+        case TYPE_I16:    return "i16";
+        case TYPE_I32:    return "i32";
+        case TYPE_I64:    return "i64";
+        case TYPE_U8:     return "u8";
+        case TYPE_U16:    return "u16";
+        case TYPE_U32:    return "u32";
+        case TYPE_U64:    return "u64";
+        case TYPE_F32:    return "f32";
+        case TYPE_F64:    return "f64";
+        case TYPE_NULL:   return "null_t";
+        case TYPE_END:    panic("Not a valid value");
     }
 
     panic("Case %d not handled", type);

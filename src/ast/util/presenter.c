@@ -166,6 +166,14 @@ static void present_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
     string_append_cstr(out, "null");
 }
 
+static void present_uninit_lit(void* self_, ast_uninit_lit_t* lit, void* out_)
+{
+    PRELUDE
+    (void)lit;
+
+    string_append_cstr(out, "uninit");
+}
+
 static void present_str_lit(void* self_, ast_str_lit_t* str_lit, void* out_)
 {
     PRELUDE
@@ -272,6 +280,7 @@ ast_presenter_t* ast_presenter_create()
             .visit_ref_expr = present_ref_expr,
             .visit_str_lit = present_str_lit,
             .visit_unary_op = present_unary_op,
+            .visit_uninit_lit = present_uninit_lit,
             // Statements
             .visit_compound_stmt = present_compound_stmt,
             .visit_decl_stmt = present_decl_stmt,

@@ -39,6 +39,7 @@ static keyword_t lexer_keywords[] =
     {"u16", TOKEN_U16},
     {"u32", TOKEN_U32},
     {"u64", TOKEN_U64},
+    {"uninit", TOKEN_UNINIT},
     {"var", TOKEN_VAR},
     {"view", TOKEN_VIEW},
     {"void", TOKEN_VOID},
@@ -82,6 +83,7 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_UNINIT: return "uninit";
         case TOKEN_VIEW: return "view";
         case TOKEN_LBRACKET: return "[";
         case TOKEN_RBRACKET: return "]";

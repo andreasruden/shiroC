@@ -157,7 +157,8 @@ static inline void print_ptr(const void* x) { printf("%p", x); }
     do { \
         if (CMP_FUNC(b)(a, b) != 0) { \
             printf(COLOR_BOLD_RED "ASSERTION FAILED: " COLOR_RESET); \
-            printf(COLOR_CYAN #a " == " #b COLOR_RESET "\n"); \
+            printf(COLOR_CYAN #a " == " #b COLOR_RESET); \
+            printf(" (at %s:%d)\n", __FILE__, __LINE__); \
             printf(COLOR_GREEN "  Expected: " COLOR_RESET); PRINT_VALUE(a); printf("\n"); \
             printf(COLOR_RED   "  Got: " COLOR_RESET); PRINT_VALUE(b); printf("\n"); \
             g_test_failed = true; \
@@ -172,7 +173,8 @@ static inline void print_ptr(const void* x) { printf("%p", x); }
     do { \
         if (CMP_FUNC(b)(a, b) == 0) { \
             printf(COLOR_BOLD_RED "ASSERTION FAILED: " COLOR_RESET); \
-            printf(COLOR_CYAN #a " != " #b COLOR_RESET "\n"); \
+            printf(COLOR_CYAN #a " != " #b COLOR_RESET); \
+            printf(" (at %s:%d)\n", __FILE__, __LINE__); \
             printf(COLOR_RED "  Both values: " COLOR_RESET); PRINT_VALUE(a); printf("\n"); \
             g_test_failed = true; \
             longjmp(g_test_jmp_buf, 1); \
@@ -186,7 +188,8 @@ static inline void print_ptr(const void* x) { printf("%p", x); }
     do { \
         if (CMP_FUNC(b)(a, b) >= 0) { \
             printf(COLOR_BOLD_RED "ASSERTION FAILED: " COLOR_RESET); \
-            printf(COLOR_CYAN #a " < " #b COLOR_RESET "\n"); \
+            printf(COLOR_CYAN #a " < " #b COLOR_RESET); \
+            printf(" (at %s:%d)\n", __FILE__, __LINE__); \
             printf(COLOR_GREEN "  Left: " COLOR_RESET); PRINT_VALUE(a); printf("\n"); \
             printf(COLOR_RED   "  Right: " COLOR_RESET); PRINT_VALUE(b); printf("\n"); \
             g_test_failed = true; \
@@ -201,7 +204,8 @@ static inline void print_ptr(const void* x) { printf("%p", x); }
     do { \
         if (CMP_FUNC(b)(a, b) > 0) { \
             printf(COLOR_BOLD_RED "ASSERTION FAILED: " COLOR_RESET); \
-            printf(COLOR_CYAN #a " <= " #b COLOR_RESET "\n"); \
+            printf(COLOR_CYAN #a " <= " #b COLOR_RESET); \
+            printf(" (at %s:%d)\n", __FILE__, __LINE__); \
             printf(COLOR_GREEN "  Left: " COLOR_RESET); PRINT_VALUE(a); printf("\n"); \
             printf(COLOR_RED   "  Right: " COLOR_RESET); PRINT_VALUE(b); printf("\n"); \
             g_test_failed = true; \
@@ -216,7 +220,8 @@ static inline void print_ptr(const void* x) { printf("%p", x); }
     do { \
         if (CMP_FUNC(b)(a, b) <= 0) { \
             printf(COLOR_BOLD_RED "ASSERTION FAILED: " COLOR_RESET); \
-            printf(COLOR_CYAN #a " > " #b COLOR_RESET "\n"); \
+            printf(COLOR_CYAN #a " > " #b COLOR_RESET); \
+            printf(" (at %s:%d)\n", __FILE__, __LINE__); \
             printf(COLOR_GREEN "  Left: " COLOR_RESET); PRINT_VALUE(a); printf("\n"); \
             printf(COLOR_RED   "  Right: " COLOR_RESET); PRINT_VALUE(b); printf("\n"); \
             g_test_failed = true; \
@@ -231,7 +236,8 @@ static inline void print_ptr(const void* x) { printf("%p", x); }
     do { \
         if (CMP_FUNC(b)(a, b) < 0) { \
             printf(COLOR_BOLD_RED "ASSERTION FAILED: " COLOR_RESET); \
-            printf(COLOR_CYAN #a " >= " #b COLOR_RESET "\n"); \
+            printf(COLOR_CYAN #a " >= " #b COLOR_RESET); \
+            printf(" (at %s:%d)\n", __FILE__, __LINE__); \
             printf(COLOR_GREEN "  Left: " COLOR_RESET); PRINT_VALUE(a); printf("\n"); \
             printf(COLOR_RED   "  Right: " COLOR_RESET); PRINT_VALUE(b); printf("\n"); \
             g_test_failed = true; \

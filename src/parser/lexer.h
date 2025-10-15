@@ -27,6 +27,7 @@ typedef enum
     TOKEN_U16,
     TOKEN_U32,
     TOKEN_U64,
+    TOKEN_UNINIT,
     TOKEN_VAR,
     TOKEN_VIEW,
     TOKEN_VOID,

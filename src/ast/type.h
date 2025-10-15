@@ -18,6 +18,7 @@ typedef enum type
     TYPE_F32,
     TYPE_F64,
     TYPE_NULL,
+    TYPE_UNINIT,
 
     TYPE_END,
 } type_t;
@@ -39,6 +40,7 @@ typedef enum ast_coercion_kind
     COERCION_EQUAL,         // no coercion needed, already equal
     COERCION_ALWAYS,        // coercion is always OK, e.g. array -> view
     COERCION_WIDEN,         // smaller int/float -> bigger int/float of same signedness
+    COERCION_INIT,          // only valid during initialization
 } ast_coercion_kind_t;
 
 typedef struct ast_type ast_type_t;

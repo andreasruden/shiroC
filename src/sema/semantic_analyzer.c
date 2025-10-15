@@ -140,7 +140,14 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     if (annotated_type == nullptr && inferred_type != nullptr && inferred_type->kind == AST_TYPE_ARRAY &&
         (!inferred_type->data.array.size_known || inferred_type->data.array.size == 0))
     {
-        semantic_context_add_error(sema->ctx, var->init_expr, "cannot infer type of empty array");
+        semantic_context_add_error(sema->ctx, var, "cannot infer type of empty array");
+        return;
+    }
+
+    // Uninit cannot be inferred from
+    if (annotated_type == nullptr && inferred_type == ast_type_builtin(TYPE_UNINIT))
+    {
+        semantic_context_add_error(sema->ctx, var, "missing type annotation");
         return;
     }
 
@@ -149,18 +156,20 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     {
         ast_coercion_kind_t coercion = ast_type_can_coerce(inferred_type, annotated_type);
 
-        if (coercion == COERCION_INVALID || coercion == COERCION_WIDEN)
-        {
-            semantic_context_add_error(sema->ctx, var, "inferred and annotated types differ");
-            return;
-        }
-        else if (coercion == COERCION_ALWAYS)
+        if (coercion == COERCION_ALWAYS)
         {
             var->init_expr = ast_coercion_expr_create(var->init_expr, annotated_type);
             inferred_type = annotated_type;
         }
         else if (coercion == COERCION_EQUAL && inferred_type != ast_type_builtin(TYPE_NULL))
+        {
             semantic_context_add_warning(sema->ctx, var, "type annotation is superfluous");
+        }
+        else if (coercion != COERCION_EQUAL && coercion != COERCION_INIT)
+        {
+            semantic_context_add_error(sema->ctx, var, "inferred and annotated types differ");
+            return;
+        }
     }
 
     ast_type_t* actual_type = annotated_type ? annotated_type : inferred_type;
@@ -364,7 +373,7 @@ static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* b
         return;  // avoid cascading errors
 
     ast_coercion_kind_t coercion = ast_type_can_coerce(bin_op->rhs->type, bin_op->lhs->type);
-    if (coercion == COERCION_INVALID || coercion == COERCION_WIDEN)
+    if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS)
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs,
             ssprintf("left-hand side type '%s' does not match right-hand side type '%s'",
@@ -509,7 +518,7 @@ static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
         ast_visitor_visit(sema, arg_expr, out_);
 
         ast_coercion_kind_t coercion = ast_type_can_coerce(arg_expr->type, param_decl->type);
-        if (coercion == COERCION_INVALID)
+        if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS && coercion != COERCION_WIDEN)
         {
             semantic_context_add_error(sema->ctx, arg_expr,
                 ssprintf("arg type '%s' does not match parameter '%s' type '%s'", ast_type_string(arg_expr->type),
@@ -726,6 +735,14 @@ static void analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
     }
 }
 
+static void analyze_uninit_lit(void* self_, ast_uninit_lit_t* lit, void* out_)
+{
+    (void)self_;
+    (void)out_;
+
+    lit->base.type = ast_type_builtin(TYPE_UNINIT);
+}
+
 static void analyze_compound_statement(void* self_, ast_compound_stmt_t* block, void* out_)
 {
     semantic_analyzer_t* sema = self_;
@@ -854,6 +871,7 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             .visit_ref_expr = analyze_ref_expr,
             .visit_str_lit = analyze_str_lit,
             .visit_unary_op = analyze_unary_op,
+            .visit_uninit_lit = analyze_uninit_lit,
             // Statements
             .visit_compound_stmt = analyze_compound_statement,
             .visit_decl_stmt = analyze_decl_stmt,

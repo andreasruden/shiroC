@@ -96,6 +96,13 @@ static void ast_visitor_visit_str_lit(void* self_, ast_str_lit_t* str_lit, void*
     (void)out_;
 }
 
+static void ast_visitor_visit_uninit_lit(void* self_, ast_uninit_lit_t* uninit_lit, void* out_)
+{
+    (void)self_;
+    (void)uninit_lit;
+    (void)out_;
+}
+
 static void ast_visitor_visit_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
 {
     ast_visitor_visit(self_, unary_op->expr, out_);
@@ -172,6 +179,7 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_ref_expr = ast_visitor_visit_ref_expr,
         .visit_str_lit = ast_visitor_visit_str_lit,
         .visit_unary_op = ast_visitor_visit_unary_op,
+        .visit_uninit_lit = ast_visitor_visit_uninit_lit,
         // Statements
         .visit_compound_stmt = ast_visitor_visit_compound_stmt,
         .visit_decl_stmt = ast_visitor_visit_decl_stmt,

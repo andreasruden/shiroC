@@ -31,6 +31,7 @@ typedef enum ast_node_kind
     AST_EXPR_FLOAT_LIT,
     AST_EXPR_INT_LIT,
     AST_EXPR_NULL_LIT,
+    AST_EXPR_UNINIT_LIT,
     AST_EXPR_PAREN,
     AST_EXPR_REF,
     AST_EXPR_STR_LIT,

@@ -6,6 +6,7 @@
 #include "ast/expr/bool_lit.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/ref_expr.h"
+#include "ast/expr/uninit_lit.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
@@ -66,14 +67,11 @@ TEST(ut_sema_array_fixture_t, array_literal_type_inference_basic)
 TEST(ut_sema_array_fixture_t, array_literal_empty_requires_type_annotation)
 {
     // var arr = [];  // Error: cannot infer type of empty array
-    ast_expr_t* error_node = ast_array_lit_create_empty();
+    ast_decl_t* error_node = ast_var_decl_create("arr",
+        nullptr,  // No type annotation
+        ast_array_lit_create_empty());
 
-    ast_stmt_t* block = ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("arr",
-            nullptr,  // No type annotation
-            error_node)),
-        nullptr
-    );
+    ast_stmt_t* block = ast_compound_stmt_create_va(ast_decl_stmt_create(error_node), nullptr);
 
     ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "cannot infer");
 
@@ -263,6 +261,67 @@ TEST(ut_sema_array_fixture_t, array_subscript_returns_element_type)
     bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
     ASSERT_TRUE(res);
     ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_array_fixture_t, array_subscript_uninitialized_array_error)
+{
+    // var arr: [i32, 3];
+    // arr[0];  // Error: array not initialized
+    ast_expr_t* error_node = ast_ref_expr_create("arr");
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(3)),
+            nullptr)),
+        ast_expr_stmt_create(ast_array_subscript_create(
+            error_node,
+            ast_int_lit_val(0)
+        )),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "not initialized");
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_array_fixture_t, array_uninit_with_type_annotation_allows_subscript)
+{
+    // var arr: [i32, 5] = uninit;
+    // arr[0];  // OK: uninit explicitly marks array as uninitialized, no error
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("arr",
+            ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(5)),
+            ast_uninit_lit_create())),
+        ast_expr_stmt_create(ast_array_subscript_create(
+            ast_ref_expr_create("arr"),
+            ast_int_lit_val(0)
+        )),
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_array_fixture_t, array_uninit_without_type_annotation_error)
+{
+    // var bad_arr = uninit;  // Error: cannot infer type from uninit
+    ast_decl_t* error_node = ast_var_decl_create("bad_arr",
+        nullptr,  // No type annotation
+        ast_uninit_lit_create());
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "missing type");
 
     ast_node_destroy(block);
 }
