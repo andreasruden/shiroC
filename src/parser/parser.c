@@ -228,7 +228,8 @@ static ast_expr_t* parse_str_lit(parser_t* parser)
     return expr;
 }
 
-static ast_expr_t* parse_array_slice(parser_t* parser, token_t* id, ast_expr_t* start)
+// source set by caller as we are parsed as a postfix to the expr
+static ast_expr_t* parse_array_slice(parser_t* parser, ast_expr_t* array, ast_expr_t* start)
 {
     if (!lexer_next_token_iff(parser->lexer, TOKEN_DOTDOT))
         return nullptr;
@@ -238,31 +239,33 @@ static ast_expr_t* parse_array_slice(parser_t* parser, token_t* id, ast_expr_t* 
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET))
         return nullptr;
 
-    return ast_array_slice_create(ast_ref_expr_create(id->value), start, end);
+    return ast_array_slice_create(array, start, end);
 }
 
-static ast_expr_t* parse_array_subscript(parser_t* parser, token_t* id)
+// source set by caller as we are parsed as a postfix to the expr
+static ast_expr_t* parse_array_subscript(parser_t* parser, ast_expr_t* array)
 {
     if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACKET))
         return nullptr;
 
     if (lexer_peek_token(parser->lexer)->type == TOKEN_DOTDOT)
-        return parse_array_slice(parser, id, nullptr);
+        return parse_array_slice(parser, array, nullptr);
 
     ast_expr_t* index = parser_parse_expr(parser);
     if (index == nullptr)
-        return parse_array_slice(parser, id, nullptr);  // could still be a slice: arr[..end]
+        return parse_array_slice(parser, array, nullptr);  // could still be a slice: arr[..end]
 
     if (lexer_peek_token(parser->lexer)->type == TOKEN_DOTDOT)
-        return parse_array_slice(parser, id, index);
+        return parse_array_slice(parser, array, index);
 
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET))
         return nullptr;
 
-    return ast_array_subscript_create(ast_ref_expr_create(id->value), index);
+    return ast_array_subscript_create(array, index);
 }
 
-static ast_expr_t* parse_call_expr(parser_t* parser, token_t* id)
+// source set by caller as we are parsed as a postfix to the expr
+static ast_expr_t* parse_call_expr(parser_t* parser, ast_expr_t* function)
 {
     ast_expr_t* call = nullptr;
     vec_t args = VEC_INIT(ast_node_destroy);
@@ -273,7 +276,7 @@ static ast_expr_t* parse_call_expr(parser_t* parser, token_t* id)
     token_type_t type;
     while ((type = lexer_peek_token(parser->lexer)->type) != TOKEN_EOF && type != TOKEN_RPAREN)
     {
-        ast_expr_t* arg = parser_parse_primary_expr(parser);
+        ast_expr_t* arg = parser_parse_expr(parser);
         if (arg == nullptr)
             goto cleanup;
         vec_push(&args, arg);
@@ -286,15 +289,14 @@ static ast_expr_t* parse_call_expr(parser_t* parser, token_t* id)
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RPAREN))
         goto cleanup;
 
-    call = ast_call_expr_create(parser_create_ref_expr(parser, id), &args);
-    parser_set_source_tok_to_current(parser, call, id);
+    call = ast_call_expr_create(function, &args);
 
 cleanup:
     vec_deinit(&args);
     return call;
 }
 
-static ast_expr_t* parse_identifier_expr(parser_t* parser)
+static ast_expr_t* parse_ref_expr(parser_t* parser)
 {
     ast_expr_t* expr = nullptr;
 
@@ -302,12 +304,7 @@ static ast_expr_t* parse_identifier_expr(parser_t* parser)
     if (id == nullptr)
         goto cleanup;
 
-    if (lexer_peek_token(parser->lexer)->type == TOKEN_LPAREN)
-        expr = parse_call_expr(parser, id);
-    else if (lexer_peek_token(parser->lexer)->type == TOKEN_LBRACKET)
-        expr = parse_array_subscript(parser, id);
-    else
-        expr = parser_create_ref_expr(parser, id);
+    expr = parser_create_ref_expr(parser, id);
 
 cleanup:
     return expr;
@@ -341,7 +338,7 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
         case TOKEN_INTEGER:
             return parse_int_lit(parser);
         case TOKEN_IDENTIFIER:
-            return parse_identifier_expr(parser);
+            return parse_ref_expr(parser);
         case TOKEN_LPAREN:
             return parse_paren_expr(parser);
         case TOKEN_TRUE:
@@ -359,6 +356,39 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
             break;
     }
     return nullptr;
+}
+
+static ast_expr_t* parse_postfix_expr(parser_t* parser)
+{
+    token_t* tok_start = lexer_peek_token(parser->lexer);
+
+    ast_expr_t* primary = parser_parse_primary_expr(parser);
+    if (primary == nullptr)
+        return nullptr;
+
+    ast_expr_t* postfix_expr = primary;
+    while (true)
+    {
+        switch (lexer_peek_token(parser->lexer)->type)
+        {
+            case TOKEN_LPAREN:
+                postfix_expr = parse_call_expr(parser, postfix_expr);
+                break;
+            case TOKEN_LBRACKET:
+                postfix_expr = parse_array_subscript(parser, postfix_expr);
+                break;
+            default:
+                goto end;
+        }
+
+        if (postfix_expr == nullptr)
+            return nullptr;
+
+        parser_set_source_tok_to_current(parser, postfix_expr, tok_start);
+    }
+
+end:
+    return postfix_expr;
 }
 
 static ast_expr_t* parse_unary_expr(parser_t* parser)
@@ -379,11 +409,11 @@ static ast_expr_t* parse_unary_expr(parser_t* parser)
         return expr;
     }
 
-    return parser_parse_primary_expr(parser);
+    return parse_postfix_expr(parser);
 }
 
 // Use precedence climbing to efficiently parse binary operator expressions
-static ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_precedence)
+static ast_expr_t* climb_expr_precedence(parser_t* parser, int min_precedence)
 {
     token_t* first_tok = lexer_peek_token(parser->lexer);
 
@@ -400,7 +430,7 @@ static ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_
 
         lexer_next_token(parser->lexer);  // consume token
 
-        ast_expr_t* rhs = parser_parse_expr_climb_precedence(parser,
+        ast_expr_t* rhs = climb_expr_precedence(parser,
             token_type_is_right_associative(tok->type) ? precedence : precedence + 1);
         if (rhs == nullptr)
         {
@@ -417,7 +447,7 @@ static ast_expr_t* parser_parse_expr_climb_precedence(parser_t* parser, int min_
 
 ast_expr_t* parser_parse_expr(parser_t* parser)
 {
-    return parser_parse_expr_climb_precedence(parser, 0);
+    return climb_expr_precedence(parser, 0);
 }
 
 static ast_stmt_t* parse_return_stmt(parser_t* parser)

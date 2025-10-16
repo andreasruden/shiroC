@@ -473,3 +473,59 @@ TEST(ut_sema_array_fixture_t, array_slice_element_is_lvalue)
 
     ast_node_destroy(block);
 }
+
+TEST(ut_sema_array_fixture_t, multi_dimensional_array_declaration_and_subscript)
+{
+    // var multi_dim: [[i32, 2], 3] = [[1, 2], [3, 4], [5, 6]];
+    // multi_dim[2][1];
+
+    // Create inner array type: [i32, 2]
+    ast_type_t* inner_array_type = ast_type_array_size_unresolved(
+        ast_type_builtin(TYPE_I32),
+        ast_int_lit_val(2));
+
+    // Create outer array type: [[i32, 2], 3]
+    ast_type_t* outer_array_type = ast_type_array_size_unresolved(
+        inner_array_type,
+        ast_int_lit_val(3));
+
+    // Create array literal: [[1, 2], [3, 4], [5, 6]]
+    ast_expr_t* array_literal = ast_array_lit_create_va(
+        ast_array_lit_create_va(ast_int_lit_val(1), ast_int_lit_val(2), nullptr),
+        ast_array_lit_create_va(ast_int_lit_val(3), ast_int_lit_val(4), nullptr),
+        ast_array_lit_create_va(ast_int_lit_val(5), ast_int_lit_val(6), nullptr),
+        nullptr
+    );
+
+    // Create multi_dim[2][1] expression
+    ast_expr_t* first_subscript = ast_array_subscript_create(
+        ast_ref_expr_create("multi_dim"),
+        ast_int_lit_val(2)
+    );
+
+    ast_expr_t* second_subscript = ast_array_subscript_create(
+        first_subscript,
+        ast_int_lit_val(1)
+    );
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("multi_dim",
+            outer_array_type,
+            array_literal)),
+        ast_expr_stmt_create(second_subscript),
+        nullptr
+    );
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    // Verify that first_subscript has type [i32, 2]
+    ASSERT_EQ(first_subscript->type->kind, AST_TYPE_ARRAY);
+    ASSERT_EQ(first_subscript->type, ast_type_array(ast_type_builtin(TYPE_I32), 2));
+
+    // Verify that second_subscript has type i32
+    ASSERT_EQ(second_subscript->type, ast_type_builtin(TYPE_I32));
+
+    ast_node_destroy(block);
+}

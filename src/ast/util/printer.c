@@ -130,8 +130,10 @@ static void print_array_subscript(void* self_, ast_array_subscript_t* array_subs
     print_source_location(self, array_subscript, out);
     string_append_cstr(out, "\n");
 
+    self->indentation += PRINT_INDENTATION_WIDTH;
     ast_visitor_visit(self, array_subscript->array, out);
     ast_visitor_visit(self, array_subscript->index, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
 static void print_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
