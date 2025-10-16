@@ -757,14 +757,9 @@ static ast_decl_t* parse_param_decl(parser_t* parser)
 
     lexer_next_token_iff(parser->lexer, TOKEN_COLON);  // emit error, but continue parsing
 
-    token_t* type_tok = lexer_peek_token(parser->lexer);
-    ast_type_t* type = ast_type_from_token(type_tok);
+    ast_type_t* type = parse_type_annotation(parser);
     if (type->kind == AST_TYPE_INVALID)
-    {
-        lexer_emit_error_for_token(parser->lexer, type_tok, TOKEN_IDENTIFIER);
         return nullptr;
-    }
-    lexer_next_token(parser->lexer);
 
     ast_decl_t* decl = ast_param_decl_create(name_tok->value, type);
     parser_set_source_tok_to_current(parser, decl, name_tok);

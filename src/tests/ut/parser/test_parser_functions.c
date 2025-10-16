@@ -130,3 +130,24 @@ TEST(parser_functions_fixture_t, full_parse_with_simple_syntax_error)
     ast_node_destroy(root);
     ast_node_destroy(expected);
 }
+
+TEST(parser_functions_fixture_t, parse_complex_type_annotation_in_parameter)
+{
+    // Parse source code with complex param type: view[i32*]* (pointer to a view of i32 pointers)
+    parser_set_source(fix->parser, "test", "fn foo(range_ptr: view[i32*]*) { }");
+    ast_root_t* root = parser_parse(fix->parser);
+    ASSERT_NEQ(nullptr, root);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_type_t* view_ptr_type = ast_type_pointer(
+        ast_type_view(ast_type_pointer(ast_type_builtin(TYPE_I32))));
+
+    ast_root_t* expected = ast_root_create_va(
+        ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_empty(),
+            ast_param_decl_create("range_ptr", view_ptr_type), nullptr),
+        nullptr);
+
+    ASSERT_TREES_EQUAL(expected, root);
+    ast_node_destroy(root);
+    ast_node_destroy(expected);
+}

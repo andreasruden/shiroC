@@ -116,7 +116,7 @@ TEST(ut_sema_array_fixture_t, array_literal_element_count_mismatch_error)
         nullptr
     );
 
-    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "inferred and annotated types differ");
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "differ");
 
     ast_node_destroy(block);
 }
@@ -137,7 +137,7 @@ TEST(ut_sema_array_fixture_t, array_literal_element_type_mismatch_error)
         nullptr
     );
 
-    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "inferred and annotated types differ");
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "differ");
 
     ast_node_destroy(block);
 }

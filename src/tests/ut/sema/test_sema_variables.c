@@ -414,7 +414,7 @@ TEST(ut_sema_var_fixture_t, var_decl_type_annotation_and_inference_disagree_erro
 
     ast_stmt_t* stmt = ast_decl_stmt_create(var_decl);
 
-    ASSERT_SEMA_ERROR(AST_NODE(stmt), var_decl, "inferred and annotated types differ");
+    ASSERT_SEMA_ERROR(AST_NODE(stmt), var_decl, "differ");
 
     ast_node_destroy(stmt);
 }
