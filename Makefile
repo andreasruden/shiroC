@@ -8,8 +8,23 @@ UT_SRC_DIR = $(SRC_DIR)/tests/ut
 
 # Tools & Flags
 CC = gcc
+
+# LLVM Configuration - auto-detect version
+LLVM_CONFIG := $(shell which llvm-config 2>/dev/null || \
+                       which llvm-config-19 2>/dev/null || \
+                       which llvm-config-18 2>/dev/null || \
+                       which llvm-config-17 2>/dev/null || \
+                       echo "")
+ifeq ($(LLVM_CONFIG),)
+    $(error "No llvm-config found. Please install LLVM development package")
+endif
+LLVM_CFLAGS := $(shell $(LLVM_CONFIG) --cflags)
+LLVM_LDFLAGS := $(shell $(LLVM_CONFIG) --ldflags)
+LLVM_LIBS := $(shell $(LLVM_CONFIG) --libs core)
+
 CFLAGS = -Wall -Wextra -Werror=incompatible-pointer-types -Wsign-conversion -Wshadow  \
-		 -std=c23 -I$(SRC_DIR)
+		 -std=c23 -I$(SRC_DIR) $(LLVM_CFLAGS)
+LDFLAGS = $(LLVM_LDFLAGS) $(LLVM_LIBS)
 DEBUGFLAGS = -g -O0
 LD = ld
 FUZZ_CC = clang
@@ -97,7 +112,8 @@ UT_SRCS = \
 
 # Compiler target
 COMPILER_TARGET = $(BIN_DIR)/shiroc
-COMPILER_SRCS = $(COMMON_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/codegen/llvm/llvm_codegen.c
+COMPILER_SRCS = $(COMMON_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/codegen/llvm/llvm_codegen.c \
+	$(SRC_DIR)/codegen/llvm/llvm_type_utils.c
 COMPILER_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMPILER_SRCS))
 
 # Unit-tests target
@@ -135,7 +151,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	$(CC) $(DEBUGFLAGS) $(CFLAGS) -c $< -o $@
 
 $(COMPILER_TARGET): $(COMPILER_OBJS) | $(BIN_DIR)
-	$(CC) $(DEBUGFLAGS) $(CFLAGS) -o $@ $(COMPILER_OBJS)
+	$(CC) $(DEBUGFLAGS) $(CFLAGS) -o $@ $(COMPILER_OBJS) $(LDFLAGS)
 
 $(UT_BIN_DIR):
 	mkdir -p $@
@@ -196,6 +212,7 @@ valgrind-ut: $(UT_TARGETS)
 	         --read-var-info=yes \
 	         --expensive-definedness-checks=yes \
 			 --exit-on-first-error=yes \
+			 --suppressions=src/tests/valgrind.supp \
 	         ./$$test || exit 1; \
 	done
 

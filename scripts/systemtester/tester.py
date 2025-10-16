@@ -22,7 +22,8 @@ VALGRIND_TIME_FACTOR = 5  # timeouts multiplied by this
 VALGRIND_CMD = ["valgrind", "--error-exitcode=1", "--leak-check=full",
                 "--show-leak-kinds=all", "--errors-for-leak-kinds=all",
                 "--track-origins=yes", "--read-var-info=yes",
-                "--expensive-definedness-checks=yes", "--exit-on-first-error=yes"]
+                "--expensive-definedness-checks=yes", "--exit-on-first-error=yes",
+                "--suppressions=../src/tests/valgrind.supp"]
 
 
 class TestInstruction:

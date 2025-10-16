@@ -1,6 +1,7 @@
 #ifndef LLVM_CODEGEN__H
 #define LLVM_CODEGEN__H
 
+#include <llvm-c/Core.h>
 #include <stdio.h>
 
 typedef struct ast_node ast_node_t;

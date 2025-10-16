@@ -180,6 +180,7 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
         return;
     }
 
+    var->type = actual_type;
     symbol_t* symbol = add_variable_to_scope(sema, var, var->name, actual_type);
     if (symbol != nullptr)
         init_tracker_set_initialized(sema->init_tracker, symbol, var->init_expr != nullptr);

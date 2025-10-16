@@ -1,0 +1,27 @@
+# Suppresses LLVM C API global state that is "still reachable" at exit
+
+# LLVM C API global initialization state
+# LLVM 19+ does not provide llvm_shutdown, and global state is cleaned up at process exit
+{
+   LLVM_Global_State_Reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   obj:*/libLLVM*.so*
+}
+
+{
+   LLVM_CommandLine_Options
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:*llvm*cl*Option*
+}
+
+{
+   LLVM_Target_Registration
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:*RegisterMCTargetOptionsFlags*
+}
