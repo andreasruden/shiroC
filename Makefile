@@ -81,7 +81,13 @@ COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMMON_SRCS))
 UT_SRCS = \
 	$(UT_SRC_DIR)/ut_decl_collector.c \
 	$(UT_SRC_DIR)/ut_hash_table.c \
-	$(UT_SRC_DIR)/ut_parser.c \
+	$(UT_SRC_DIR)/parser/test_parser_arrays.c \
+	$(UT_SRC_DIR)/parser/test_parser_errors.c \
+	$(UT_SRC_DIR)/parser/test_parser_expressions.c \
+	$(UT_SRC_DIR)/parser/test_parser_functions.c \
+	$(UT_SRC_DIR)/parser/test_parser_literals.c \
+	$(UT_SRC_DIR)/parser/test_parser_pointers.c \
+	$(UT_SRC_DIR)/parser/test_parser_statements.c \
 	$(UT_SRC_DIR)/sema/test_sema_arrays.c \
 	$(UT_SRC_DIR)/sema/test_sema_control_flow.c \
 	$(UT_SRC_DIR)/sema/test_sema_expressions.c \
