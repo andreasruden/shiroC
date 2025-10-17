@@ -44,6 +44,16 @@ struct llvm_codegen
     bool function_name;
 };
 
+// Register builtin functions that are implemented in the runtime
+static void register_builtins(llvm_codegen_t* llvm)
+{
+    // printI32(i32) -> void
+    LLVMTypeRef print_i32_param_types[] = { LLVMInt32TypeInContext(llvm->context) };
+    LLVMTypeRef print_i32_type = LLVMFunctionType(LLVMVoidTypeInContext(llvm->context), print_i32_param_types, 1,
+        false);
+    LLVMAddFunction(llvm->module, "printI32", print_i32_type);
+}
+
 // Helper function to set debug location for the next instruction(s)
 static void set_debug_location(llvm_codegen_t* llvm, ast_node_t* node)
 {
@@ -665,15 +675,22 @@ static void emit_unary_op(void* self_, ast_unary_op_t* unary, void* out_)
         }
         case TOKEN_STAR:
         {
+            // When dereferencing, we always need the pointer value (rvalue)
+            // even if we're in an lvalue context (e.g., *ptr = value)
+            bool output_lvalue = llvm->lvalue;
+            llvm->lvalue = false;
             LLVMValueRef ptr_value = nullptr;
             ast_visitor_visit(llvm, unary->expr, &ptr_value);
+            llvm->lvalue = output_lvalue;
 
             if (llvm->lvalue)
             {
+                // Return the pointer value itself (the address to store to)
                 *out = ptr_value;
             }
             else
             {
+                // Load from the pointer
                 LLVMTypeRef deref_type = llvm_type(llvm->context, unary->base.type);
                 *out = LLVMBuildLoad2(llvm->builder, deref_type, ptr_value, "deref");
             }
@@ -875,6 +892,9 @@ void llvm_codegen_destroy(llvm_codegen_t* llvm)
 
 void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, const char* source_filename, FILE* out)
 {
+    // Register builtin functions
+    register_builtins(llvm);
+
     // Initialize debug info
     llvm->di_builder = LLVMCreateDIBuilder(llvm->module);
 

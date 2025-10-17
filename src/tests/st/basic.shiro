@@ -14,11 +14,13 @@ fn main() -> i32 {
 	else {
 		i = 20;
 	}
+	printI32(i);  //! stdout: "20"
 
 	while (i > 10) {
 		i = 10;
 	}
 
-	f(10, i);
+	var result = f(10, i);
+	printI32(result);  //! stdout: "120"
 	return 0;
 }

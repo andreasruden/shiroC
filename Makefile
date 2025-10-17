@@ -152,6 +152,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 
 $(COMPILER_TARGET): $(COMPILER_OBJS) | $(BIN_DIR)
 	$(CC) $(DEBUGFLAGS) $(CFLAGS) -o $@ $(COMPILER_OBJS) $(LDFLAGS)
+	cp $(SRC_DIR)/runtime/builtins.c $(BIN_DIR)/builtins.c
 
 $(UT_BIN_DIR):
 	mkdir -p $@

@@ -1,8 +1,12 @@
 #include "semantic_context.h"
 
+#include "ast/decl/param_decl.h"
+#include "ast/node.h"
+#include "ast/type.h"
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
 #include "compiler_error.h"
+#include "sema/symbol.h"
 #include "sema/symbol_table.h"
 
 semantic_context_t* semantic_context_create()
@@ -17,6 +21,7 @@ semantic_context_t* semantic_context_create()
         .scope_stack = VEC_INIT(symbol_table_destroy_void),
         .error_nodes = VEC_INIT(nullptr),    // we do not own these nodes
         .warning_nodes = VEC_INIT(nullptr),  // we do not own these nodes
+        .builtin_ast_gc = VEC_INIT(ast_node_destroy),
     };
 
     vec_push(&ctx->scope_stack, global_scope);
@@ -32,6 +37,7 @@ void semantic_context_destroy(semantic_context_t* ctx)
     vec_deinit(&ctx->scope_stack);
     vec_deinit(&ctx->error_nodes);
     vec_deinit(&ctx->warning_nodes);
+    vec_deinit(&ctx->builtin_ast_gc);
     free(ctx);
 }
 
@@ -59,4 +65,18 @@ void semantic_context_add_warning(semantic_context_t* ctx, void* ast_node, const
 {
     compiler_error_create_for_ast(true, description, ast_node);
     vec_push(&ctx->warning_nodes, ast_node);
+}
+
+void semantic_context_register_builtins(semantic_context_t* ctx)
+{
+    // Register printI32(i32) -> void
+    symbol_t* print_i32 = symbol_create("printI32", SYMBOL_FUNCTION, nullptr);
+    print_i32->type = ast_type_builtin(TYPE_VOID);
+
+    // Create parameter: value: i32
+    ast_param_decl_t* param = (ast_param_decl_t*)ast_param_decl_create("value", ast_type_builtin(TYPE_I32));
+    vec_push(&print_i32->data.function.parameters, param);
+    vec_push(&ctx->builtin_ast_gc, param);
+
+    symbol_table_insert(ctx->global, print_i32);
 }

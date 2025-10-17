@@ -11,11 +11,15 @@ typedef struct semantic_context
     vec_t scope_stack;
     vec_t error_nodes;  // vec<ast_node_t*>: nodes that have semantic errors, we do not own these nodes (AST does)
     vec_t warning_nodes;  // vec<ast_node_t*>: nodes that have semantic warnings, we do not own these nodes (AST does)
+
+    vec_t builtin_ast_gc;  // AST that was injected with semantic_context_register_builtins
 } semantic_context_t;
 
 semantic_context_t* semantic_context_create();
 
 void semantic_context_destroy(semantic_context_t* ctx);
+
+void semantic_context_register_builtins(semantic_context_t* ctx);
 
 void semantic_context_push_scope(semantic_context_t* ctx, scope_kind_t kind);
 

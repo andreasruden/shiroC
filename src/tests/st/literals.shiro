@@ -1,4 +1,4 @@
-//! compile
+//! run
 
 fn main() -> i32 {
     var i_16: i16;
@@ -9,6 +9,8 @@ fn main() -> i32 {
 
     i_16 = 420i16;
     i_32 = 420;
+    printI32(i_32);  //! stdout: "420"
+
     u_64 = 420u64;
     f_32 = 0.0f32;
     b = true;

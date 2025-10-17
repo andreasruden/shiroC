@@ -18,6 +18,7 @@ fn main() -> i32 {
 
     // Array element access
     var sum = fixed_array[0] + fixed_array[1];
+    printI32(sum);  //! stdout: "20"
 
     // Array slicing to create views
     var slice1 = fixed_array[0..2];  // First 2 elements
@@ -26,7 +27,9 @@ fn main() -> i32 {
 
     // Passing arrays to functions that take views
     var result1 = takes_view(fixed_array);
+    printI32(result1);  //! stdout: "20"
     var result2 = takes_view(slice1);
+    printI32(result2);  //! stdout: "20"
 
     // Pointers to arrays
     var ptr_fixed: [i32, 5]* = &fixed_array;  //! warning: "type annotation is superfluous"
@@ -42,6 +45,7 @@ fn main() -> i32 {
     var multi_dim = [[1, 2, 3], [4, 5, 6]];
 
     var total = multi_dim[0][0] + multi_dim[1][2];
+    printI32(total);  //! stdout: "7"
 
     return 0;
 }

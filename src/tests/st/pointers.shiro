@@ -1,4 +1,4 @@
-//! compile
+//! run
 
 fn main() -> i32 {
     var i = 42;
@@ -9,7 +9,9 @@ fn main() -> i32 {
     }
 
     i = *ptr * 2;
+    printI32(i);  //! stdout: "84"
     *ptr += 32;
+    printI32(*ptr);  //! stdout: "116"
 
-    return i;
+    return 0;
 }

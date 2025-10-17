@@ -7,10 +7,10 @@
 #include "sema/semantic_analyzer.h"
 #include "sema/semantic_context.h"
 
+#include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <sys/wait.h>
 
 static char* read_file(const char* filepath)
@@ -102,15 +102,16 @@ static FILE* open_output_file_for(const char* sourcefile, char** output_path)
     return file;
 }
 
-static int compile_with_clang(const char* filepath, const char* output_redirect)
+static int compile_with_clang(const char* ll_filepath, const char* output_redirect,
+    const char* compiler_path)
 {
     char *output_name;
     if (output_redirect == nullptr)
     {
         // Remove ".ll" extension
-        size_t len = strlen(filepath);
+        size_t len = strlen(ll_filepath);
         output_name = malloc(len + 1);
-        strcpy(output_name, filepath);
+        strcpy(output_name, ll_filepath);
         char *ext = strstr(output_name, ".ll");
         if (ext && ext[3] == '\0') {
             *ext = '\0';
@@ -119,10 +120,19 @@ static int compile_with_clang(const char* filepath, const char* output_redirect)
     else
         output_name = strdup(output_redirect);
 
-    // Build command
-    size_t cmd_len = strlen("clang  -o  -Wno-override-module") + strlen(filepath) + strlen(output_name) + 1;
+    // Build path to builtins.c based on compiler's location
+    // e.g., if compiler is at ./build/bin/shiroc, builtins.c is at ./build/bin/builtins.c
+    char* compiler_path_copy = strdup(compiler_path);
+    char* dir = dirname(compiler_path_copy);
+    size_t runtime_path_len = strlen(dir) + strlen("/builtins.c") + 1;
+    char* runtime_path = malloc(runtime_path_len);
+    snprintf(runtime_path, runtime_path_len, "%s/builtins.c", dir);
+    free(compiler_path_copy);
+
+    size_t cmd_len = strlen("clang   -o  -Wno-override-module") + strlen(ll_filepath) + strlen(runtime_path) +
+        strlen(output_name) + 1;
     char *command = malloc(cmd_len);
-    snprintf(command, cmd_len, "clang %s -o %s -Wno-override-module", filepath, output_name);
+    snprintf(command, cmd_len, "clang %s %s -o %s -Wno-override-module", ll_filepath, runtime_path, output_name);
 
     // Execute
     int result = system(command);
@@ -134,6 +144,7 @@ static int compile_with_clang(const char* filepath, const char* output_redirect)
 
     free(command);
     free(output_name);
+    free(runtime_path);
     return WEXITSTATUS(result);
 }
 
@@ -171,6 +182,9 @@ int main(int argc, char** argv)
     // Create semantic context
     semantic_context_t* ctx = semantic_context_create();
     panic_if(ctx == nullptr);
+
+    // Register builtin functions
+    semantic_context_register_builtins(ctx);
 
     // First pass: Collect declarations
     decl_collector_t* decl_collector = decl_collector_create(ctx);
@@ -215,7 +229,7 @@ int main(int argc, char** argv)
     llvm_codegen_destroy(llvm);
 
     // Invoke clang to compile LLVM IR into binary:
-    int clang_res = compile_with_clang(ir_path, output_redirect);
+    int clang_res = compile_with_clang(ir_path, output_redirect, argv[0]);
 
     // Cleanup
     if (output_redirect != nullptr)
