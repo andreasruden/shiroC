@@ -43,16 +43,16 @@ TEST_TEARDOWN(ut_sema_type_fixture_t)
 // Assignment with incompatible types
 TEST(ut_sema_type_fixture_t, assignment_with_mismatched_types)
 {
-    ast_expr_t* error_node = ast_ref_expr_create("x");
+    ast_expr_t* error_node = ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("x"), ast_int_lit_val(true));
 
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
         ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_BOOL), nullptr)),
         // Error: assign i32 to bool
-        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(true))),
+        ast_expr_stmt_create(error_node),
         nullptr
     ), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "type");
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "cannot coerce type");
 
     ast_node_destroy(foo_fn);
 }
@@ -316,18 +316,21 @@ TEST(ut_sema_type_fixture_t, reject_assign_value_to_pointer)
     // var i = 10;
     // var ptr: i32*;
     // ptr = i;  // Error: can't assign i32 to i32*
+    ast_expr_t* error_node = ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("ptr"), ast_ref_expr_create("i"));
+
     ast_stmt_t* block = ast_compound_stmt_create_va(
         ast_decl_stmt_create(ast_var_decl_create("i", nullptr, ast_int_lit_val(10))),
         ast_decl_stmt_create(ast_var_decl_create("ptr", ast_type_pointer(ast_type_builtin(TYPE_I32)), nullptr)),
-        ast_expr_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("ptr"), ast_ref_expr_create("i"))),
+        ast_expr_stmt_create(error_node),
         nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "cannot coerce type");
+    /*bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
     ASSERT_FALSE(res);
     ASSERT_LT(0, vec_size(&fix->ctx->error_nodes));
 
     compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "type 'i32*'"));
+    ASSERT_NEQ(nullptr, strstr(error->description, ""));*/
 
     ast_node_destroy(AST_NODE(block));
 }

@@ -69,6 +69,32 @@ static bool require_variable_initialized(semantic_analyzer_t* sema, symbol_t* sy
     return false;
 }
 
+// Check if from_expr can be coerced to to_type, considering expression properties like lvalue.
+// Returns the coercion kind and if the coercion kind is INVALID, adds an error to the semantic context.
+static ast_coercion_kind_t check_coercion_with_expr(semantic_analyzer_t* sema, void* node, ast_expr_t* from_expr,
+    ast_type_t* to_type)
+{
+    ast_coercion_kind_t coercion = ast_type_can_coerce(from_expr->type, to_type);
+    const char* error = nullptr;
+
+    // Array-to-view coercion requires the source to be an lvalue
+    // (views cannot reference temporary array literals)
+    if (coercion == COERCION_ALWAYS && to_type->kind == AST_TYPE_VIEW &&
+        from_expr->type->kind == AST_TYPE_ARRAY && !from_expr->is_lvalue)
+    {
+        error = "cannot create view into array literal";
+        coercion = COERCION_INVALID;
+    }
+
+    if (coercion == COERCION_INVALID)
+    {
+        semantic_context_add_error(sema->ctx, node, error ? error : ssprintf("cannot coerce type '%s' into type '%s",
+            ast_type_string(from_expr->type), ast_type_string(to_type)));
+    }
+
+    return coercion;
+}
+
 static void analyze_root(void* self_, ast_root_t* root, void* out_)
 {
     semantic_analyzer_t* sema = self_;
@@ -154,9 +180,13 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     // Do we have both an annotation and an inference?
     if (annotated_type != nullptr && inferred_type != nullptr)
     {
-        ast_coercion_kind_t coercion = ast_type_can_coerce(inferred_type, annotated_type);
+        ast_coercion_kind_t coercion = check_coercion_with_expr(sema, var, var->init_expr, annotated_type);
 
-        if (coercion == COERCION_ALWAYS)
+        if (coercion == COERCION_INVALID)
+        {
+            return;
+        }
+        else if (coercion == COERCION_ALWAYS)
         {
             var->init_expr = ast_coercion_expr_create(var->init_expr, annotated_type);
             inferred_type = annotated_type;
@@ -164,12 +194,6 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
         else if (coercion == COERCION_EQUAL && inferred_type != ast_type_builtin(TYPE_NULL))
         {
             semantic_context_add_warning(sema->ctx, var, "type annotation is superfluous");
-        }
-        else if (coercion != COERCION_EQUAL && coercion != COERCION_INIT)
-        {
-            semantic_context_add_error(sema->ctx, var, ssprintf("inferred type '%s' and annotated type '%s' differ",
-                ast_type_string(inferred_type), ast_type_string(annotated_type)));
-            return;
         }
     }
 
@@ -475,8 +499,10 @@ static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* b
     if (bin_op->rhs->type == ast_type_invalid())
         return;  // avoid cascading errors
 
-    ast_coercion_kind_t coercion = ast_type_can_coerce(bin_op->rhs->type, bin_op->lhs->type);
-    if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS)
+    ast_coercion_kind_t coercion = check_coercion_with_expr(sema, bin_op, bin_op->rhs, bin_op->lhs->type);
+    if (coercion == COERCION_INVALID)
+        return;
+    else if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS)
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs,
             ssprintf("left-hand side type '%s' does not match right-hand side type '%s'",
@@ -620,8 +646,10 @@ static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 
         ast_visitor_visit(sema, arg_expr, out_);
 
-        ast_coercion_kind_t coercion = ast_type_can_coerce(arg_expr->type, param_decl->type);
-        if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS && coercion != COERCION_WIDEN)
+        ast_coercion_kind_t coercion = check_coercion_with_expr(sema, arg_expr, arg_expr, param_decl->type);
+        if (coercion == COERCION_INVALID)
+            return;
+        else if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS && coercion != COERCION_WIDEN)
         {
             semantic_context_add_error(sema->ctx, arg_expr,
                 ssprintf("arg type '%s' does not match parameter '%s' type '%s'", ast_type_string(arg_expr->type),
@@ -912,12 +940,13 @@ static void analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void* 
     if (ret_stmt->value_expr->type == ast_type_invalid())
         return;  // avoid propagating error
 
-    if (sema->current_function->return_type != ret_stmt->value_expr->type)
-    {
-        semantic_context_add_error(sema->ctx, ret_stmt->value_expr,
-            ssprintf("returned type '%s' does not match function's return type '%s'",
-                ast_type_string(ret_stmt->value_expr->type), ast_type_string(sema->current_function->return_type)));
-    }
+    ast_coercion_kind_t coercion = check_coercion_with_expr(sema, ret_stmt->value_expr, ret_stmt->value_expr,
+        sema->current_function->return_type);
+    if (coercion == COERCION_INVALID)
+        return;
+
+    if (coercion == COERCION_ALWAYS || coercion == COERCION_WIDEN)
+        ret_stmt->value_expr = ast_coercion_expr_create(ret_stmt->value_expr, sema->current_function->return_type);
 }
 
 static void analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* out_)

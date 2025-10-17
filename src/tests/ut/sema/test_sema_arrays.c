@@ -116,7 +116,7 @@ TEST(ut_sema_array_fixture_t, array_literal_element_count_mismatch_error)
         nullptr
     );
 
-    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "differ");
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "cannot coerce type");
 
     ast_node_destroy(block);
 }
@@ -137,7 +137,7 @@ TEST(ut_sema_array_fixture_t, array_literal_element_type_mismatch_error)
         nullptr
     );
 
-    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "differ");
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "cannot coerce type");
 
     ast_node_destroy(block);
 }
@@ -526,6 +526,28 @@ TEST(ut_sema_array_fixture_t, multi_dimensional_array_declaration_and_subscript)
 
     // Verify that second_subscript has type i32
     ASSERT_EQ(second_subscript->type, ast_type_builtin(TYPE_I32));
+
+    ast_node_destroy(block);
+}
+
+TEST(ut_sema_array_fixture_t, view_from_array_literal_error)
+{
+    // var bad: view[i32] = [1, 2, 3];  // Error: cannot create view from array literal
+    ast_decl_t* error_node = ast_var_decl_create("bad",
+        ast_type_view(ast_type_builtin(TYPE_I32)),
+        ast_array_lit_create_va(
+            ast_int_lit_val(1),
+            ast_int_lit_val(2),
+            ast_int_lit_val(3),
+            nullptr
+        ));
+
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "cannot create view into array literal");
 
     ast_node_destroy(block);
 }

@@ -135,7 +135,7 @@ TEST(ut_sema_fn_fixture_t, call_expr_arg_type_mismatch_error)
     ASSERT_FALSE(res);
     ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
     compiler_error_t* error = vec_get(AST_NODE(error_node)->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "parameter 'x' type 'bool'"));
+    ASSERT_NEQ(nullptr, strstr(error->description, "cannot coerce type"));
 
     ast_node_destroy(foo_fn);
     ast_node_destroy(bar_fn);
@@ -151,7 +151,7 @@ TEST(ut_sema_fn_fixture_t, return_stmt_type_mismatch_function_return_type_error)
             nullptr
         ), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "return type");
+    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "cannot coerce type");
 
     ast_node_destroy(foo_fn);
 }
@@ -275,7 +275,7 @@ TEST(ut_sema_fn_fixture_t, function_return_array_type_size_mismatch)
     ASSERT_FALSE(res);
     ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
     compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "return type"));
+    ASSERT_NEQ(nullptr, strstr(error->description, "cannot coerce type"));
 
     ast_node_destroy(fn_def);
 }

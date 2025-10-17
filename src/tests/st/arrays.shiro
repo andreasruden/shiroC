@@ -20,15 +20,15 @@ fn main() -> i32 {
     var sum = fixed_array[0] + fixed_array[1];
     printI32(sum);  //! stdout: "20"
 
-    // Array slicing to create views
-    var slice1 = fixed_array[0..2];  // First 2 elements
-    var slice2 = fixed_array[1..4];  // Elements 1 through 3
-    var slice3 = slice2[1..];        // Elements 2 through 3
+    // Create views from parts of the array
+    var view1 = fixed_array[0..2];  // First 2 elements
+    var view2 = fixed_array[1..4];  // Elements 1 through 3
+    var view3 = view2[1..];         // Elements 2 through 3
 
     // Passing arrays to functions that take views
     var result1 = takes_view(fixed_array);
     printI32(result1);  //! stdout: "20"
-    var result2 = takes_view(slice1);
+    var result2 = takes_view(view1);
     printI32(result2);  //! stdout: "20"
 
     // Pointers to arrays
