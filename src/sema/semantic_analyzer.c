@@ -167,7 +167,8 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
         }
         else if (coercion != COERCION_EQUAL && coercion != COERCION_INIT)
         {
-            semantic_context_add_error(sema->ctx, var, "inferred and annotated types differ");
+            semantic_context_add_error(sema->ctx, var, ssprintf("inferred type '%s' and annotated type '%s' differ",
+                ast_type_string(inferred_type), ast_type_string(annotated_type)));
             return;
         }
     }
@@ -820,7 +821,7 @@ static void analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
                 return;
             }
             unary_op->base.is_lvalue = false;
-            unary_op->base.type = ast_type_pointer(symbol->type);
+            unary_op->base.type = ast_type_pointer(unary_op->expr->type);
             break;
         case TOKEN_STAR:
             if (unary_op->expr->type->kind != AST_TYPE_POINTER)

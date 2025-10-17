@@ -209,7 +209,7 @@ int main(int argc, char** argv)
     char* ir_path;
     FILE* fout = open_output_file_for(filepath, &ir_path);
     llvm_codegen_t* llvm = llvm_codegen_create();
-    llvm_codegen_generate(llvm, AST_NODE(ast), fout);
+    llvm_codegen_generate(llvm, AST_NODE(ast), filepath, fout);
     fflush(fout);
     fclose(fout);
     llvm_codegen_destroy(llvm);

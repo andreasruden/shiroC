@@ -3,6 +3,7 @@
 #include "ast/type.h"
 #include "common/debug/panic.h"
 
+#include <llvm-c-19/llvm-c/Types.h>
 #include <llvm-c/Core.h>
 
 LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
@@ -58,9 +59,15 @@ LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
             LLVMTypeRef element_type = llvm_type(ctx, type->data.array.element_type);
             return LLVMArrayType(element_type, (unsigned int)type->data.array.size);
         }
+        case AST_TYPE_VIEW:
+        {
+            LLVMTypeRef size_type = LLVMInt64TypeInContext(ctx);  // FIXME: word-sized & unsigned
+            LLVMTypeRef element_type = LLVMPointerType(llvm_type(ctx, type->data.view.element_type), 0);
+            LLVMTypeRef fields[] = { size_type, element_type };
+            return LLVMStructTypeInContext(ctx, fields, 2, false);
+        }
         case AST_TYPE_INVALID:
         case AST_TYPE_USER:
-        case AST_TYPE_VIEW:
         case AST_TYPE_HEAP_ARRAY:
             panic("Unsupported type kind for LLVM codegen: %d", type->kind);
     }

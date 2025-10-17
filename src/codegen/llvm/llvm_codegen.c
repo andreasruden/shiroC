@@ -1,6 +1,8 @@
 #include "llvm_codegen.h"
 
 #include "ast/decl/param_decl.h"
+#include "ast/expr/coercion_expr.h"
+#include "ast/expr/uninit_lit.h"
 #include "ast/node.h"
 #include "ast/type.h"
 #include "ast/util/presenter.h"
@@ -12,8 +14,11 @@
 #include "parser/lexer.h"
 #include "llvm_type_utils.h"
 
+#include <llvm-c-19/llvm-c/Types.h>
 #include <llvm-c/Core.h>
+#include <llvm-c/DebugInfo.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct llvm_codegen
 {
@@ -27,11 +32,28 @@ struct llvm_codegen
     ast_presenter_t* presenter;
     hash_table_t* symbols;  // name (char*) -> LLVMValueRef (alloca)
 
+    // Debug info
+    LLVMDIBuilderRef di_builder;
+    LLVMMetadataRef di_compile_unit;
+    LLVMMetadataRef di_file;
+    hash_table_t* di_scopes;  // function name (char*) -> LLVMMetadataRef (DISubprogram)
+    LLVMMetadataRef current_di_scope;
+
     bool lvalue;
     bool address_of_lvalue;
     bool function_name;
 };
 
+// Helper function to set debug location for the next instruction(s)
+static void set_debug_location(llvm_codegen_t* llvm, ast_node_t* node)
+{
+    if (llvm->di_builder == nullptr || llvm->current_di_scope == nullptr)
+        return;
+
+    LLVMMetadataRef debug_loc = LLVMDIBuilderCreateDebugLocation(llvm->context, (unsigned int)node->source_begin.line,
+        (unsigned int)node->source_begin.column, llvm->current_di_scope, nullptr);
+    LLVMSetCurrentDebugLocation2(llvm->builder, debug_loc);
+}
 
 static void emit_root(void* self_, ast_root_t* root, void* out_)
 {
@@ -60,13 +82,25 @@ static void emit_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out_ref = out_;
 
+    set_debug_location(llvm, AST_NODE(var));
     LLVMValueRef alloc_ref = LLVMBuildAlloca(llvm->builder, llvm_type(llvm->context, var->type), var->name);
 
     if (var->init_expr != nullptr)
     {
-        LLVMValueRef init_value;
+        LLVMValueRef init_value = nullptr;
         ast_visitor_visit(llvm, var->init_expr, &init_value);
-        LLVMBuildStore(llvm->builder, init_value, alloc_ref);
+        // If RHS is "uninit", init_value will be nullptr
+        if (init_value != nullptr)
+        {
+            if (var->type->kind == AST_TYPE_ARRAY)
+            {
+                LLVMTypeRef array_type = llvm_type(llvm->context, var->type);
+                LLVMValueRef array_val = LLVMBuildLoad2(llvm->builder, array_type, init_value, "load_array");
+                LLVMBuildStore(llvm->builder, array_val, alloc_ref);
+            }
+            else
+                LLVMBuildStore(llvm->builder, init_value, alloc_ref);
+        }
     }
 
     hash_table_insert(llvm->symbols, var->name, alloc_ref);
@@ -96,9 +130,34 @@ static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     llvm->current_function = fn_val;
     free(param_types);
 
+    // Create debug info for this function
+    if (llvm->di_builder != nullptr)
+    {
+        // Create subroutine type (simplified - just mark as unspecified)
+        LLVMMetadataRef di_param_types[] = {nullptr};
+        LLVMMetadataRef di_fn_type = LLVMDIBuilderCreateSubroutineType(llvm->di_builder, llvm->di_file,
+            di_param_types, 0, LLVMDIFlagZero);
+
+        // Create subprogram (function debug info)
+        LLVMMetadataRef di_subprogram = LLVMDIBuilderCreateFunction(llvm->di_builder, llvm->di_file, fn_def->base.name,
+            strlen(fn_def->base.name), fn_def->base.name, strlen(fn_def->base.name), llvm->di_file,
+            (unsigned int)AST_NODE(fn_def)->source_begin.line, di_fn_type, false, true,
+            (unsigned int)AST_NODE(fn_def)->source_begin.line, LLVMDIFlagZero, false);
+
+        // Attach subprogram to the function
+        LLVMSetSubprogram(fn_val, di_subprogram);
+
+        // Set as current scope for nested instructions
+        llvm->current_di_scope = di_subprogram;
+        hash_table_insert(llvm->di_scopes, fn_def->base.name, di_subprogram);
+    }
+
     // Add entry block and position builder
     LLVMBasicBlockRef entry_block = LLVMAppendBasicBlock(fn_val, "entry");
     LLVMPositionBuilderAtEnd(llvm->builder, entry_block);
+
+    // Set debug location for function entry
+    set_debug_location(llvm, AST_NODE(fn_def));
 
     // Allocate space for all parameters
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
@@ -109,6 +168,9 @@ static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 
     if (fn_def->return_type == ast_type_builtin(TYPE_VOID))
         LLVMBuildRetVoid(llvm->builder);
+
+    // Clear current scope when leaving function
+    llvm->current_di_scope = nullptr;
 
     hash_table_destroy(llvm->symbols);
     llvm->symbols = nullptr;
@@ -168,6 +230,8 @@ static void emit_other_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out_val = out_;
+
+    set_debug_location(llvm, AST_NODE(bin_op));
 
     LLVMValueRef lhs_value = nullptr;
     ast_visitor_visit(llvm, bin_op->lhs, &lhs_value);
@@ -235,6 +299,224 @@ static void emit_other_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
         *out_val = result;
 }
 
+static void emit_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    LLVMValueRef* out_val = out_;
+
+    LLVMTypeRef array_type = llvm_type(llvm->context, lit->base.type);
+    LLVMValueRef array_alloc = LLVMBuildAlloca(llvm->builder, array_type, "array_lit");
+
+    // Get the element type of the array
+    ast_type_t* elem_type = lit->base.type->data.array.element_type;
+    LLVMTypeRef llvm_elem_type = llvm_type(llvm->context, elem_type);
+
+    for (size_t i = 0; i < vec_size(&lit->exprs); ++i)
+    {
+        LLVMValueRef elem_val = nullptr;
+        ast_visitor_visit(llvm, vec_get(&lit->exprs, i), &elem_val);
+        LLVMValueRef indices[] = {
+            LLVMConstInt(LLVMInt64TypeInContext(llvm->context), 0, false),
+            LLVMConstInt(LLVMInt64TypeInContext(llvm->context), (uint64_t)i, false)
+        };
+        LLVMValueRef elem_dst = LLVMBuildInBoundsGEP2(llvm->builder, array_type, array_alloc,  indices, 2, "elem_ptr");
+
+        // If the element is itself an array (nested array literal), we need to copy the value
+        if (elem_type->kind == AST_TYPE_ARRAY)
+        {
+            // Load the array value from the temporary allocation and store it
+            LLVMValueRef array_val = LLVMBuildLoad2(llvm->builder, llvm_elem_type, elem_val, "load_array");
+            LLVMBuildStore(llvm->builder, array_val, elem_dst);
+        }
+        else
+        {
+            // For non-array elements, just store directly
+            LLVMBuildStore(llvm->builder, elem_val, elem_dst);
+        }
+    }
+
+    if (out_val != nullptr)
+        *out_val = array_alloc;
+}
+
+static LLVMValueRef emit_ptr_to_array_elem(llvm_codegen_t* llvm, ast_type_t* array_type, LLVMValueRef array_ptr,
+    LLVMValueRef index)
+{
+    LLVMValueRef elem_ptr = nullptr;
+
+    switch (array_type->kind)
+    {
+        case AST_TYPE_VIEW:
+        {
+            // For views: extract pointer from 2nd struct field and index into it
+            LLVMTypeRef view_type = llvm_type(llvm->context, array_type);
+            LLVMTypeRef elem_type = llvm_type(llvm->context, array_type->data.view.element_type);
+            LLVMValueRef view_indices[] = {
+                LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 0, false),
+                LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 1, false),
+            };
+            LLVMValueRef ptr_to_field = LLVMBuildInBoundsGEP2(llvm->builder, view_type, array_ptr, view_indices, 2,
+                "ptr_to_views_array_field");
+            LLVMValueRef loaded_ptr = LLVMBuildLoad2(llvm->builder, LLVMPointerType(elem_type, 0), ptr_to_field,
+                "array_ptr");
+            elem_ptr = LLVMBuildInBoundsGEP2(llvm->builder, elem_type, loaded_ptr, &index, 1, "elem_ptr");
+            break;
+        }
+        case AST_TYPE_ARRAY:
+        {
+            // For arrays: use two indices (dereference + index)
+            // Note: semantic analyzer enforces that index is i32, so extend to i64 for GEP
+            // FIXME: There should be a coercion node + type should be usize
+            LLVMTypeRef fixed_array_type = llvm_type(llvm->context, array_type);
+            LLVMValueRef index_i64 = LLVMBuildSExt(llvm->builder, index, LLVMInt64TypeInContext(llvm->context),
+                "index_i64");
+            LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64TypeInContext(llvm->context), 0, false), index_i64 };
+            elem_ptr = LLVMBuildInBoundsGEP2(llvm->builder, fixed_array_type, array_ptr, indices, 2, "elem_ptr");
+            break;
+        }
+        case AST_TYPE_POINTER:
+        {
+            // For pointers: use the element type that the pointer points to
+            LLVMTypeRef elem_type = llvm_type(llvm->context, array_type->data.pointer.pointee);
+            elem_ptr = LLVMBuildGEP2(llvm->builder, elem_type, array_ptr, &index, 1, "elem_ptr");
+            break;
+        }
+        default:
+            panic("Unhandled type %s", ast_type_string(array_type));
+    }
+
+    return elem_ptr;
+}
+
+static LLVMValueRef emit_size_of_array(llvm_codegen_t* llvm, ast_type_t* array_type, LLVMValueRef array_ptr)
+{
+    switch (array_type->kind)
+    {
+        case AST_TYPE_ARRAY:
+        {
+            // Fixed-size arrays have compile-time known size
+            return LLVMConstInt(LLVMInt64TypeInContext(llvm->context),
+                (unsigned long long)array_type->data.array.size, false);
+        }
+        case AST_TYPE_VIEW:
+        {
+            // Views store their length in field 0 of the struct {i64 length, *element_type data}
+            LLVMTypeRef view_type = llvm_type(llvm->context, array_type);
+            LLVMTypeRef length_type = LLVMInt64TypeInContext(llvm->context);
+            LLVMValueRef length_ptr = LLVMBuildStructGEP2(llvm->builder, view_type, array_ptr, 0, "length_ptr");
+            return LLVMBuildLoad2(llvm->builder, length_type, length_ptr, "view_length");
+        }
+        default:
+            panic("Unhandled type %s", ast_type_string(array_type));
+    }
+}
+
+static LLVMValueRef build_view_struct(llvm_codegen_t* llvm, ast_type_t* view_type, LLVMValueRef length,
+    LLVMValueRef first_elem_ptr)
+{
+    LLVMTypeRef llvm_view_type = llvm_type(llvm->context, view_type);
+    LLVMValueRef view_struct = LLVMGetUndef(llvm_view_type);
+    view_struct = LLVMBuildInsertValue(llvm->builder, view_struct, length, 0, "view_with_len");
+    view_struct = LLVMBuildInsertValue(llvm->builder, view_struct, first_elem_ptr, 1, "view_with_data");
+    return view_struct;
+}
+
+// FIXME: Emit range checks if !slice->bounds_safe
+static void emit_array_slice(void* self_, ast_array_slice_t* slice, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    LLVMValueRef* out_val = out_;
+
+    LLVMValueRef start = nullptr;  // inclusive
+    LLVMValueRef end = nullptr;    // exclusive
+
+    // Get value of array
+    bool output_lvalue = llvm->lvalue;
+    llvm->lvalue = true;
+    LLVMValueRef array_ptr = nullptr;
+    ast_visitor_visit(llvm, slice->array, &array_ptr);
+    llvm->lvalue = output_lvalue;
+
+    if (slice->start == nullptr)
+        start = LLVMConstInt(LLVMInt64TypeInContext(llvm->context), 0, false);
+    else
+    {
+        ast_visitor_visit(llvm, slice->start, &start);
+        // Ensure start is i64 for consistency
+        // FIXME: Sema should already take care of this
+        LLVMTypeRef start_type = LLVMTypeOf(start);
+        if (start_type != LLVMInt64TypeInContext(llvm->context))
+            start = LLVMBuildZExt(llvm->builder, start, LLVMInt64TypeInContext(llvm->context), "start_i64");
+    }
+
+    if (slice->end == nullptr)
+        end = emit_size_of_array(llvm, slice->array->type, array_ptr);
+    else
+    {
+        ast_visitor_visit(llvm, slice->end, &end);
+        // Ensure end is i64 for consistency
+        // FIXME: Sema should already take care of this
+        LLVMTypeRef end_type = LLVMTypeOf(end);
+        if (end_type != LLVMInt64TypeInContext(llvm->context))
+            end = LLVMBuildZExt(llvm->builder, end, LLVMInt64TypeInContext(llvm->context), "end_i64");
+    }
+
+    LLVMValueRef length = LLVMBuildSub(llvm->builder, end, start, "view_size");  // FIXME: panic if size is < 0
+    LLVMValueRef elem_ptr = emit_ptr_to_array_elem(llvm, slice->array->type, array_ptr, start);
+
+    LLVMValueRef view = build_view_struct(llvm, slice->base.type, length, elem_ptr);
+    if (out_val != nullptr)
+        *out_val = view;
+}
+
+// FIXME: Emit range checks if !slice->bounds_safe
+static void emit_array_subscript(void* self_, ast_array_subscript_t* subscript, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    LLVMValueRef* out_val = out_;
+
+    set_debug_location(llvm, AST_NODE(subscript));
+
+    ast_type_kind_t arr_kind = subscript->array->type->kind;
+    panic_if(arr_kind != AST_TYPE_ARRAY && arr_kind != AST_TYPE_VIEW && arr_kind != AST_TYPE_POINTER);
+
+    // Get value of array
+    bool output_lvalue = llvm->lvalue;
+    llvm->lvalue = true;
+    LLVMValueRef array_ptr = nullptr;
+    ast_visitor_visit(llvm, subscript->array, &array_ptr);
+    llvm->lvalue = output_lvalue;
+
+    // If the array expression is a reference to a pointer variable, load it
+    if (subscript->array->type->kind == AST_TYPE_POINTER &&
+        subscript->array->base.kind == AST_EXPR_REF)
+    {
+        // This is ptr_var[index] - load the pointer value
+        LLVMTypeRef ptr_type = llvm_type(llvm->context, subscript->array->type);
+        array_ptr = LLVMBuildLoad2(llvm->builder, ptr_type, array_ptr, "ptr_val");
+    }
+
+    // Get value of index (must be an rvalue, not an lvalue)
+    llvm->lvalue = false;
+    LLVMValueRef index = nullptr;
+    ast_visitor_visit(llvm, subscript->index, &index);
+
+    LLVMValueRef elem_ptr = emit_ptr_to_array_elem(llvm, subscript->array->type, array_ptr, index);
+
+    if (output_lvalue)
+    {
+        if (out_val != nullptr)
+            *out_val = elem_ptr;
+    }
+    else
+    {
+        LLVMValueRef element = LLVMBuildLoad2(llvm->builder, llvm_type(llvm->context, subscript->base.type), elem_ptr,
+            "arr_elem");
+        if (out_val != nullptr)
+            *out_val = element;
+    }
+}
+
 static void emit_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
 {
     if (bin_op->op == TOKEN_ASSIGN)
@@ -247,6 +529,8 @@ static void emit_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out = out_;
+
+    set_debug_location(llvm, AST_NODE(call));
 
     llvm->function_name = true;
     LLVMValueRef fn = nullptr;
@@ -277,6 +561,53 @@ static void emit_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 
     if (args != nullptr)
         free(args);
+}
+
+static void emit_coercion_expr(void* self_, ast_coercion_expr_t* coercion, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    LLVMValueRef* out_val = out_;
+
+    ast_type_t* from_type = coercion->expr->type;
+    ast_type_t* to_type = coercion->target;
+
+    if (from_type->kind == AST_TYPE_ARRAY && to_type->kind == AST_TYPE_VIEW)
+    {
+        // Array to view coercion
+        // Get the array value (as lvalue)
+        bool output_lvalue = llvm->lvalue;
+        llvm->lvalue = true;
+        LLVMValueRef array_ptr = nullptr;
+        ast_visitor_visit(llvm, coercion->expr, &array_ptr);
+        llvm->lvalue = output_lvalue;
+
+        LLVMValueRef length = LLVMConstInt(LLVMInt64TypeInContext(llvm->context),
+            (unsigned long long)from_type->data.array.size, false);
+
+        // Get pointer to first element
+        LLVMValueRef indices[] = {
+            LLVMConstInt(LLVMInt64TypeInContext(llvm->context), 0, false),
+            LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 0, false)
+        };
+        LLVMValueRef first_elem_ptr = LLVMBuildInBoundsGEP2(llvm->builder,
+            llvm_type(llvm->context, from_type), array_ptr, indices, 2, "array_first_elem");
+
+        LLVMValueRef view_struct = build_view_struct(llvm, to_type, length, first_elem_ptr);
+
+        if (out_val != nullptr)
+            *out_val = view_struct;
+        return;
+    }
+    else if (from_type == ast_type_builtin(TYPE_UNINIT))
+    {
+        // From "uninit" coercion
+        if (out_val != nullptr)
+            *out_val = nullptr;
+        return;
+    }
+
+    // FIXME: implement more coercions
+    panic("coercion from %s to %s not implemented", ast_type_string(from_type), ast_type_string(to_type));
 }
 
 static void emit_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
@@ -353,6 +684,16 @@ static void emit_unary_op(void* self_, ast_unary_op_t* unary, void* out_)
     }
 }
 
+static void emit_uninit_lit(void* self_, ast_uninit_lit_t* uninit, void* out_)
+{
+    (void)self_;
+    (void)uninit;
+    LLVMValueRef* out_val = out_;
+
+    if (out_val != nullptr)
+        *out_val = nullptr;
+}
+
 static void emit_compound_stmt(void* self_, ast_compound_stmt_t* block, void* out_)
 {
     for (size_t i = 0; i < vec_size(&block->inner_stmts); ++i)
@@ -372,6 +713,8 @@ static void emit_expr_stmt(void* self_, ast_expr_stmt_t* stmt, void* out_)
 static void emit_if_stmt(void* self_, ast_if_stmt_t* stmt, void* out_)
 {
     llvm_codegen_t* llvm = self_;
+
+    set_debug_location(llvm, AST_NODE(stmt));
 
     // Evaluate condition
     LLVMValueRef cond_val = nullptr;
@@ -409,6 +752,8 @@ static void emit_return_stmt(void* self_, ast_return_stmt_t* stmt, void* out_)
     llvm_codegen_t* llvm = self_;
     (void)out_;
 
+    set_debug_location(llvm, AST_NODE(stmt));
+
     if (stmt->value_expr != nullptr)
     {
         LLVMValueRef return_val = nullptr;
@@ -424,6 +769,8 @@ static void emit_return_stmt(void* self_, ast_return_stmt_t* stmt, void* out_)
 static void emit_while_stmt(void* self_, ast_while_stmt_t* stmt, void* out_)
 {
     llvm_codegen_t* llvm = self_;
+
+    set_debug_location(llvm, AST_NODE(stmt));
 
     // Create basic blocks for condition, body, and end
     LLVMBasicBlockRef cond_block = LLVMAppendBasicBlock(llvm->current_function, "while.cond");
@@ -465,12 +812,7 @@ llvm_codegen_t* llvm_codegen_create()
         .context = llvm->context,
         .module = llvm->module,
         .builder = llvm->builder,
-        .current_function = nullptr,
         .presenter = ast_presenter_create(),
-        .symbols = nullptr,
-        .lvalue = false,
-        .address_of_lvalue = false,
-        .function_name = false,
         .base = (ast_visitor_t){
             .visit_root = emit_root,
             // Declarations
@@ -479,15 +821,20 @@ llvm_codegen_t* llvm_codegen_create()
             // Definitions
             .visit_fn_def = emit_fn_def,
             // Expressions
+            .visit_array_lit = emit_array_lit,
+            .visit_array_slice = emit_array_slice,
+            .visit_array_subscript = emit_array_subscript,
             .visit_bin_op = emit_bin_op,
             .visit_bool_lit = emit_bool_lit,
             .visit_call_expr = emit_call_expr,
+            .visit_coercion_expr = emit_coercion_expr,
             .visit_float_lit = emit_float_lit,
             .visit_int_lit = emit_int_lit,
             .visit_null_lit = emit_null_lit,
             .visit_paren_expr = emit_paren_expr,
             .visit_ref_expr = emit_ref_expr,
             .visit_unary_op = emit_unary_op,
+            .visit_uninit_lit = emit_uninit_lit,
             // .visit_str_lit = emit_str_lit, FIXME:
             // Statements
             .visit_compound_stmt = emit_compound_stmt,
@@ -507,6 +854,12 @@ void llvm_codegen_destroy(llvm_codegen_t* llvm)
     if (llvm == nullptr)
         return;
 
+    // Clean up debug info (if initialized)
+    if (llvm->di_scopes != nullptr)
+        hash_table_destroy(llvm->di_scopes);
+    if (llvm->di_builder != nullptr)
+        LLVMDisposeDIBuilder(llvm->di_builder);
+
     // Clean up LLVM C API objects
     if (llvm->builder != nullptr)
         LLVMDisposeBuilder(llvm->builder);
@@ -520,13 +873,48 @@ void llvm_codegen_destroy(llvm_codegen_t* llvm)
     free(llvm);
 }
 
-void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, FILE* out)
+void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, const char* source_filename, FILE* out)
 {
+    // Initialize debug info
+    llvm->di_builder = LLVMCreateDIBuilder(llvm->module);
+
+    // Extract filename from path (get part after last '/')
+    const char* filename = strrchr(source_filename, '/');
+    filename = filename ? filename + 1 : source_filename;
+
+    // Extract directory (everything up to last '/')
+    const char* last_slash = strrchr(source_filename, '/');
+    size_t dir_len = last_slash ? (size_t)(last_slash - source_filename) : 0;
+    char* directory = dir_len > 0 ? strndup(source_filename, dir_len) : strdup(".");
+
+    // Create debug info file
+    llvm->di_file = LLVMDIBuilderCreateFile(llvm->di_builder, filename, strlen(filename), directory, strlen(directory));
+
+    // Create compile unit
+    llvm->di_compile_unit = LLVMDIBuilderCreateCompileUnit(llvm->di_builder, LLVMDWARFSourceLanguageC,
+        llvm->di_file, "ShiroC Compiler", 16, 0, "", 0, 0, "", 0, LLVMDWARFEmissionFull, 0, 0, 0, "", 0, "", 0);
+
+    llvm->di_scopes = hash_table_create(nullptr);
+    llvm->current_di_scope = nullptr;
+
     // Generate the LLVM IR into the module
     ast_visitor_visit(llvm, root, nullptr);
+
+    // Finalize debug info
+    LLVMDIBuilderFinalize(llvm->di_builder);
+
+    // Add module flags for debug info version (required by LLVM)
+    LLVMMetadataRef debug_info_version = LLVMValueAsMetadata(
+        LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 3, false));
+    LLVMMetadataRef dwarf_version = LLVMValueAsMetadata(
+        LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 4, false));
+    LLVMAddModuleFlag(llvm->module, LLVMModuleFlagBehaviorWarning, "Dwarf Version", 13, dwarf_version);
+    LLVMAddModuleFlag(llvm->module, LLVMModuleFlagBehaviorWarning, "Debug Info Version", 18, debug_info_version);
 
     // Print the module to a string
     char* ir_string = LLVMPrintModuleToString(llvm->module);
     fprintf(out, "%s", ir_string);
     LLVMDisposeMessage(ir_string);
+
+    free(directory);
 }

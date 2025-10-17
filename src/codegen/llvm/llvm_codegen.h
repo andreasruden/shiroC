@@ -11,6 +11,6 @@ llvm_codegen_t* llvm_codegen_create();
 
 void llvm_codegen_destroy(llvm_codegen_t* llvm);
 
-void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, FILE* out);
+void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, const char* source_filename, FILE* out);
 
 #endif

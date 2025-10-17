@@ -1,0 +1,47 @@
+//! run
+
+fn takes_view(range: view[i32]) -> i32 {
+    return range[0] + range[1];
+}
+
+fn main() -> i32 {
+    // Fixed-size array declaration
+    var fixed_array: [i32, 5] = uninit;
+
+    // Array indexing and assignment
+    var i = 0;
+    while (i < 5) {
+        fixed_array[i] = 10 * (i + 1);
+        i += 1;
+    }
+    fixed_array[0] = 0;
+
+    // Array element access
+    var sum = fixed_array[0] + fixed_array[1];
+
+    // Array slicing to create views
+    var slice1 = fixed_array[0..2];  // First 2 elements
+    var slice2 = fixed_array[1..4];  // Elements 1 through 3
+    var slice3 = slice2[1..];        // Elements 2 through 3
+
+    // Passing arrays to functions that take views
+    var result1 = takes_view(fixed_array);
+    var result2 = takes_view(slice1);
+
+    // Pointers to arrays
+    var ptr_fixed: [i32, 5]* = &fixed_array;  //! warning: "type annotation is superfluous"
+
+    // Array element access through pointer
+    (*ptr_fixed)[0] = 100;
+
+    // Getting raw pointer to array start
+    var raw_ptr: i32* = &fixed_array[0];  //! warning: "type annotation is superfluous"
+    raw_ptr[2] = 200;  // bounds unchecked
+
+    // Multi-dimensional arrays
+    var multi_dim = [[1, 2, 3], [4, 5, 6]];
+
+    var total = multi_dim[0][0] + multi_dim[1][2];
+
+    return 0;
+}
