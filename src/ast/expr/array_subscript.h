@@ -10,6 +10,7 @@ typedef struct ast_array_subscript
     ast_expr_t base;
     ast_expr_t* array;
     ast_expr_t* index;
+    bool bounds_safe;  // true if bounds were verified at compile-time
 } ast_array_subscript_t;
 
 ast_expr_t* ast_array_subscript_create(ast_expr_t* array, ast_expr_t* index);

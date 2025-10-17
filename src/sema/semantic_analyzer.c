@@ -224,13 +224,13 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
 }
 
 static bool analyze_fixed_size_array_index(semantic_analyzer_t* sema, void* node, ast_type_t* array_type,
-    ast_expr_t* index, bool is_end)
+    ast_expr_t* index, bool is_end, bool* bounds_safe)
 {
     // TODO: More sophisticated logic
     if (AST_KIND(index) != AST_EXPR_INT_LIT)
     {
-        semantic_context_add_error(sema->ctx, node, "invalid index");
-        return false;
+        *bounds_safe = false;
+        return true;
     }
 
     intptr_t index_val = ((ast_int_lit_t*)index)->value.as_signed - (is_end ? 1 : 0);
@@ -240,6 +240,8 @@ static bool analyze_fixed_size_array_index(semantic_analyzer_t* sema, void* node
             (long long)index_val, ast_type_string(array_type)));
         return false;
     }
+
+    *bounds_safe = true;
 
     return true;
 }
@@ -321,7 +323,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
         }
 
         if (slice->array->type->kind == AST_TYPE_ARRAY && !analyze_fixed_size_array_index(sema, slice,
-            slice->array->type, slice->start, false))
+            slice->array->type, slice->start, false, &slice->bounds_safe))
         {
             slice->base.type = ast_type_invalid();
             return;
@@ -345,7 +347,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
         }
 
         if (slice->array->type->kind == AST_TYPE_ARRAY && !analyze_fixed_size_array_index(sema, slice,
-            slice->array->type, slice->end, true))
+            slice->array->type, slice->end, true, &slice->bounds_safe))
         {
             slice->base.type = ast_type_invalid();
             return;
@@ -356,7 +358,8 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
     if (slice->start != nullptr && slice->end != nullptr)
     {
         // FIXME: dervied value should be added to the expr node when more complex constants can be handled
-        if (((ast_int_lit_t*)slice->start)->value.as_signed > ((ast_int_lit_t*)slice->end)->value.as_signed)
+        if (AST_KIND(slice->start) == AST_EXPR_INT_LIT && AST_KIND(slice->end) == AST_EXPR_INT_LIT &&
+            ((ast_int_lit_t*)slice->start)->value.as_signed > ((ast_int_lit_t*)slice->end)->value.as_signed)
         {
             semantic_context_add_error(sema->ctx, slice, "invalid slice bounds: start > end");
             slice->base.type = ast_type_invalid();
@@ -390,8 +393,11 @@ static void analyze_array_subscript(void* self_, ast_array_subscript_t* subscrip
     switch (subscript->array->type->kind)
     {
         case AST_TYPE_ARRAY:
-            if (!analyze_fixed_size_array_index(sema, subscript, subscript->array->type, subscript->index, false))
+            if (!analyze_fixed_size_array_index(sema, subscript, subscript->array->type, subscript->index, false,
+                &subscript->bounds_safe))
+            {
                 expr_type = ast_type_invalid();
+            }
             else
                 expr_type = subscript->array->type->data.array.element_type;
             break;
