@@ -2,6 +2,7 @@
 #include "ast/decl/param_decl.h"
 #include "ast/decl/var_decl.h"
 #include "ast/def/fn_def.h"
+#include "ast/expr/array_lit.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/call_expr.h"
 #include "ast/expr/int_lit.h"
@@ -228,54 +229,4 @@ TEST(ut_sema_fn_fixture_t, function_parameter_with_void_type_error)
     ASSERT_SEMA_ERROR(AST_NODE(foo), error_node, "cannot instantiate type 'void'");
 
     ast_node_destroy(foo);
-}
-
-// Verify types are considered equal when array type & sizes match
-TEST(ut_sema_fn_fixture_t, function_return_array_type_match)
-{
-    // fn foo(arr: [i32, 5]) -> [i32, 5] {
-    //     return arr;
-    // }
-    ast_def_t* fn_def = ast_fn_def_create_va(
-        "foo",
-        ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(5)),
-        ast_compound_stmt_create_va(
-            ast_return_stmt_create(ast_ref_expr_create("arr")),
-            nullptr
-        ),
-        ast_param_decl_create("arr", ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(5))),
-        nullptr
-    );
-
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(fn_def));
-    ASSERT_TRUE(res);
-    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
-
-    ast_node_destroy(fn_def);
-}
-
-// Verify types are considered not equal when array sizes mismatch
-TEST(ut_sema_fn_fixture_t, function_return_array_type_size_mismatch)
-{
-    // fn foo(arr: [i32, 3]) -> [i32, 5] {
-    //     return arr;
-    // }
-    ast_def_t* fn_def = ast_fn_def_create_va(
-        "foo",
-        ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(3)),
-        ast_compound_stmt_create_va(
-            ast_return_stmt_create(ast_ref_expr_create("arr")),
-            nullptr
-        ),
-        ast_param_decl_create("arr", ast_type_array_size_unresolved(ast_type_builtin(TYPE_I32), ast_int_lit_val(5))),
-        nullptr
-    );
-
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(fn_def));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "cannot coerce type"));
-
-    ast_node_destroy(fn_def);
 }

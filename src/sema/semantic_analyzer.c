@@ -86,6 +86,15 @@ static ast_coercion_kind_t check_coercion_with_expr(semantic_analyzer_t* sema, v
         coercion = COERCION_INVALID;
     }
 
+    // Disable assigning from arrays that are not array literals
+    // TODO: Figure out when/if we want to allow this; and how we want to differentiate copy/moving
+    if (from_expr->type->kind == AST_TYPE_ARRAY && AST_KIND(from_expr) != AST_EXPR_ARRAY_LIT &&
+        to_type->kind != AST_TYPE_VIEW)
+    {
+        error = "cannot assign array";
+        coercion = COERCION_INVALID;
+    }
+
     if (coercion == COERCION_INVALID)
     {
         semantic_context_add_error(sema->ctx, node, error ? error : ssprintf("cannot coerce type '%s' into type '%s",
