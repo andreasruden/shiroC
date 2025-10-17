@@ -14,7 +14,7 @@
 #include "parser/lexer.h"
 #include "llvm_type_utils.h"
 
-#include <llvm-c-19/llvm-c/Types.h>
+#include <llvm-c/Types.h>
 #include <llvm-c/Core.h>
 #include <llvm-c/DebugInfo.h>
 #include <stdlib.h>
@@ -367,8 +367,8 @@ static LLVMValueRef emit_ptr_to_array_elem(llvm_codegen_t* llvm, ast_type_t* arr
             };
             LLVMValueRef ptr_to_field = LLVMBuildInBoundsGEP2(llvm->builder, view_type, array_ptr, view_indices, 2,
                 "ptr_to_views_array_field");
-            LLVMValueRef loaded_ptr = LLVMBuildLoad2(llvm->builder, LLVMPointerType(elem_type, 0), ptr_to_field,
-                "array_ptr");
+            LLVMValueRef loaded_ptr = LLVMBuildLoad2(llvm->builder, LLVMPointerTypeInContext(llvm->context, 0),
+                ptr_to_field, "array_ptr");
             elem_ptr = LLVMBuildInBoundsGEP2(llvm->builder, elem_type, loaded_ptr, &index, 1, "elem_ptr");
             break;
         }
@@ -616,7 +616,59 @@ static void emit_coercion_expr(void* self_, ast_coercion_expr_t* coercion, void*
         return;
     }
 
-    // FIXME: implement more coercions
+    // Determine coercion kind
+    ast_coercion_kind_t kind = ast_type_can_coerce(from_type, to_type);
+
+    if (kind == COERCION_WIDEN || kind == COERCION_SIGNEDNESS)
+    {
+        // Integer coercion: WIDEN or SIGNEDNESS
+        LLVMValueRef value = nullptr;
+        ast_visitor_visit(llvm, coercion->expr, &value);
+
+        LLVMTypeRef target_llvm_type = llvm_type(llvm->context, to_type);
+        size_t from_size = ast_type_sizeof(from_type);
+        size_t to_size = ast_type_sizeof(to_type);
+
+        LLVMValueRef result;
+        if (from_size < to_size)
+        {
+            // Extend based on TARGET type signedness
+            // - If extending to unsigned (e.g., i32 -> usize), zero-extend
+            // - If extending to signed (e.g., u32 -> i64), use source signedness
+            // For COERCION_WIDEN (same signedness), this naturally does the right thing
+            // For COERCION_SIGNEDNESS to unsigned target, we zero-extend
+            if (kind == COERCION_SIGNEDNESS && !ast_type_is_signed(to_type))
+            {
+                // Converting to unsigned: always zero-extend (e.g., i32 -> usize)
+                result = LLVMBuildZExt(llvm->builder, value, target_llvm_type, "zext");
+            }
+            else if (ast_type_is_signed(from_type))
+            {
+                // Same signedness widening, or signed->signed: sign-extend
+                result = LLVMBuildSExt(llvm->builder, value, target_llvm_type, "sext");
+            }
+            else
+            {
+                // Unsigned source: zero-extend
+                result = LLVMBuildZExt(llvm->builder, value, target_llvm_type, "zext");
+            }
+        }
+        else if (from_size > to_size)
+        {
+            // Truncate
+            result = LLVMBuildTrunc(llvm->builder, value, target_llvm_type, "trunc");
+        }
+        else
+        {
+            // Same size, just signedness change (no-op in LLVM's type system)
+            result = value;
+        }
+
+        if (out_val != nullptr)
+            *out_val = result;
+        return;
+    }
+
     panic("coercion from %s to %s not implemented", ast_type_string(from_type), ast_type_string(to_type));
 }
 

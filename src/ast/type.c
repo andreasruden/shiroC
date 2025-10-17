@@ -93,7 +93,7 @@ ast_type_t* ast_type_pointer(ast_type_t* pointee)
     return pointer;
 }
 
-ast_type_t* ast_type_array(ast_type_t* element_type, intptr_t size)
+ast_type_t* ast_type_array(ast_type_t* element_type, size_t size)
 {
     const char* key = ssprintf("%p, %lld", element_type, (long long)size);
     ast_type_t* array = hash_table_find(fixed_array_cache, key);
@@ -172,19 +172,21 @@ ast_type_t* ast_type_from_token(token_t* tok)
     // Resolve token -> type
     switch (tok->type)
     {
-        case TOKEN_BOOL: return ast_type_builtin(TYPE_BOOL);
-        case TOKEN_VOID: return ast_type_builtin(TYPE_VOID);
-        case TOKEN_I8:   return ast_type_builtin(TYPE_I8);
-        case TOKEN_I16:  return ast_type_builtin(TYPE_I16);
-        case TOKEN_I32:  return ast_type_builtin(TYPE_I32);
-        case TOKEN_I64:  return ast_type_builtin(TYPE_I64);
-        case TOKEN_U8:   return ast_type_builtin(TYPE_U8);
-        case TOKEN_U16:  return ast_type_builtin(TYPE_U16);
-        case TOKEN_U32:  return ast_type_builtin(TYPE_U32);
-        case TOKEN_U64:  return ast_type_builtin(TYPE_U64);
-        case TOKEN_F32:  return ast_type_builtin(TYPE_F32);
-        case TOKEN_F64:  return ast_type_builtin(TYPE_F64);
-        case TOKEN_NULL: return ast_type_builtin(TYPE_NULL);
+        case TOKEN_BOOL:  return ast_type_builtin(TYPE_BOOL);
+        case TOKEN_VOID:  return ast_type_builtin(TYPE_VOID);
+        case TOKEN_I8:    return ast_type_builtin(TYPE_I8);
+        case TOKEN_I16:   return ast_type_builtin(TYPE_I16);
+        case TOKEN_I32:   return ast_type_builtin(TYPE_I32);
+        case TOKEN_I64:   return ast_type_builtin(TYPE_I64);
+        case TOKEN_ISIZE: return ast_type_builtin(TYPE_ISIZE);
+        case TOKEN_U8:    return ast_type_builtin(TYPE_U8);
+        case TOKEN_U16:   return ast_type_builtin(TYPE_U16);
+        case TOKEN_U32:   return ast_type_builtin(TYPE_U32);
+        case TOKEN_U64:   return ast_type_builtin(TYPE_U64);
+        case TOKEN_USIZE: return ast_type_builtin(TYPE_USIZE);
+        case TOKEN_F32:   return ast_type_builtin(TYPE_F32);
+        case TOKEN_F64:   return ast_type_builtin(TYPE_F64);
+        case TOKEN_NULL:  return ast_type_builtin(TYPE_NULL);
 
         case TOKEN_IDENTIFIER:
         return ast_type_user(tok->value);
@@ -205,10 +207,50 @@ bool ast_type_is_arithmetic(ast_type_t* type)
         case TYPE_I16:
         case TYPE_I32:
         case TYPE_I64:
+        case TYPE_ISIZE:
         case TYPE_U8:
         case TYPE_U16:
         case TYPE_U32:
         case TYPE_U64:
+        case TYPE_USIZE:
+        case TYPE_F32:
+        case TYPE_F64:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool ast_type_is_integer(ast_type_t* type)
+{
+    if (type->kind != AST_TYPE_BUILTIN)
+        return false;
+
+    switch (type->data.builtin.type)
+    {
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_ISIZE:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+        case TYPE_USIZE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool ast_type_is_real(ast_type_t* type)
+{
+    if (type->kind != AST_TYPE_BUILTIN)
+        return false;
+
+    switch (type->data.builtin.type)
+    {
         case TYPE_F32:
         case TYPE_F64:
             return true;
@@ -228,10 +270,57 @@ bool ast_type_is_signed(ast_type_t* type)
         case TYPE_I16:
         case TYPE_I32:
         case TYPE_I64:
+        case TYPE_ISIZE:
             return true;
         default:
             return false;
     }
+}
+
+size_t ast_type_sizeof(ast_type_t* type)
+{
+    // FIXME: Currently assumes target architecture == host architecture
+    // FIXME: Does not work for User defined types
+
+    switch (type->kind)
+    {
+        case AST_TYPE_BUILTIN:
+            switch (type->data.builtin.type)
+            {
+                case TYPE_BOOL: return 1;
+                case TYPE_I8: return 1;
+                case TYPE_I16: return 2;
+                case TYPE_I32: return 4;
+                case TYPE_I64: return 8;
+                case TYPE_ISIZE: return sizeof(void*);
+                case TYPE_U8: return 1;
+                case TYPE_U16: return 2;
+                case TYPE_U32: return 4;
+                case TYPE_U64: return 8;
+                case TYPE_USIZE: return sizeof(void*);
+                case TYPE_F32: return 4;
+                case TYPE_F64: return 8;
+                case TYPE_VOID:
+                case TYPE_NULL:
+                case TYPE_UNINIT:
+                case TYPE_END:
+                    panic("undefined sizeof for %d", type->data.builtin.type);
+            }
+            break;
+        case AST_TYPE_ARRAY:
+            panic_if(!type->data.array.size_known);
+            return ast_type_sizeof(type->data.array.element_type) * type->data.array.size;
+        case AST_TYPE_VIEW:
+            return 2 * sizeof(void*);
+        case AST_TYPE_POINTER:
+            return sizeof(void*);
+        case AST_TYPE_HEAP_ARRAY:
+        case AST_TYPE_USER:
+        case AST_TYPE_INVALID:
+            panic("Unhandled type kind %d", type->kind);
+    }
+
+    panic("Unreachable");
 }
 
 bool ast_type_has_equality(ast_type_t* type)
@@ -280,7 +369,25 @@ ast_coercion_kind_t ast_type_can_coerce(ast_type_t* from, ast_type_t* to)
     if (from->kind == AST_TYPE_BUILTIN && from->data.builtin.type == TYPE_UNINIT && to->kind == AST_TYPE_ARRAY)
         return COERCION_ALWAYS;
 
-    // FIXME: Add COERCION_WIDEN support
+    // Check integer specific coercions
+    if (ast_type_is_integer(from) && ast_type_is_integer(to))
+    {
+        if (ast_type_is_signed(from) != ast_type_is_signed(to))
+            return COERCION_SIGNEDNESS;
+
+        int from_sz = ast_type_sizeof(from);
+        int to_sz = ast_type_sizeof(to);
+        if (from_sz == to_sz)
+            return COERCION_EQUAL;
+        if (from_sz < to_sz)
+            return COERCION_WIDEN;
+    }
+
+    // Check floating point specific coercions
+    if (ast_type_is_real(from) && ast_type_is_real(to))
+    {
+
+    }
 
     return COERCION_INVALID;
 }
@@ -363,10 +470,12 @@ const char* type_to_str(type_t type)
         case TYPE_I16:    return "i16";
         case TYPE_I32:    return "i32";
         case TYPE_I64:    return "i64";
+        case TYPE_ISIZE:  return "isize";
         case TYPE_U8:     return "u8";
         case TYPE_U16:    return "u16";
         case TYPE_U32:    return "u32";
         case TYPE_U64:    return "u64";
+        case TYPE_USIZE:  return "usize";
         case TYPE_F32:    return "f32";
         case TYPE_F64:    return "f64";
         case TYPE_NULL:   return "null_t";

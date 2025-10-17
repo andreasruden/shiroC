@@ -258,8 +258,9 @@ static bool analyze_fixed_size_array_index(semantic_analyzer_t* sema, void* node
         return true;
     }
 
-    intptr_t index_val = ((ast_int_lit_t*)index)->value.as_signed - (is_end ? 1 : 0);
-    if (index_val < 0 || index_val >= array_type->data.array.size)
+    // Wrong index type, but let's just fix it when we rework this entirely
+    long long index_val = ((ast_int_lit_t*)index)->value.as_signed - (is_end ? 1 : 0);
+    if (index_val < 0 || index_val >= (long long)array_type->data.array.size)
     {
         semantic_context_add_error(sema->ctx, node, ssprintf("index '%lld' is out of bounds for '%s'",
             (long long)index_val, ast_type_string(array_type)));
@@ -297,7 +298,7 @@ static void analyze_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
     }
 
     lit->base.is_lvalue = false;
-    lit->base.type = ast_type_array(element_type, (intptr_t)size);
+    lit->base.type = ast_type_array(element_type, size);
 }
 
 static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out_)
@@ -331,21 +332,12 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
             return;
     }
 
-    // Verify type & bounds of start
+    // Visit start & verify bounds if possible
     if (slice->start != nullptr)
     {
         ast_visitor_visit(sema, slice->start, out_);
         if (slice->start->type == ast_type_invalid())
             return;  // don't propagate errors
-
-        // FIXME: Here it should be enough to be convertible to some integer type
-        if (slice->start->type != ast_type_builtin(TYPE_I32))
-        {
-            semantic_context_add_error(sema->ctx, slice, ssprintf("type '%s' is not usable as slice bounds",
-                ast_type_string(slice->start->type)));
-            slice->base.type = ast_type_invalid();
-            return;
-        }
 
         if (slice->array->type->kind == AST_TYPE_ARRAY && !analyze_fixed_size_array_index(sema, slice,
             slice->array->type, slice->start, false, &slice->bounds_safe))
@@ -355,21 +347,12 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
         }
     }
 
-    // Verify type & bounds of end
+    // Visit end & verify bounds if possible
     if (slice->end != nullptr)
     {
         ast_visitor_visit(sema, slice->end, out_);
         if (slice->end->type == ast_type_invalid())
             return;  // don't propagate errors
-
-        // FIXME: Here it should be enough to be convertible to some integer type
-        if (slice->end->type != ast_type_builtin(TYPE_I32))
-        {
-            semantic_context_add_error(sema->ctx, slice, ssprintf("type '%s' is not usable as slice bounds",
-                ast_type_string(slice->end->type)));
-            slice->base.type = ast_type_invalid();
-            return;
-        }
 
         if (slice->array->type->kind == AST_TYPE_ARRAY && !analyze_fixed_size_array_index(sema, slice,
             slice->array->type, slice->end, true, &slice->bounds_safe))
@@ -392,6 +375,40 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
         }
     }
 
+    // Type coercion for start
+    if (slice->start != nullptr)
+    {
+        ast_coercion_kind_t coercion = ast_type_can_coerce(slice->start->type, ast_type_builtin(TYPE_USIZE));
+        if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS && coercion != COERCION_WIDEN &&
+            coercion != COERCION_SIGNEDNESS)
+        {
+            semantic_context_add_error(sema->ctx, slice, ssprintf("type '%s' is not usable for bounds",
+                ast_type_string(slice->start->type)));
+            slice->base.type = ast_type_invalid();
+            return;
+        }
+
+        if (coercion != COERCION_EQUAL)
+            slice->start = ast_coercion_expr_create(slice->start, ast_type_builtin(TYPE_USIZE));
+    }
+
+    // Type coercion for end
+    if (slice->end != nullptr)
+    {
+        ast_coercion_kind_t coercion = ast_type_can_coerce(slice->end->type, ast_type_builtin(TYPE_USIZE));
+        if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS && coercion != COERCION_WIDEN &&
+            coercion != COERCION_SIGNEDNESS)
+        {
+            semantic_context_add_error(sema->ctx, slice, ssprintf("type '%s' is not usable for bounds",
+                ast_type_string(slice->end->type)));
+            slice->base.type = ast_type_invalid();
+            return;
+        }
+
+        if (coercion != COERCION_EQUAL)
+            slice->end = ast_coercion_expr_create(slice->end, ast_type_builtin(TYPE_USIZE));
+    }
+
     slice->base.is_lvalue = false;
     slice->base.type = ast_type_view(element_type);
 }
@@ -405,14 +422,6 @@ static void analyze_array_subscript(void* self_, ast_array_subscript_t* subscrip
         return;  // don't propagate errors
 
     ast_visitor_visit(sema, subscript->index, out_);
-    // FIXME: Here it should be enough to be convertible to some "isize" type
-    if (subscript->index->type != ast_type_builtin(TYPE_I32))
-    {
-        semantic_context_add_error(sema->ctx, subscript, ssprintf("type '%s' is not usable as an index",
-            ast_type_string(subscript->index->type)));
-        subscript->base.type = ast_type_invalid();
-        return;
-    }
 
     ast_type_t* expr_type;
     switch (subscript->array->type->kind)
@@ -441,6 +450,22 @@ static void analyze_array_subscript(void* self_, ast_array_subscript_t* subscrip
             expr_type = ast_type_invalid();
             break;
     }
+
+    ast_coercion_kind_t coercion = ast_type_can_coerce(subscript->index->type, ast_type_builtin(TYPE_USIZE));
+
+    // We are very permissible with implicit conversion for array index because array index are bounds checked
+    // at runtime, and the guard `(usize)any_integer < size` prevents any invalid access
+    if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS && coercion != COERCION_WIDEN &&
+        coercion != COERCION_SIGNEDNESS)
+    {
+        semantic_context_add_error(sema->ctx, subscript, ssprintf("type '%s' is not usable as an index",
+            ast_type_string(subscript->index->type)));
+        subscript->base.type = ast_type_invalid();
+        return;
+    }
+
+    if (coercion != COERCION_EQUAL)
+        subscript->index = ast_coercion_expr_create(subscript->index, ast_type_builtin(TYPE_USIZE));
 
     subscript->base.is_lvalue = true;
     subscript->base.type = expr_type;

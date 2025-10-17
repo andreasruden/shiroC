@@ -32,6 +32,7 @@ static keyword_t lexer_keywords[] =
     {"i16", TOKEN_I16},
     {"i32", TOKEN_I32},
     {"i64", TOKEN_I64},
+    {"isize", TOKEN_ISIZE},
     {"null", TOKEN_NULL},
     {"return", TOKEN_RETURN},
     {"true", TOKEN_TRUE},
@@ -39,6 +40,7 @@ static keyword_t lexer_keywords[] =
     {"u16", TOKEN_U16},
     {"u32", TOKEN_U32},
     {"u64", TOKEN_U64},
+    {"usize", TOKEN_USIZE},
     {"uninit", TOKEN_UNINIT},
     {"var", TOKEN_VAR},
     {"view", TOKEN_VIEW},
@@ -98,10 +100,12 @@ const char* token_type_str(token_type_t type)
         case TOKEN_I16: return "i16";
         case TOKEN_I32: return "i32";
         case TOKEN_I64: return "i64";
+        case TOKEN_ISIZE: return "isize";
         case TOKEN_U8: return "u8";
         case TOKEN_U16: return "u16";
         case TOKEN_U32: return "u32";
         case TOKEN_U64: return "u64";
+        case TOKEN_USIZE: return "usize";
         case TOKEN_RETURN: return "return";
         case TOKEN_IDENTIFIER: return "identifier";
         case TOKEN_INTEGER: return "number";

@@ -47,5 +47,24 @@ fn main() -> i32 {
     var total = multi_dim[0][0] + multi_dim[1][2];
     printI32(total);  //! stdout: "7"
 
+    // Array indexing is done with usize but implicit conversion is liberal for indexing
+    var arr: [i32, 10] = uninit;
+
+    // COERCION_SIGNEDNESS: i64 -> usize (signed -> unsigned, same size on 64-bit)
+    var idx_i64 = 5i64;
+    arr[idx_i64] = 100;
+
+    // COERCION_WIDEN: u8 -> usize
+    var idx_u8 = 3u8;
+    arr[idx_u8] = 200;
+
+    // COERCION_SIGNEDNESS + WIDEN: i16 -> usize
+    var idx_i16 = 7i16;
+    arr[idx_i16] = 300;
+
+    printI32(arr[3]);  //! stdout: "200"
+    printI32(arr[5]);  //! stdout: "100"
+    printI32(arr[7]);  //! stdout: "300"
+
     return 0;
 }

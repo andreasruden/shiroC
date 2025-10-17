@@ -2,6 +2,7 @@
 #define AST_TYPE__H
 
 #include <stdint.h>
+#include <stddef.h>
 
 typedef enum type
 {
@@ -11,10 +12,12 @@ typedef enum type
     TYPE_I16,
     TYPE_I32,
     TYPE_I64,
+    TYPE_ISIZE,
     TYPE_U8,
     TYPE_U16,
     TYPE_U32,
     TYPE_U64,
+    TYPE_USIZE,
     TYPE_F32,
     TYPE_F64,
     TYPE_NULL,
@@ -40,6 +43,7 @@ typedef enum ast_coercion_kind
     COERCION_EQUAL,         // no coercion needed, already equal
     COERCION_ALWAYS,        // coercion is always OK, e.g. array -> view
     COERCION_WIDEN,         // smaller int/float -> bigger int/float of same signedness
+    COERCION_SIGNEDNESS,    // integer changes sign, can also include widening
     COERCION_INIT,          // only valid during initialization
 } ast_coercion_kind_t;
 
@@ -78,7 +82,7 @@ struct ast_type
             union
             {
                 ast_expr_t* size_expr; // result of parsing (NOTE: before SEMA array types never compare equally)
-                intptr_t size;         // calcualted by SEMA from size_expr
+                size_t size;           // calcualted by SEMA from size_expr
             };
             char* str_repr;
         } array;
@@ -107,7 +111,7 @@ ast_type_t* ast_type_user(const char* type_name);
 ast_type_t* ast_type_pointer(ast_type_t* pointee);
 
 // Returned instance should not be edited.
-ast_type_t* ast_type_array(ast_type_t* element_type, intptr_t size);
+ast_type_t* ast_type_array(ast_type_t* element_type, size_t size);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_array_size_unresolved(ast_type_t* element_type, ast_expr_t* size_expr);
@@ -126,7 +130,13 @@ ast_type_t* ast_type_from_token(token_t* tok);
 
 bool ast_type_is_arithmetic(ast_type_t* type);
 
+bool ast_type_is_integer(ast_type_t* type);
+
+bool ast_type_is_real(ast_type_t* type);
+
 bool ast_type_is_signed(ast_type_t* type);
+
+size_t ast_type_sizeof(ast_type_t* type);
 
 bool ast_type_has_equality(ast_type_t* type);
 

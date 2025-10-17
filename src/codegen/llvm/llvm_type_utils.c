@@ -3,7 +3,7 @@
 #include "ast/type.h"
 #include "common/debug/panic.h"
 
-#include <llvm-c-19/llvm-c/Types.h>
+#include <llvm-c/Types.h>
 #include <llvm-c/Core.h>
 
 LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
@@ -32,6 +32,8 @@ LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
                     return LLVMInt32TypeInContext(ctx);
                 case TYPE_I64:
                 case TYPE_U64:
+                case TYPE_ISIZE:  // FIXME: See FIXME in ast_type_sizeof
+                case TYPE_USIZE:
                     return LLVMInt64TypeInContext(ctx);
                 case TYPE_F32:
                     return LLVMFloatTypeInContext(ctx);
@@ -41,8 +43,8 @@ LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
                     // TODO: NULL type should have been coerced to a pointer type during semantic analysis.
                     // This is a workaround - we should fix the semantic analyzer to properly coerce null
                     // in all contexts (especially in comparisons).
-                    // For now, treat it as a generic pointer (void*)
-                    return LLVMPointerType(LLVMVoidTypeInContext(ctx), 0);
+                    // For now, treat it as a generic pointer (opaque)
+                    return LLVMPointerTypeInContext(ctx, 0);
                 case TYPE_UNINIT:
                 case TYPE_END:
                     panic("Unsupported builtin type for LLVM codegen: %d", type->data.builtin.type);
@@ -51,8 +53,7 @@ LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
         }
         case AST_TYPE_POINTER:
         {
-            LLVMTypeRef pointee_type = llvm_type(ctx, type->data.pointer.pointee);
-            return LLVMPointerType(pointee_type, 0);
+            return LLVMPointerTypeInContext(ctx, 0);
         }
         case AST_TYPE_ARRAY:
         {
@@ -62,7 +63,7 @@ LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
         case AST_TYPE_VIEW:
         {
             LLVMTypeRef size_type = LLVMInt64TypeInContext(ctx);  // FIXME: word-sized & unsigned
-            LLVMTypeRef element_type = LLVMPointerType(llvm_type(ctx, type->data.view.element_type), 0);
+            LLVMTypeRef element_type = LLVMPointerTypeInContext(ctx, 0);
             LLVMTypeRef fields[] = { size_type, element_type };
             return LLVMStructTypeInContext(ctx, fields, 2, false);
         }

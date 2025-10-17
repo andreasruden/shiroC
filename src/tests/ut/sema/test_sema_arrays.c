@@ -395,7 +395,7 @@ TEST(ut_sema_array_fixture_t, array_slice_bounds_must_be_integer)
         nullptr
     );
 
-    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "not usable as slice bounds");
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "not usable for bounds");
 
     ast_node_destroy(block);
 }
