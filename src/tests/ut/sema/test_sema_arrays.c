@@ -14,6 +14,7 @@
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/return_stmt.h"
 #include "ast/type.h"
+#include "sema/decl_collector.h"
 #include "sema/semantic_analyzer.h"
 #include "test_runner.h"
 #include "sema_shared.h"
@@ -22,6 +23,7 @@ TEST_FIXTURE(ut_sema_array_fixture_t)
 {
     semantic_analyzer_t* sema;
     semantic_context_t* ctx;
+    decl_collector_t* collector;
     init_tracker_t* init_tracker;  // to allow us analyzing smaller units than functions
 };
 
@@ -30,6 +32,9 @@ TEST_SETUP(ut_sema_array_fixture_t)
     fix->ctx = semantic_context_create();
     ASSERT_NEQ(nullptr, fix->ctx);
 
+    fix->collector = decl_collector_create(fix->ctx);
+    ASSERT_NEQ(nullptr, fix->collector);
+
     fix->sema = semantic_analyzer_create(fix->ctx);
     ASSERT_NEQ(nullptr, fix->sema);
 }
@@ -37,6 +42,7 @@ TEST_SETUP(ut_sema_array_fixture_t)
 TEST_TEARDOWN(ut_sema_array_fixture_t)
 {
     semantic_analyzer_destroy(fix->sema);
+    decl_collector_destroy(fix->collector);
     semantic_context_destroy(fix->ctx);
 }
 
@@ -580,7 +586,7 @@ TEST(ut_sema_array_fixture_t, array_to_array_assignment_error)
         body,
         nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(fn_def), error_node, "cannot assign array");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(fn_def), error_node, "cannot assign array");
 
     ast_node_destroy(fn_def);
 }

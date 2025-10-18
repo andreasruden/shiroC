@@ -1,21 +1,55 @@
 #include "decl_collector.h"
 
 #include "ast/decl/param_decl.h"
+#include "ast/def/class_def.h"
 #include "ast/def/fn_def.h"
+#include "ast/def/method_def.h"
 #include "ast/type.h"
 #include "ast/visitor.h"
+#include "common/containers/hash_table.h"
 #include "common/containers/vec.h"
+#include "common/debug/panic.h"
 #include "common/util/ssprintf.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
 #include "sema/symbol_table.h"
 #include "sema/type_expr_solver.h"
+#include <bits/types/cookie_io_functions_t.h>
+#include <stddef.h>
 
 struct decl_collector
 {
     ast_visitor_t base;
     semantic_context_t* ctx;  // decl_collector does not own ctx
+    symbol_t* current_class;
 };
+
+void collect_class_def(void* self_, ast_class_def_t* class_def, void* out_)
+{
+    (void)out_;
+    decl_collector_t* collector = self_;
+
+    symbol_t* prev_symbol;
+    if ((prev_symbol = symbol_table_lookup(collector->ctx->global, class_def->base.name)) != nullptr)
+    {
+        semantic_context_add_error(collector->ctx, class_def,
+            ssprintf("redeclaration of name '%s', previously from <%s:%d>", class_def->base.name,
+                prev_symbol->ast->source_begin.filename, prev_symbol->ast->source_begin.line));
+        return;
+    }
+
+    symbol_t* class_symb = symbol_create(class_def->base.name, SYMBOL_CLASS, class_def);
+    symbol_table_insert(collector->ctx->global, class_symb);
+    collector->current_class = class_symb;
+
+    for (size_t i = 0; i < vec_size(&class_def->members); ++i)
+        ast_visitor_visit(collector, vec_get(&class_def->members, i), nullptr);
+
+    for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
+        ast_visitor_visit(collector, vec_get(&class_def->methods, i), nullptr);
+
+    collector->current_class = nullptr;
+}
 
 void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 {
@@ -26,7 +60,7 @@ void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     if ((prev_symbol = symbol_table_lookup(collector->ctx->global, fn_def->base.name)) != nullptr)
     {
         semantic_context_add_error(collector->ctx, fn_def,
-            ssprintf("redeclaration of '%s', previously from <%s:%d>", fn_def->base.name,
+            ssprintf("redeclaration of name '%s', previously from <%s:%d>", fn_def->base.name,
                 prev_symbol->ast->source_begin.filename, prev_symbol->ast->source_begin.line));
         return;
     }
@@ -48,6 +82,75 @@ void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     symbol_table_insert(collector->ctx->current, symbol);
 }
 
+void collect_member_decl(void* self_, ast_member_decl_t* member, void* out_)
+{
+    (void)out_;
+    decl_collector_t* collector = self_;
+    panic_if(collector->current_class == nullptr);
+
+    // TODO: Parser should not allow this construct if we are commited to not allow this
+    //       reason against: decl collector would need to determine the type, not its responsibility
+    //       counter-arg:    yes, but we need a constant expr interpreter anyway, it could just use that
+    if (member->base.type == nullptr)
+    {
+        semantic_context_add_error(collector->ctx, member, "type annotation is mandatory for class members (TODO)");
+        return;
+    }
+
+    member->base.type = type_expr_solver_solve(collector->ctx, member->base.type, member);
+    if (member->base.type == ast_type_invalid())
+        return;
+
+    // Verify class does not already contain member by given name
+    // TODO: overloading
+    ast_member_decl_t* prev_def = hash_table_find(&collector->current_class->data.class.members, member->base.name);
+    if (prev_def != nullptr)
+    {
+        semantic_context_add_error(collector->ctx, member,
+            ssprintf("redeclaration of '%s', previously from <%s:%d>", member->base.name,
+                AST_NODE(prev_def)->source_begin.filename, AST_NODE(prev_def)->source_begin.line));
+        return;
+    }
+
+    hash_table_insert(&collector->current_class->data.class.members, member->base.name, member);
+}
+
+void collect_method_def(void* self_, ast_method_def_t* method, void* out_)
+{
+    (void)out_;
+    decl_collector_t* collector = self_;
+    panic_if(collector->current_class == nullptr);
+
+    // Verify class does not already contain method by given name
+    // TODO: overloading
+    ast_method_def_t* prev_def = hash_table_find(&collector->current_class->data.class.methods, method->base.base.name);
+    if (prev_def != nullptr)
+    {
+        semantic_context_add_error(collector->ctx, method,
+            ssprintf("redeclaration of '%s', previously from <%s:%d>", method->base.base.name,
+                AST_NODE(prev_def)->source_begin.filename, AST_NODE(prev_def)->source_begin.line));
+        return;
+    }
+
+    // Resolve return type
+    if (method->base.return_type == nullptr)
+        method->base.return_type = ast_type_builtin(TYPE_VOID);
+    else
+    {
+        method->base.return_type = type_expr_solver_solve(collector->ctx, method->base.return_type, method);
+        if (method->base.return_type == ast_type_invalid())
+            return;
+    }
+
+    // Resolve parameter types
+    for (size_t i = 0; i < vec_size(&method->base.params); ++i)
+        ast_visitor_visit(collector, vec_get(&method->base.params, i), nullptr);
+
+    hash_table_insert(&collector->current_class->data.class.methods, method->base.base.name, method);
+
+    // TODO: Warning if method & member share name?
+}
+
 void collect_param_decl(void* self_, ast_param_decl_t* param_decl, void* out_)
 {
     decl_collector_t* collector = self_;
@@ -57,7 +160,8 @@ void collect_param_decl(void* self_, ast_param_decl_t* param_decl, void* out_)
     if (param_decl->type == ast_type_invalid())
         return;
 
-    vec_push(&fn->data.function.parameters, param_decl);
+    if (fn != nullptr)
+        vec_push(&fn->data.function.parameters, param_decl);
 }
 
 decl_collector_t* decl_collector_create(semantic_context_t* ctx)
@@ -69,7 +173,10 @@ decl_collector_t* decl_collector_create(semantic_context_t* ctx)
     };
 
     ast_visitor_init(&collector->base);
+    collector->base.visit_class_def = collect_class_def;
     collector->base.visit_fn_def = collect_fn_def;
+    collector->base.visit_member_decl = collect_member_decl;
+    collector->base.visit_method_def = collect_method_def;
     collector->base.visit_param_decl = collect_param_decl;
 
     return collector;

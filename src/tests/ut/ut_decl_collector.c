@@ -1,5 +1,8 @@
-#include "ast/def/fn_def.h"
+#include "ast/decl/member_decl.h"
 #include "ast/decl/param_decl.h"
+#include "ast/def/class_def.h"
+#include "ast/def/fn_def.h"
+#include "ast/def/method_def.h"
 #include "ast/expr/int_lit.h"
 #include "ast/node.h"
 #include "ast/root.h"
@@ -79,7 +82,7 @@ TEST(decl_collector_fixture_t, collect_redeclaration_error)
     ASSERT_EQ(fn2, node);
     ASSERT_NEQ(nullptr, node->errors);
     compiler_error_t* error = vec_get(node->errors, 0);
-    ASSERT_EQ("redeclaration of 'mul', previously from <test.c:42>", error->description);
+    ASSERT_EQ("redeclaration of name 'mul', previously from <test.c:42>", error->description);
 
     ast_node_destroy(root);
 }
@@ -130,6 +133,87 @@ TEST(decl_collector_fixture_t, collect_function_with_array_ptr_and_view)
     ASSERT_EQ(1, vec_size(&sym->data.function.parameters));
     ASSERT_EQ(ast_type_pointer(ast_type_array(ast_type_builtin(TYPE_I32), 5)),
         ((ast_param_decl_t*)vec_get(&sym->data.function.parameters, 0))->type);
+
+    ast_node_destroy(root);
+}
+
+TEST(decl_collector_fixture_t, collect_class_with_members_and_methods)
+{
+    // Build AST: class Point { x: i32, y: i32, fn getX() -> i32 }
+    ast_def_t* class = ast_class_def_create_va("Point",
+        ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
+        ast_member_decl_create("y", ast_type_builtin(TYPE_I32), nullptr),
+        ast_method_def_create_va("getX", ast_type_builtin(TYPE_I32), nullptr, nullptr),
+        nullptr);
+    ast_root_t* root = ast_root_create_va(class, nullptr);
+
+    bool result = decl_collector_run(fix->collector, AST_NODE(root));
+    ASSERT_TRUE(result);
+
+    // Verify class symbol was added to global scope
+    symbol_t* sym = symbol_table_lookup(fix->ctx->global, "Point");
+    ASSERT_NEQ(nullptr, sym);
+    ASSERT_EQ(SYMBOL_CLASS, sym->kind);
+    ASSERT_EQ("Point", sym->name);
+
+    // Verify members were collected into the class symbol
+    ast_member_decl_t* member_x = hash_table_find(&sym->data.class.members, "x");
+    ASSERT_NEQ(nullptr, member_x);
+    ASSERT_EQ("x", member_x->base.name);
+    ASSERT_EQ(ast_type_builtin(TYPE_I32), member_x->base.type);
+
+    ast_member_decl_t* member_y = hash_table_find(&sym->data.class.members, "y");
+    ASSERT_NEQ(nullptr, member_y);
+    ASSERT_EQ("y", member_y->base.name);
+    ASSERT_EQ(ast_type_builtin(TYPE_I32), member_y->base.type);
+
+    // Verify methods were collected into the class symbol
+    ast_method_def_t* method_getX = hash_table_find(&sym->data.class.methods, "getX");
+    ASSERT_NEQ(nullptr, method_getX);
+    ASSERT_EQ("getX", method_getX->base.base.name);
+    ASSERT_EQ(ast_type_builtin(TYPE_I32), method_getX->base.return_type);
+
+    ast_node_destroy(root);
+}
+
+TEST(decl_collector_fixture_t, duplicate_class_names)
+{
+    ast_def_t* error_node = ast_class_def_create_va("Point", nullptr);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Point",
+            ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
+            nullptr),
+        error_node,
+        nullptr);
+
+    bool result = decl_collector_run(fix->collector, AST_NODE(root));
+    ASSERT_FALSE(result);
+
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* node = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, node);
+
+    ast_node_destroy(root);
+}
+
+TEST(decl_collector_fixture_t, duplicate_member_names_in_class)
+{
+    ast_decl_t* error_node = ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Point",
+            ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
+            error_node,
+            nullptr),
+        nullptr);
+
+    bool result = decl_collector_run(fix->collector, AST_NODE(root));
+    ASSERT_FALSE(result);
+
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* node = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, node);
 
     ast_node_destroy(root);
 }

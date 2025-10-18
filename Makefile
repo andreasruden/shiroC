@@ -73,6 +73,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/expr/null_lit.c \
 	$(SRC_DIR)/ast/expr/paren_expr.c \
 	$(SRC_DIR)/ast/expr/ref_expr.c \
+	$(SRC_DIR)/ast/expr/self_expr.c \
 	$(SRC_DIR)/ast/expr/str_lit.c \
 	$(SRC_DIR)/ast/expr/unary_op.c \
 	$(SRC_DIR)/ast/expr/uninit_lit.c \
@@ -112,6 +113,7 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/parser/test_parser_pointers.c \
 	$(UT_SRC_DIR)/parser/test_parser_statements.c \
 	$(UT_SRC_DIR)/sema/test_sema_arrays.c \
+	$(UT_SRC_DIR)/sema/test_sema_classes.c \
 	$(UT_SRC_DIR)/sema/test_sema_control_flow.c \
 	$(UT_SRC_DIR)/sema/test_sema_expressions.c \
 	$(UT_SRC_DIR)/sema/test_sema_functions.c \

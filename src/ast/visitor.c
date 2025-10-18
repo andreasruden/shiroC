@@ -171,6 +171,13 @@ static void ast_visitor_visit_ref_expr(void* self_, ast_ref_expr_t* ref_expr, vo
     (void)out_;
 }
 
+static void ast_visitor_visit_self_expr(void* self_, ast_self_expr_t* self_expr, void* out_)
+{
+    (void)self_;
+    (void)self_expr;
+    (void)out_;
+}
+
 static void ast_visitor_visit_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt, void* out_)
 {
     for (size_t i = 0; i < vec_size(&compound_stmt->inner_stmts); ++i)
@@ -236,6 +243,7 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_null_lit = ast_visitor_visit_null_lit,
         .visit_paren_expr = ast_visitor_visit_paren_expr,
         .visit_ref_expr = ast_visitor_visit_ref_expr,
+        .visit_self_expr = ast_visitor_visit_self_expr,
         .visit_str_lit = ast_visitor_visit_str_lit,
         .visit_unary_op = ast_visitor_visit_unary_op,
         .visit_uninit_lit = ast_visitor_visit_uninit_lit,

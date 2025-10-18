@@ -1,6 +1,7 @@
 #ifndef SEMA_SEMANTIC_ANALYZER__H
 #define SEMA_SEMANTIC_ANALYZER__H
 
+#include "ast/def/class_def.h"
 #include "ast/visitor.h"
 #include "sema/init_tracker.h"
 #include "sema/semantic_context.h"
@@ -16,7 +17,9 @@ typedef struct semantic_analyzer
 {
     ast_visitor_t base;
     semantic_context_t* ctx;  // decl_collector does not own ctx
+    ast_class_def_t* current_class;
     ast_fn_def_t* current_function;
+    ast_method_def_t* current_method;
     symbol_table_t* current_function_scope;
     init_tracker_t* init_tracker;
     bool is_lvalue_context;

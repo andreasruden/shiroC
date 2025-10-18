@@ -7,12 +7,14 @@
 #include "ast/expr/call_expr.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/ref_expr.h"
+#include "ast/expr/self_expr.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/return_stmt.h"
 #include "ast/type.h"
 #include "common/containers/vec.h"
+#include "sema/decl_collector.h"
 #include "sema/semantic_analyzer.h"
 #include "sema/symbol.h"
 #include "sema/symbol_table.h"
@@ -23,12 +25,16 @@ TEST_FIXTURE(ut_sema_fn_fixture_t)
 {
     semantic_analyzer_t* sema;
     semantic_context_t* ctx;
+    decl_collector_t* collector;
 };
 
 TEST_SETUP(ut_sema_fn_fixture_t)
 {
     fix->ctx = semantic_context_create();
     ASSERT_NEQ(nullptr, fix->ctx);
+
+    fix->collector = decl_collector_create(fix->ctx);
+    ASSERT_NEQ(nullptr, fix->collector);
 
     fix->sema = semantic_analyzer_create(fix->ctx);
     ASSERT_NEQ(nullptr, fix->sema);
@@ -37,6 +43,7 @@ TEST_SETUP(ut_sema_fn_fixture_t)
 TEST_TEARDOWN(ut_sema_fn_fixture_t)
 {
     semantic_analyzer_destroy(fix->sema);
+    decl_collector_destroy(fix->collector);
     semantic_context_destroy(fix->ctx);
 }
 
@@ -49,9 +56,7 @@ TEST(ut_sema_fn_fixture_t, assume_function_parameter_is_initialized)
             nullptr),
     param, nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_TRUE(res);
-    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(foo_fn));
 
     ast_node_destroy(foo_fn);
 }
@@ -67,7 +72,7 @@ TEST(ut_sema_fn_fixture_t, call_expr_must_be_ref_function_symbol)
         nullptr
     ), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not callable");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "not callable");
 
     ast_node_destroy(foo_fn);
 }
@@ -99,11 +104,7 @@ TEST(ut_sema_fn_fixture_t, call_expr_arg_count_mismatch_error)
         nullptr
     ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    compiler_error_t* error = vec_get(AST_NODE(error_node)->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "takes 2 arguments"));
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "takes 2 arguments");
 
     ast_node_destroy(foo_fn);
     ast_node_destroy(bar_fn);
@@ -132,11 +133,7 @@ TEST(ut_sema_fn_fixture_t, call_expr_arg_type_mismatch_error)
         nullptr
     ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    compiler_error_t* error = vec_get(AST_NODE(error_node)->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "cannot coerce type"));
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "cannot coerce type");
 
     ast_node_destroy(foo_fn);
     ast_node_destroy(bar_fn);
@@ -179,9 +176,7 @@ TEST(ut_sema_fn_fixture_t, assignment_to_parameter_allowed)
         nullptr
     ), ast_param_decl_create("param", ast_type_builtin(TYPE_I32)), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_TRUE(res);
-    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(foo_fn));
 
     ast_node_destroy(foo_fn);
 }
@@ -226,7 +221,25 @@ TEST(ut_sema_fn_fixture_t, function_parameter_with_void_type_error)
     ast_decl_t* error_node = ast_param_decl_create("x", ast_type_builtin(TYPE_VOID));
     ast_def_t* foo = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_empty(), error_node, nullptr );
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo), error_node, "cannot instantiate type 'void'");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo), error_node, "cannot instantiate type 'void'");
 
     ast_node_destroy(foo);
+}
+
+TEST(ut_sema_fn_fixture_t, self_not_valid_in_function_context)
+{
+    // Test that using `self` in a regular function produces an error
+    ast_expr_t* error_node = ast_self_expr_create(false);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_fn_def_create_va("main", nullptr,
+            ast_compound_stmt_create_va(
+                ast_expr_stmt_create(error_node),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "not valid in");
+
+    ast_node_destroy(root);
 }

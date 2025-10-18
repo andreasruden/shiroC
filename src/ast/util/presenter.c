@@ -235,7 +235,7 @@ static void present_method_call(void* self_, ast_method_call_t* method_call, voi
 
     ast_visitor_visit(self, method_call->instance, out);
     string_append_cstr(out, ".");
-    string_append_cstr(out, method_call->member_name);
+    string_append_cstr(out, method_call->method_name);
     string_append_cstr(out, "(");
     size_t args = vec_size(&method_call->arguments);
     for (size_t i = 0; i < args; ++i)
@@ -300,6 +300,16 @@ static void present_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
     PRELUDE
 
     string_append_cstr(out, ssprintf("%s", ref_expr->name));
+}
+
+static void present_self_expr(void* self_, ast_self_expr_t* self_expr, void* out_)
+{
+    PRELUDE
+
+    if (self_expr->implicit)
+        string_append_cstr(out, "self (implicit)");
+    else
+        string_append_cstr(out, "self");
 }
 
 static void present_compound_stmt(void* self_, ast_compound_stmt_t* compound_stmt, void* out_)
@@ -384,6 +394,7 @@ ast_presenter_t* ast_presenter_create()
             .visit_null_lit = present_null_lit,
             .visit_paren_expr = present_paren_expr,
             .visit_ref_expr = present_ref_expr,
+            .visit_self_expr = present_self_expr,
             .visit_str_lit = present_str_lit,
             .visit_unary_op = present_unary_op,
             .visit_uninit_lit = present_uninit_lit,

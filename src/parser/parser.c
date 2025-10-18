@@ -23,6 +23,7 @@
 #include "ast/expr/null_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
+#include "ast/expr/self_expr.h"
 #include "ast/expr/str_lit.h"
 #include "ast/expr/unary_op.h"
 #include "ast/expr/uninit_lit.h"
@@ -425,6 +426,14 @@ static ast_expr_t* parse_member_access(parser_t* parser, ast_expr_t* instance)
     return ast_member_access_create(instance, member->value);
 }
 
+static ast_expr_t* parse_self_expr(parser_t* parser)
+{
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_SELF))
+        return nullptr;
+
+    return ast_self_expr_create(false);
+}
+
 ast_expr_t* parser_parse_primary_expr(parser_t* parser)
 {
     switch (lexer_peek_token(parser->lexer)->type)
@@ -450,6 +459,8 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
             return parse_uninit_lit(parser);
         case TOKEN_LBRACKET:
             return parse_array_lit(parser);
+        case TOKEN_SELF:
+            return parse_self_expr(parser);
         default:
             break;
     }

@@ -24,6 +24,7 @@ typedef enum
     TOKEN_ISIZE,
     TOKEN_NULL,
     TOKEN_RETURN,
+    TOKEN_SELF,
     TOKEN_TRUE,
     TOKEN_U8,
     TOKEN_U16,

@@ -36,6 +36,7 @@ static keyword_t lexer_keywords[] =
     {"isize", TOKEN_ISIZE},
     {"null", TOKEN_NULL},
     {"return", TOKEN_RETURN},
+    {"self", TOKEN_SELF},
     {"true", TOKEN_TRUE},
     {"u8", TOKEN_U8},
     {"u16", TOKEN_U16},
@@ -86,6 +87,7 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_SELF: return "self";
         case TOKEN_CLASS: return "class";
         case TOKEN_UNINIT: return "uninit";
         case TOKEN_VIEW: return "view";

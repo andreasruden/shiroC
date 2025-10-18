@@ -11,6 +11,7 @@
 #include "ast/expr/member_access.h"
 #include "ast/expr/method_call.h"
 #include "ast/expr/ref_expr.h"
+#include "ast/expr/self_expr.h"
 #include "ast/expr/unary_op.h"
 #include "ast/node.h"
 #include "ast/root.h"
@@ -474,6 +475,22 @@ TEST(parser_classes_fixture_t, parse_member_access_on_subscript)
     ast_expr_t* expected = ast_member_access_create(
         ast_array_subscript_create(ast_ref_expr_create("points"), ast_int_lit_val(0)),
         "x");
+
+    ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expr);
+    ast_node_destroy(expected);
+}
+
+TEST(parser_classes_fixture_t, parse_self_member_access)
+{
+    // Parse self.member access
+    parser_set_source(fix->parser, "test", "self.x");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    // Construct the expected tree: member_access(self_expr, "x")
+    ast_expr_t* expected = ast_member_access_create(ast_self_expr_create(false), "x");
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expr);

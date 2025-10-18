@@ -24,6 +24,7 @@
 #include "ast/expr/null_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
+#include "ast/expr/self_expr.h"
 #include "ast/expr/str_lit.h"
 #include "ast/expr/unary_op.h"
 #include "ast/expr/uninit_lit.h"
@@ -77,6 +78,7 @@ struct ast_visitor
     void (*visit_null_lit)(void* self_, ast_null_lit_t* null_lit, void *out_);
     void (*visit_paren_expr)(void* self_, ast_paren_expr_t* paren_expr, void *out_);
     void (*visit_ref_expr)(void* self_, ast_ref_expr_t* ref_expr, void *out_);
+    void (*visit_self_expr)(void* self_, ast_self_expr_t* self_expr, void *out_);
     void (*visit_str_lit)(void* self_, ast_str_lit_t* str_lit, void *out_);
     void (*visit_unary_op)(void* self_, ast_unary_op_t* unary_op, void *out_);
     void (*visit_uninit_lit)(void* self_, ast_uninit_lit_t* uninit_lit, void *out_);

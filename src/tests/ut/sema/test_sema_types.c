@@ -13,6 +13,7 @@
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/if_stmt.h"
 #include "ast/type.h"
+#include "sema/decl_collector.h"
 #include "sema/semantic_analyzer.h"
 #include "test_runner.h"
 #include "sema_shared.h"
@@ -23,12 +24,16 @@ TEST_FIXTURE(ut_sema_type_fixture_t)
 {
     semantic_analyzer_t* sema;
     semantic_context_t* ctx;
+    decl_collector_t* collector;
 };
 
 TEST_SETUP(ut_sema_type_fixture_t)
 {
     fix->ctx = semantic_context_create();
     ASSERT_NEQ(nullptr, fix->ctx);
+
+    fix->collector = decl_collector_create(fix->ctx);
+    ASSERT_NEQ(nullptr, fix->collector);
 
     fix->sema = semantic_analyzer_create(fix->ctx);
     ASSERT_NEQ(nullptr, fix->sema);
@@ -37,6 +42,7 @@ TEST_SETUP(ut_sema_type_fixture_t)
 TEST_TEARDOWN(ut_sema_type_fixture_t)
 {
     semantic_analyzer_destroy(fix->sema);
+    decl_collector_destroy(fix->collector);
     semantic_context_destroy(fix->ctx);
 }
 
@@ -52,7 +58,7 @@ TEST(ut_sema_type_fixture_t, assignment_with_mismatched_types)
         nullptr
     ), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "cannot coerce type");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "cannot coerce type");
 
     ast_node_destroy(foo_fn);
 }
@@ -414,9 +420,7 @@ TEST(ut_sema_type_fixture_t, accept_null_comparison_in_function)
         ast_param_decl_create("ptr", ast_type_pointer(ast_type_builtin(TYPE_BOOL))),
         nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(func));
-    ASSERT_TRUE(res);
-    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(func));
 
     ast_node_destroy(AST_NODE(func));
 }

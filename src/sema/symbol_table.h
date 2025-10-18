@@ -9,6 +9,8 @@ typedef enum scope_kind
     SCOPE_GLOBAL,
     SCOPE_FUNCTION,
     SCOPE_BLOCK,
+    SCOPE_CLASS,
+    SCOPE_METHOD,
 } scope_kind_t;
 
 typedef struct symbol_table symbol_table_t;

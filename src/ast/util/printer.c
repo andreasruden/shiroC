@@ -320,7 +320,7 @@ static void print_method_call(void* self_, ast_method_call_t* method_call, void*
     string_t* out = out_;
     ast_printer_t* self = self_;
 
-    string_append_cstr(out, ssprintf("%*sMethodCall '%s'", self->indentation, "", method_call->member_name));
+    string_append_cstr(out, ssprintf("%*sMethodCall '%s'", self->indentation, "", method_call->method_name));
     print_source_location(self, method_call, out);
     string_append_cstr(out, "\n");
 
@@ -403,6 +403,19 @@ static void print_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
 
     string_append_cstr(out, ssprintf("%*sRefExpr '%s'", self->indentation, "", ref_expr->name));
     print_source_location(self, ref_expr, out);
+    string_append_cstr(out, "\n");
+}
+
+static void print_self_expr(void* self_, ast_self_expr_t* self_expr, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    if (self_expr->implicit)
+        string_append_cstr(out, ssprintf("%*sSelfExpr (implicit)", self->indentation, ""));
+    else
+        string_append_cstr(out, ssprintf("%*sSelfExpr", self->indentation, ""));
+    print_source_location(self, self_expr, out);
     string_append_cstr(out, "\n");
 }
 
@@ -531,6 +544,7 @@ ast_printer_t* ast_printer_create()
             .visit_null_lit = print_null_lit,
             .visit_paren_expr = print_paren_expr,
             .visit_ref_expr = print_ref_expr,
+            .visit_self_expr = print_self_expr,
             .visit_str_lit = print_str_lit,
             .visit_unary_op = print_unary_op,
             .visit_uninit_lit = print_uninit_lit,

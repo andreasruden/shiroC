@@ -10,6 +10,7 @@
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/if_stmt.h"
 #include "ast/type.h"
+#include "sema/decl_collector.h"
 #include "sema/semantic_analyzer.h"
 #include "test_runner.h"
 #include "sema_shared.h"
@@ -18,12 +19,16 @@ TEST_FIXTURE(ut_sema_var_fixture_t)
 {
     semantic_analyzer_t* sema;
     semantic_context_t* ctx;
+    decl_collector_t* collector;
 };
 
 TEST_SETUP(ut_sema_var_fixture_t)
 {
     fix->ctx = semantic_context_create();
     ASSERT_NEQ(nullptr, fix->ctx);
+
+    fix->collector = decl_collector_create(fix->ctx);
+    ASSERT_NEQ(nullptr, fix->collector);
 
     fix->sema = semantic_analyzer_create(fix->ctx);
     ASSERT_NEQ(nullptr, fix->sema);
@@ -32,6 +37,7 @@ TEST_SETUP(ut_sema_var_fixture_t)
 TEST_TEARDOWN(ut_sema_var_fixture_t)
 {
     semantic_analyzer_destroy(fix->sema);
+    decl_collector_destroy(fix->collector);
     semantic_context_destroy(fix->ctx);
 }
 
@@ -45,7 +51,7 @@ TEST(ut_sema_var_fixture_t, variable_redeclaration_error)
         nullptr
     ), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "'my_var' already declared");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "'my_var' already declared");
 
     ast_node_destroy(foo_fn);
 }
@@ -53,22 +59,17 @@ TEST(ut_sema_var_fixture_t, variable_redeclaration_error)
 // Emit a warning when a name of an outer scope is shadowed
 TEST(ut_sema_var_fixture_t, variable_shadowing)
 {
+    ast_decl_t* warning_node = ast_var_decl_create("x", ast_type_builtin(TYPE_F32), nullptr);
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr, ast_compound_stmt_create_va(
         ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_I32), nullptr)),
         ast_compound_stmt_create_va(
-            ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_F32), nullptr)),
+            ast_decl_stmt_create(warning_node),
             nullptr
         ),
         nullptr
     ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_TRUE(res);
-    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
-    ASSERT_EQ(1, vec_size(&fix->ctx->warning_nodes));
-    compiler_error_t* warning = vec_get(AST_NODE(vec_get(&fix->ctx->warning_nodes, 0))->errors, 0);
-    ASSERT_TRUE(warning->is_warning);
-    ASSERT_NEQ(nullptr, strstr(warning->description, "shadow"));
+    ASSERT_SEMA_WARNING_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), warning_node, "shadow");
 
     ast_node_destroy(foo_fn);
 }
@@ -83,7 +84,7 @@ TEST(ut_sema_var_fixture_t, variable_read_requires_initialization)
         nullptr
     ), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not initialized");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "not initialized");
 
     ast_node_destroy(foo_fn);
 }
@@ -97,9 +98,7 @@ TEST(ut_sema_var_fixture_t, variable_write_only_requires_declaration)
         nullptr
     ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_TRUE(res);
-    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(foo_fn));
 
     ast_node_destroy(foo_fn);
 }
@@ -125,9 +124,7 @@ TEST(ut_sema_var_fixture_t, variable_init_in_if_both_branches)
         nullptr
     ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_TRUE(res);
-    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(foo_fn));
 
     ast_node_destroy(foo_fn);
 }
@@ -157,7 +154,7 @@ TEST(ut_sema_var_fixture_t, variable_init_in_if_only_then_branch)
         nullptr
     ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not initialized");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "not initialized");
 
     ast_node_destroy(foo_fn);
 }
@@ -182,7 +179,7 @@ TEST(ut_sema_var_fixture_t, variable_init_in_if_no_else_branch)
         nullptr
     ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not initialized");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "not initialized");
 
     ast_node_destroy(foo_fn);
 }
@@ -205,7 +202,7 @@ TEST(ut_sema_var_fixture_t, variable_init_in_while_loop)
         nullptr
     ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)),  nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not initialized");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "not initialized");
 
     ast_node_destroy(foo_fn);
 }
@@ -229,9 +226,7 @@ TEST(ut_sema_var_fixture_t, variable_init_before_if_remains_initialized)
         nullptr
     ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(foo_fn));
-    ASSERT_TRUE(res);
-    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(foo_fn));
 
     ast_node_destroy(foo_fn);
 }
@@ -279,7 +274,7 @@ TEST(ut_sema_var_fixture_t, variable_shadowing_does_not_affect_outer_scope_initi
         nullptr
     ), ast_param_decl_create("cond", ast_type_builtin(TYPE_BOOL)), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "not initialized");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "not initialized");
 
     ast_node_destroy(foo_fn);
 }
@@ -287,17 +282,14 @@ TEST(ut_sema_var_fixture_t, variable_shadowing_does_not_affect_outer_scope_initi
 // Error on using symbol that does not exist
 TEST(ut_sema_var_fixture_t, symbol_not_exist)
 {
+    ast_expr_t* error_node = ast_ref_expr_create("inexistant");
     ast_def_t* main_fn = ast_fn_def_create_va("main", nullptr, ast_compound_stmt_create_va(
-        ast_if_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, ast_ref_expr_create("inexistant"), ast_int_lit_val(5)),
+        ast_if_stmt_create(ast_bin_op_create(TOKEN_ASSIGN, error_node, ast_int_lit_val(5)),
             ast_compound_stmt_create_empty(), nullptr),
         nullptr
     ), nullptr);
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(main_fn));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    compiler_error_t* error = vec_get(((ast_node_t*)vec_get(&fix->ctx->error_nodes, 0))->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "unknown symbol name 'inexistant'"));
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(main_fn), error_node, "unknown symbol name 'inexistant'");
 
     ast_node_destroy(main_fn);
 }
@@ -314,7 +306,7 @@ TEST(ut_sema_var_fixture_t, local_variable_shadows_parameter_error)
         ast_param_decl_create("i", ast_type_builtin(TYPE_I32)), nullptr
     );
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "redeclares function parameter");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "redeclares function parameter");
 
     ast_node_destroy(foo_fn);
 }

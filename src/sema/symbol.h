@@ -3,6 +3,7 @@
 
 #include "ast/node.h"
 #include "ast/type.h"
+#include "common/containers/hash_table.h"
 #include "common/containers/vec.h"
 
 typedef enum symbol_kind
@@ -10,6 +11,9 @@ typedef enum symbol_kind
     SYMBOL_VARIABLE,
     SYMBOL_FUNCTION,
     SYMBOL_PARAMETER,
+    SYMBOL_CLASS,
+    SYMBOL_MEMBER,
+    SYMBOL_METHOD,
 } symbol_kind_t;
 
 typedef struct symbol
@@ -26,6 +30,12 @@ typedef struct symbol
         {
             vec_t parameters;         // ast_param_decl_t*
         } function;
+
+        struct
+        {
+            hash_table_t members;     // ast_member_decl_t*
+            hash_table_t methods;     // ast_method_def_t*
+        } class;
     } data;
 } symbol_t;
 
