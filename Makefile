@@ -112,6 +112,7 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/parser/test_parser_pointers.c \
 	$(UT_SRC_DIR)/parser/test_parser_statements.c \
 	$(UT_SRC_DIR)/sema/test_sema_arrays.c \
+	$(UT_SRC_DIR)/sema/test_sema_classes.c \
 	$(UT_SRC_DIR)/sema/test_sema_control_flow.c \
 	$(UT_SRC_DIR)/sema/test_sema_expressions.c \
 	$(UT_SRC_DIR)/sema/test_sema_functions.c \

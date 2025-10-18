@@ -320,7 +320,7 @@ static void print_method_call(void* self_, ast_method_call_t* method_call, void*
     string_t* out = out_;
     ast_printer_t* self = self_;
 
-    string_append_cstr(out, ssprintf("%*sMethodCall '%s'", self->indentation, "", method_call->member_name));
+    string_append_cstr(out, ssprintf("%*sMethodCall '%s'", self->indentation, "", method_call->method_name));
     print_source_location(self, method_call, out);
     string_append_cstr(out, "\n");
 

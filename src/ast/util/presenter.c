@@ -235,7 +235,7 @@ static void present_method_call(void* self_, ast_method_call_t* method_call, voi
 
     ast_visitor_visit(self, method_call->instance, out);
     string_append_cstr(out, ".");
-    string_append_cstr(out, method_call->member_name);
+    string_append_cstr(out, method_call->method_name);
     string_append_cstr(out, "(");
     size_t args = vec_size(&method_call->arguments);
     for (size_t i = 0; i < args; ++i)
