@@ -183,3 +183,65 @@ void hash_table_clone(hash_table_t* dst, hash_table_t* src, hash_table_clone_val
         }
     }
 }
+
+void hash_table_iter_init(hash_table_iter_t* iter, hash_table_t* table)
+{
+    // Find the first non-empty bucket
+    for (size_t i = 0; i < table->num_buckets; ++i)
+    {
+        if (table->buckets[i] != nullptr)
+        {
+            *iter = (hash_table_iter_t){
+                .table = table,
+                .bucket_idx = i,
+                .current = table->buckets[i],
+            };
+            return;
+        }
+    }
+
+    // Table is empty
+    *iter = (hash_table_iter_t){
+        .table = table,
+        .bucket_idx = table->num_buckets,
+        .current = nullptr,
+    };
+}
+
+bool hash_table_iter_has_next(hash_table_iter_t* iter)
+{
+    return iter->current != nullptr;
+}
+
+hash_table_entry_t* hash_table_iter_current(hash_table_iter_t* iter)
+{
+    return iter->current;
+}
+
+void hash_table_iter_next(hash_table_iter_t* iter)
+{
+    if (iter->current == nullptr)
+        return;
+
+    // Try to move to next entry in the current bucket chain
+    if (iter->current->next != nullptr)
+    {
+        iter->current = iter->current->next;
+        return;
+    }
+
+    // Current bucket chain exhausted, find next non-empty bucket
+    for (size_t i = iter->bucket_idx + 1; i < iter->table->num_buckets; ++i)
+    {
+        if (iter->table->buckets[i] != nullptr)
+        {
+            iter->bucket_idx = i;
+            iter->current = iter->table->buckets[i];
+            return;
+        }
+    }
+
+    // No more entries
+    iter->bucket_idx = iter->table->num_buckets;
+    iter->current = nullptr;
+}

@@ -61,4 +61,24 @@ void hash_table_remove(hash_table_t* table, const char* key);
 // Make a deep-copy of src into dst
 void hash_table_clone(hash_table_t* dst, hash_table_t* src, hash_table_clone_value_fn clone_value_fn);
 
+/* Iterator interface for traversing all entries (unordered) in the hash table.
+ *
+ * IMPORTANT: Modifying the table (insert/remove) during iteration leaves the iterator
+ *            in an undefined state.
+ */
+typedef struct hash_table_iter
+{
+    hash_table_t* table;
+    size_t bucket_idx;
+    hash_table_entry_t* current;
+} hash_table_iter_t;
+
+void hash_table_iter_init(hash_table_iter_t* iter, hash_table_t* table);
+
+bool hash_table_iter_has_next(hash_table_iter_t* iter);
+
+hash_table_entry_t* hash_table_iter_current(hash_table_iter_t* iter);
+
+void hash_table_iter_next(hash_table_iter_t* iter);
+
 #endif

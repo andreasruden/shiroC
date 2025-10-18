@@ -157,3 +157,100 @@ TEST(hash_table_fixture_t, remove_first_entry_in_collision_chain)
     // Verify: Second key should still exist
     ASSERT_EQ((void*)200, hash_table_find(fix->table, key_second));
 }
+
+TEST(hash_table_fixture_t, iter_empty_table)
+{
+    hash_table_iter_t iter;
+    hash_table_iter_init(&iter, fix->table);
+
+    ASSERT_FALSE(hash_table_iter_has_next(&iter));
+    ASSERT_EQ(nullptr, hash_table_iter_current(&iter));
+}
+
+TEST(hash_table_fixture_t, iter_single_entry)
+{
+    int value = 42;
+    hash_table_insert(fix->table, "key", &value);
+
+    hash_table_iter_t iter;
+    hash_table_iter_init(&iter, fix->table);
+
+    ASSERT_TRUE(hash_table_iter_has_next(&iter));
+
+    hash_table_entry_t* entry = hash_table_iter_current(&iter);
+    ASSERT_NEQ(nullptr, entry);
+    ASSERT_EQ(0, strcmp("key", entry->key));
+    ASSERT_EQ(42, *(int*)entry->value);
+
+    hash_table_iter_next(&iter);
+
+    ASSERT_FALSE(hash_table_iter_has_next(&iter));
+}
+
+TEST(hash_table_fixture_t, iter_multiple_entries)
+{
+    int v1 = 1, v2 = 2, v3 = 3, v4 = 4, v5 = 5;
+    hash_table_insert(fix->table, "one", &v1);
+    hash_table_insert(fix->table, "two", &v2);
+    hash_table_insert(fix->table, "three", &v3);
+    hash_table_insert(fix->table, "four", &v4);
+    hash_table_insert(fix->table, "five", &v5);
+
+    int count = 0;
+    bool found[5] = {false};
+
+    hash_table_iter_t iter;
+    hash_table_iter_init(&iter, fix->table);
+
+    while (hash_table_iter_has_next(&iter)) {
+        hash_table_entry_t* entry = hash_table_iter_current(&iter);
+        count++;
+
+        if (strcmp(entry->key, "one") == 0) {
+            found[0] = true;
+            ASSERT_EQ(1, *(int*)entry->value);
+        } else if (strcmp(entry->key, "two") == 0) {
+            found[1] = true;
+            ASSERT_EQ(2, *(int*)entry->value);
+        } else if (strcmp(entry->key, "three") == 0) {
+            found[2] = true;
+            ASSERT_EQ(3, *(int*)entry->value);
+        } else if (strcmp(entry->key, "four") == 0) {
+            found[3] = true;
+            ASSERT_EQ(4, *(int*)entry->value);
+        } else if (strcmp(entry->key, "five") == 0) {
+            found[4] = true;
+            ASSERT_EQ(5, *(int*)entry->value);
+        }
+
+        hash_table_iter_next(&iter);
+    }
+
+    ASSERT_EQ(5, count);
+    ASSERT_TRUE(found[0] && found[1] && found[2] && found[3] && found[4]);
+}
+
+TEST(hash_table_fixture_t, iter_after_growth)
+{
+    for (int i = 0; i < 45; ++i) {
+        char key[32];
+        sprintf(key, "key%d", i);
+        hash_table_insert(fix->table, key, (void*)(intptr_t)(i + 1));
+    }
+
+    ASSERT_EQ(45, fix->table->size);
+    ASSERT_EQ(64, fix->table->num_buckets);
+
+    int count = 0;
+    hash_table_iter_t iter;
+    hash_table_iter_init(&iter, fix->table);
+
+    while (hash_table_iter_has_next(&iter)) {
+        hash_table_entry_t* entry = hash_table_iter_current(&iter);
+        ASSERT_NEQ(nullptr, entry);
+        count++;
+        hash_table_iter_next(&iter);
+    }
+
+    ASSERT_EQ(45, count);
+}
