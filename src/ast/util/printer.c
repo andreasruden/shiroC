@@ -1,6 +1,9 @@
 #include "printer.h"
 
+#include "ast/decl/member_decl.h"
+#include "ast/def/class_def.h"
 #include "ast/def/fn_def.h"
+#include "ast/def/method_def.h"
 #include "ast/type.h"
 #include "ast/visitor.h"
 #include "common/containers/string.h"
@@ -70,6 +73,42 @@ static void print_var_decl(void* self_, ast_var_decl_t* var_decl, void* out_)
     }
 }
 
+static void print_member_decl(void* self_, ast_member_decl_t* member_decl, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sMemberDecl '%s'", self->indentation, "", member_decl->base.name));
+    if (member_decl->base.type != nullptr)
+        string_append_cstr(out, ssprintf(" '%s'", ast_type_string(member_decl->base.type)));
+    print_source_location(self, member_decl, out);
+    string_append_cstr(out, "\n");
+
+    if (member_decl->base.init_expr != nullptr)
+    {
+        self->indentation += PRINT_INDENTATION_WIDTH;
+        ast_visitor_visit(self, member_decl->base.init_expr, out);
+        self->indentation -= PRINT_INDENTATION_WIDTH;
+    }
+}
+
+static void print_class_def(void* self_, ast_class_def_t* class_def, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sClassDef '%s'", self->indentation, "", class_def->base.name));
+    print_source_location(self, class_def, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    for (size_t i = 0; i < vec_size(&class_def->members); ++i)
+        ast_visitor_visit(self, vec_get(&class_def->members, i), out);
+    for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
+        ast_visitor_visit(self, vec_get(&class_def->methods, i), out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 {
     string_t* out = out_;
@@ -85,6 +124,24 @@ static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
         ast_visitor_visit(self, vec_get(&fn_def->params, i), out);
     ast_visitor_visit(self, fn_def->body, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
+static void print_method_def(void* self_, ast_method_def_t* method_def, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sMethodDef '%s'", self->indentation, "", method_def->base.base.name));
+    if (method_def->base.return_type != nullptr)
+        string_append_cstr(out, ssprintf(" %s", ast_type_string(method_def->base.return_type)));
+    print_source_location(self, method_def, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    for (size_t i = 0; i < vec_size(&method_def->base.params); ++i)
+        ast_visitor_visit(self, vec_get(&method_def->base.params, i), out);
+    ast_visitor_visit(self, method_def->base.body, out);
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
@@ -195,6 +252,22 @@ static void print_coercion_expr(void* self_, ast_coercion_expr_t* coercion, void
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_construct_expr(void* self_, ast_construct_expr_t* construct_expr, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sConstructExpr '%s'", self->indentation, "",
+        ast_type_string(construct_expr->class_type)));
+    print_source_location(self, construct_expr, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    for (size_t i = 0; i < vec_size(&construct_expr->member_inits); ++i)
+        ast_visitor_visit(self, vec_get(&construct_expr->member_inits, i), out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 static void print_bool_lit(void* self_, ast_bool_lit_t* bool_lit, void* out_)
 {
     string_t* out = out_;
@@ -226,6 +299,50 @@ static void print_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
         string_append_cstr(out, ssprintf("%*sIntLit '%lu'", self->indentation, "", int_lit->value.as_unsigned));
     print_source_location(self, int_lit, out);
     string_append_cstr(out, "\n");
+}
+
+static void print_member_access(void* self_, ast_member_access_t* member_access, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sMemberAccess '%s'", self->indentation, "", member_access->member_name));
+    print_source_location(self, member_access, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self, member_access->instance, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
+static void print_method_call(void* self_, ast_method_call_t* method_call, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sMethodCall '%s'", self->indentation, "", method_call->member_name));
+    print_source_location(self, method_call, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self, method_call->instance, out);
+    for (size_t i = 0; i < vec_size(&method_call->arguments); ++i)
+        ast_visitor_visit(self, vec_get(&method_call->arguments, i), out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
+static void print_member_init(void* self_, ast_member_init_t* member_init, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sMemberInit '%s'", self->indentation, "", member_init->member_name));
+    print_source_location(self, member_init, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self, member_init->init_expr, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
 static void print_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
@@ -389,10 +506,13 @@ ast_printer_t* ast_printer_create()
         .base = (ast_visitor_t){
             .visit_root = print_root,
             // Declarations
+            .visit_member_decl = print_member_decl,
             .visit_param_decl = print_param_decl,
             .visit_var_decl = print_var_decl,
             // Definitions
+            .visit_class_def = print_class_def,
             .visit_fn_def = print_fn_def,
+            .visit_method_def = print_method_def,
             // Expressions
             .visit_array_lit = print_array_lit,
             .visit_array_slice = print_array_slice,
@@ -402,8 +522,12 @@ ast_printer_t* ast_printer_create()
             .visit_call_expr = print_call_expr,
             .visit_cast_expr = print_cast_expr,
             .visit_coercion_expr = print_coercion_expr,
+            .visit_construct_expr = print_construct_expr,
             .visit_float_lit = print_float_lit,
             .visit_int_lit = print_int_lit,
+            .visit_member_access = print_member_access,
+            .visit_method_call = print_method_call,
+            .visit_member_init = print_member_init,
             .visit_null_lit = print_null_lit,
             .visit_paren_expr = print_paren_expr,
             .visit_ref_expr = print_ref_expr,

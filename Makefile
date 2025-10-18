@@ -45,14 +45,17 @@ LLVM_COV = llvm-cov
 # Common source files
 COMMON_SRCS = \
 	$(SRC_DIR)/compiler_error.c \
-    $(SRC_DIR)/ast/node.c \
+	$(SRC_DIR)/ast/node.c \
 	$(SRC_DIR)/ast/root.c \
 	$(SRC_DIR)/ast/type.c \
 	$(SRC_DIR)/ast/visitor.c \
+	$(SRC_DIR)/ast/decl/member_decl.c \
 	$(SRC_DIR)/ast/decl/param_decl.c \
 	$(SRC_DIR)/ast/decl/var_decl.c \
 	$(SRC_DIR)/ast/def/def.c \
-    $(SRC_DIR)/ast/def/fn_def.c \
+	$(SRC_DIR)/ast/def/class_def.c \
+	$(SRC_DIR)/ast/def/fn_def.c \
+	$(SRC_DIR)/ast/def/method_def.c \
 	$(SRC_DIR)/ast/expr/array_lit.c \
 	$(SRC_DIR)/ast/expr/array_slice.c \
 	$(SRC_DIR)/ast/expr/array_subscript.c \
@@ -60,9 +63,13 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/expr/bool_lit.c \
 	$(SRC_DIR)/ast/expr/call_expr.c \
 	$(SRC_DIR)/ast/expr/coercion_expr.c \
+	$(SRC_DIR)/ast/expr/construct_expr.c \
 	$(SRC_DIR)/ast/expr/expr.c \
 	$(SRC_DIR)/ast/expr/float_lit.c \
 	$(SRC_DIR)/ast/expr/int_lit.c \
+	$(SRC_DIR)/ast/expr/member_access.c \
+	$(SRC_DIR)/ast/expr/member_init.c \
+	$(SRC_DIR)/ast/expr/method_call.c \
 	$(SRC_DIR)/ast/expr/null_lit.c \
 	$(SRC_DIR)/ast/expr/paren_expr.c \
 	$(SRC_DIR)/ast/expr/ref_expr.c \
@@ -97,6 +104,7 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/ut_decl_collector.c \
 	$(UT_SRC_DIR)/ut_hash_table.c \
 	$(UT_SRC_DIR)/parser/test_parser_arrays.c \
+	$(UT_SRC_DIR)/parser/test_parser_classes.c \
 	$(UT_SRC_DIR)/parser/test_parser_errors.c \
 	$(UT_SRC_DIR)/parser/test_parser_expressions.c \
 	$(UT_SRC_DIR)/parser/test_parser_functions.c \

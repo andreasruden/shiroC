@@ -12,12 +12,15 @@ typedef enum ast_node_kind
     AST_ROOT,
 
     // Declarations
+    AST_DECL_MEMBER,
     AST_DECL_PARAM,
     AST_DECL_VAR,
     AST_DECL_END, // Sentinel
 
     // Definitions
+    AST_DEF_CLASS,
     AST_DEF_FN,
+    AST_DEF_METHOD,
     AST_DEF_END, // Sentinel
 
     // Expressions
@@ -29,8 +32,12 @@ typedef enum ast_node_kind
     AST_EXPR_CALL,
     AST_EXPR_CAST,
     AST_EXPR_COERCION,
+    AST_EXPR_CONSTRUCT,
     AST_EXPR_FLOAT_LIT,
     AST_EXPR_INT_LIT,
+    AST_EXPR_MEMBER_ACCESS,
+    AST_EXPR_MEMBER_CALL,
+    AST_EXPR_MEMBER_INIT,
     AST_EXPR_NULL_LIT,
     AST_EXPR_UNINIT_LIT,
     AST_EXPR_PAREN,

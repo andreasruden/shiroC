@@ -1,18 +1,25 @@
 #include "parser.h"
 
+#include "ast/decl/member_decl.h"
 #include "ast/decl/param_decl.h"
 #include "ast/decl/var_decl.h"
+#include "ast/def/class_def.h"
 #include "ast/def/def.h"
 #include "ast/def/fn_def.h"
+#include "ast/def/method_def.h"
 #include "ast/expr/array_lit.h"
 #include "ast/expr/array_slice.h"
 #include "ast/expr/array_subscript.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/bool_lit.h"
 #include "ast/expr/call_expr.h"
+#include "ast/expr/construct_expr.h"
 #include "ast/expr/expr.h"
 #include "ast/expr/float_lit.h"
 #include "ast/expr/int_lit.h"
+#include "ast/expr/member_access.h"
+#include "ast/expr/member_init.h"
+#include "ast/expr/method_call.h"
 #include "ast/expr/null_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
@@ -309,6 +316,53 @@ cleanup:
     return call;
 }
 
+static ast_member_init_t* parse_member_init(parser_t* parser)
+{
+    token_t* member_name = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
+    if (member_name == nullptr)
+        return nullptr;
+
+    lexer_next_token_iff(parser->lexer, TOKEN_ASSIGN);
+
+    ast_expr_t* init_expr = parser_parse_expr(parser);
+    if (init_expr == nullptr)
+        return nullptr;
+
+    return ast_member_init_create(member_name->value, init_expr);
+}
+
+static ast_expr_t* parse_construct_expr(parser_t* parser)
+{
+    vec_t inits = VEC_INIT(ast_node_destroy);
+
+    token_t* type_name = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
+    if (type_name == nullptr)
+        goto cleanup;
+
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACE))
+        goto cleanup;
+
+    while (lexer_peek_token(parser->lexer)->type != TOKEN_RBRACE)
+    {
+        ast_member_init_t* init = parse_member_init(parser);
+        if (init == nullptr)
+            break;
+        vec_push(&inits, init);
+
+        if (lexer_peek_token(parser->lexer)->type != TOKEN_COMMA)
+            break;
+        lexer_next_token(parser->lexer);
+    }
+
+    lexer_next_token_iff(parser->lexer, TOKEN_RBRACE);
+
+    return ast_construct_expr_create(ast_type_user(type_name->value), &inits);
+
+cleanup:
+    vec_deinit(&inits);
+    return nullptr;
+}
+
 static ast_expr_t* parse_ref_expr(parser_t* parser)
 {
     ast_expr_t* expr = nullptr;
@@ -342,6 +396,35 @@ static ast_expr_t* parse_paren_expr(parser_t* parser)
     return paren_expr;
 }
 
+// instance is freed by caller if we return nullptr
+static ast_expr_t* parse_method_call(parser_t* parser, ast_expr_t* instance, const char* method)
+{
+    ast_call_expr_t* call_expr = (ast_call_expr_t*)parse_call_expr(parser, nullptr);
+    if (call_expr == nullptr)
+        return nullptr;
+
+    vec_t* args = &call_expr->arguments;  // moved away by ast_method_call_create
+    ast_expr_t* call = ast_method_call_create(instance, method, args);
+    ast_node_destroy(call_expr);
+    return call;
+}
+
+// instance is freed by caller if we return nullptr
+static ast_expr_t* parse_member_access(parser_t* parser, ast_expr_t* instance)
+{
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_DOT))
+        return nullptr;
+
+    token_t* member = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
+    if (member == nullptr)
+        return nullptr;
+
+    if (lexer_peek_token(parser->lexer)->type == TOKEN_LPAREN)
+        return parse_method_call(parser, instance, member->value);
+
+    return ast_member_access_create(instance, member->value);
+}
+
 ast_expr_t* parser_parse_primary_expr(parser_t* parser)
 {
     switch (lexer_peek_token(parser->lexer)->type)
@@ -351,6 +434,8 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
         case TOKEN_INTEGER:
             return parse_int_lit(parser);
         case TOKEN_IDENTIFIER:
+            if (lexer_peek_token_n(parser->lexer, 1)->type == TOKEN_LBRACE)
+                return parse_construct_expr(parser);
             return parse_ref_expr(parser);
         case TOKEN_LPAREN:
             return parse_paren_expr(parser);
@@ -390,6 +475,9 @@ static ast_expr_t* parse_postfix_expr(parser_t* parser)
                 break;
             case TOKEN_LBRACKET:
                 new_postfix_expr = parse_array_subscript(parser, postfix_expr);
+                break;
+            case TOKEN_DOT:
+                new_postfix_expr = parse_member_access(parser, postfix_expr);
                 break;
             default:
                 goto end;
@@ -844,12 +932,84 @@ cleanup:
     return fn_def;
 }
 
+static ast_decl_t* parse_member_decl(parser_t* parser)
+{
+    ast_var_decl_t* var_decl = (ast_var_decl_t*)parse_var_decl(parser);
+    if (var_decl == nullptr)
+        return nullptr;
+    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON);  // emit but accept error
+    return ast_member_decl_create_from(var_decl);
+}
+
+static ast_def_t* parse_method_def(parser_t* parser)
+{
+    ast_fn_def_t* fn_def = (ast_fn_def_t*)parse_fn_def(parser);
+    if (fn_def == nullptr)
+        return nullptr;
+    return ast_method_def_create_from(fn_def);
+}
+
+static ast_def_t* parse_class_def(parser_t* parser)
+{
+    vec_t members = VEC_INIT(ast_node_destroy);
+    vec_t methods = VEC_INIT(ast_node_destroy);
+
+    token_t* tok_class = lexer_next_token_iff(parser->lexer, TOKEN_CLASS);
+    if (!tok_class)
+        goto cleanup;
+
+    token_t* tok_id = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
+    if (!tok_id)
+        goto cleanup;
+
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACE))
+        goto cleanup;
+
+    token_type_t next_tok_type;
+    while ((next_tok_type = lexer_peek_token(parser->lexer)->type) != TOKEN_EOF && next_tok_type != TOKEN_RBRACE)
+    {
+        switch (next_tok_type)
+        {
+            case TOKEN_VAR:
+            {
+                ast_decl_t* decl = parse_member_decl(parser);
+                if (decl == nullptr)
+                    goto cleanup;
+                vec_push(&members, decl);
+                break;
+            }
+            case TOKEN_FN:
+            {
+                ast_def_t* def = parse_method_def(parser);
+                if (def == nullptr)
+                    goto cleanup;
+                vec_push(&methods, def);
+                break;
+            }
+            default:
+                goto cleanup;
+        }
+    }
+
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACE))
+        goto cleanup;
+
+    return ast_class_def_create(tok_id->value, &members, &methods);
+
+cleanup:
+    vec_deinit(&members);
+    vec_deinit(&methods);
+    return nullptr;
+}
+
 static ast_def_t* parse_top_level_definition(parser_t* parser)
 {
     switch (lexer_peek_token(parser->lexer)->type)
     {
         case TOKEN_FN:
             return parse_fn_def(parser);
+        case TOKEN_CLASS:
+            return parse_class_def(parser);
         default:
             break;
     }

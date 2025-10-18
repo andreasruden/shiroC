@@ -20,6 +20,25 @@ static void ast_visitor_visit_var_decl(void* self_, ast_var_decl_t* var_decl, vo
         ast_visitor_visit(self_, var_decl->init_expr, out_);
 }
 
+static void ast_visitor_visit_member_decl(void* self_, ast_member_decl_t* member_decl, void* out_)
+{
+    if (member_decl->base.init_expr != nullptr)
+        ast_visitor_visit(self_, member_decl->base.init_expr, out_);
+}
+
+static void ast_visitor_visit_class_def(void* self_, ast_class_def_t* class_def, void* out_)
+{
+    for (size_t i = 0; i < vec_size(&class_def->members); ++i)
+        ast_visitor_visit(self_, vec_get(&class_def->members, i), out_);
+    for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
+        ast_visitor_visit(self_, vec_get(&class_def->methods, i), out_);
+}
+
+static void ast_visitor_visit_method_def(void* self_, ast_method_def_t* method_def, void* out_)
+{
+    ast_visitor_visit(self_, method_def->base.body, out_);
+}
+
 static void ast_visitor_visit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 {
     ast_visitor_visit(self_, fn_def->body, out_);
@@ -70,6 +89,12 @@ static void ast_visitor_visit_coercion_expr(void* self_, ast_coercion_expr_t* co
     ast_visitor_visit(self_, coercion->expr, out_);
 }
 
+static void ast_visitor_visit_construct_expr(void* self_, ast_construct_expr_t* construct_expr, void* out_)
+{
+    for (size_t i = 0; i < vec_size(&construct_expr->member_inits); ++i)
+        ast_visitor_visit(self_, vec_get(&construct_expr->member_inits, i), out_);
+}
+
 static void ast_visitor_visit_bool_lit(void* self_, ast_bool_lit_t* bool_lit, void* out_)
 {
     (void)self_;
@@ -89,6 +114,23 @@ static void ast_visitor_visit_int_lit(void* self_, ast_int_lit_t* int_lit, void*
     (void)self_;
     (void)int_lit;
     (void)out_;
+}
+
+static void ast_visitor_visit_member_access(void* self_, ast_member_access_t* member_access, void* out_)
+{
+    ast_visitor_visit(self_, member_access->instance, out_);
+}
+
+static void ast_visitor_visit_method_call(void* self_, ast_method_call_t* method_call, void* out_)
+{
+    ast_visitor_visit(self_, method_call->instance, out_);
+    for (size_t i = 0; i < vec_size(&method_call->arguments); ++i)
+        ast_visitor_visit(self_, vec_get(&method_call->arguments, i), out_);
+}
+
+static void ast_visitor_visit_member_init(void* self_, ast_member_init_t* member_init, void* out_)
+{
+    ast_visitor_visit(self_, member_init->init_expr, out_);
 }
 
 static void ast_visitor_visit_null_lit(void* self_, ast_null_lit_t* null_lit, void* out_)
@@ -169,10 +211,13 @@ void ast_visitor_init(ast_visitor_t* visitor)
     *visitor = (ast_visitor_t){
         .visit_root = ast_visitor_visit_root,
         // Declarations
+        .visit_member_decl = ast_visitor_visit_member_decl,
         .visit_param_decl = ast_visitor_visit_param_decl,
         .visit_var_decl = ast_visitor_visit_var_decl,
         // Definitions
+        .visit_class_def = ast_visitor_visit_class_def,
         .visit_fn_def = ast_visitor_visit_fn_def,
+        .visit_method_def = ast_visitor_visit_method_def,
         // Expressions
         .visit_array_lit = ast_visitor_visit_array_lit,
         .visit_array_slice = ast_visitor_visit_array_slice,
@@ -182,8 +227,12 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_call_expr = ast_visitor_visit_call_expr,
         .visit_cast_expr = ast_visitor_visit_cast_expr,
         .visit_coercion_expr = ast_visitor_visit_coercion_expr,
+        .visit_construct_expr = ast_visitor_visit_construct_expr,
         .visit_float_lit = ast_visitor_visit_float_lit,
         .visit_int_lit = ast_visitor_visit_int_lit,
+        .visit_member_access = ast_visitor_visit_member_access,
+        .visit_member_init = ast_visitor_visit_member_init,
+        .visit_method_call = ast_visitor_visit_method_call,
         .visit_null_lit = ast_visitor_visit_null_lit,
         .visit_paren_expr = ast_visitor_visit_paren_expr,
         .visit_ref_expr = ast_visitor_visit_ref_expr,

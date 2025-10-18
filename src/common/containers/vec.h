@@ -32,6 +32,8 @@ void* vec_replace(vec_t* vec, size_t index, void* elem);
 
 void vec_move(vec_t* dst, vec_t* src);
 
+void vec_remove(vec_t* vec, size_t index);
+
 static inline size_t vec_size(vec_t* vec)
 {
     return vec->length;

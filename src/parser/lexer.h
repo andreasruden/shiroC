@@ -10,6 +10,7 @@ typedef enum
 {
     // Keywords
     TOKEN_BOOL,
+    TOKEN_CLASS,
     TOKEN_ELSE,
     TOKEN_F32,
     TOKEN_F64,
@@ -51,6 +52,7 @@ typedef enum
     TOKEN_COLON,
     TOKEN_COMMA,
     TOKEN_ARROW,
+    TOKEN_DOT,
     TOKEN_DOTDOT,
 
     // Unary & Binary Operators
@@ -100,7 +102,7 @@ typedef struct lexer
     int column;
     size_t pos;
     size_t length;
-    token_t* peeked_token;
+    vec_t peeked_tokens;
     int last_consumed_end_line;
     int last_consumed_end_column;
     char* filename;
@@ -125,6 +127,8 @@ void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t ex
 token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type);
 
 token_t* lexer_peek_token(lexer_t* lexer);
+
+token_t* lexer_peek_token_n(lexer_t* lexer, size_t n);
 
 int token_type_get_precedence(token_type_t token_type);
 

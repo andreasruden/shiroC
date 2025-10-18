@@ -22,6 +22,7 @@ typedef struct
 static keyword_t lexer_keywords[] =
 {
     {"bool", TOKEN_BOOL},
+    {"class", TOKEN_CLASS},
     {"else", TOKEN_ELSE},
     {"f32", TOKEN_F32},
     {"f64", TOKEN_F64},
@@ -85,6 +86,7 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_CLASS: return "class";
         case TOKEN_UNINIT: return "uninit";
         case TOKEN_VIEW: return "view";
         case TOKEN_LBRACKET: return "[";
@@ -136,6 +138,7 @@ const char* token_type_str(token_type_t type)
         case TOKEN_COLON: return ":";
         case TOKEN_COMMA: return ",";
         case TOKEN_ARROW: return "->";
+        case TOKEN_DOT: return ".";
         case TOKEN_DOTDOT: return "..";
         case TOKEN_PLUS_ASSIGN: return "+=";
         case TOKEN_MINUS_ASSIGN: return "-=";
@@ -429,6 +432,7 @@ lexer_t* lexer_create(const char* filename, const char* source, lexer_error_outp
         .column = 1,
         .error_output = error_output,
         .error_output_arg = error_output_arg,
+        .peeked_tokens = VEC_INIT(nullptr),
         .created_tokens = VEC_INIT(token_destroy),
     };
 
@@ -439,6 +443,7 @@ void lexer_destroy(lexer_t *lexer)
 {
     if (lexer != nullptr)
     {
+        vec_deinit(&lexer->peeked_tokens);
         vec_deinit(&lexer->created_tokens);
         free(lexer->source);
         free(lexer->filename);
@@ -538,7 +543,7 @@ static token_t* lex_symbol(lexer_t* lexer)
                 lexer_advance(lexer);
                 return token_create(lexer, TOKEN_DOTDOT, "..", line, col);
             }
-            [[fallthrough]];  // will be member/property access sometime
+            return token_create(lexer, TOKEN_DOT, ".", line, col);
 
         default:
         {
@@ -569,17 +574,29 @@ static token_t* lex_next_token(lexer_t* lexer)
     return lex_symbol(lexer);
 }
 
+token_t* lexer_peek_token_n(lexer_t* lexer, size_t n)
+{
+    // Ensure we have enough peeked tokens
+    while (vec_size(&lexer->peeked_tokens) <= n)
+    {
+        token_t* tok = lex_next_token(lexer);
+        vec_push(&lexer->peeked_tokens, tok);
+    }
+
+    return vec_get(&lexer->peeked_tokens, n);
+}
+
 token_t* lexer_next_token(lexer_t* lexer)
 {
     token_t* tok;
-    if (lexer->peeked_token == nullptr)
+    if (vec_size(&lexer->peeked_tokens) == 0)
     {
         tok = lex_next_token(lexer);
     }
     else
     {
-        tok = lexer->peeked_token;
-        lexer->peeked_token = nullptr;
+        tok = vec_get(&lexer->peeked_tokens, 0);
+        vec_remove(&lexer->peeked_tokens, 0);
     }
 
     lexer->last_consumed_end_line = lexer->line;
@@ -589,11 +606,7 @@ token_t* lexer_next_token(lexer_t* lexer)
 
 token_t* lexer_peek_token(lexer_t* lexer)
 {
-    if (lexer->peeked_token != nullptr)
-        return lexer->peeked_token;
-
-    lexer->peeked_token = lex_next_token(lexer);
-    return lexer->peeked_token;
+    return lexer_peek_token_n(lexer, 0);
 }
 
 void lexer_emit_token_malformed(lexer_t* lexer, token_t* tok, const char* description)

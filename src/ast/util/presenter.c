@@ -1,6 +1,9 @@
 #include "presenter.h"
 
+#include "ast/decl/member_decl.h"
+#include "ast/def/class_def.h"
 #include "ast/def/fn_def.h"
+#include "ast/def/method_def.h"
 #include "ast/type.h"
 #include "ast/visitor.h"
 #include "common/containers/string.h"
@@ -48,6 +51,26 @@ static void present_var_decl(void* self_, ast_var_decl_t* var_decl, void* out_)
     }
 }
 
+static void present_member_decl(void* self_, ast_member_decl_t* member_decl, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("%s", member_decl->base.name));
+    if (member_decl->base.type != nullptr)
+        string_append_cstr(out, ssprintf(": %s", ast_type_string(member_decl->base.type)));
+    if (member_decl->base.init_expr != nullptr) {
+        string_append_cstr(out, " = ");
+        ast_visitor_visit(self, member_decl->base.init_expr, out);
+    }
+}
+
+static void present_class_def(void* self_, ast_class_def_t* class_def, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("class %s", class_def->base.name));
+}
+
 static void present_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 {
     PRELUDE
@@ -64,6 +87,24 @@ static void present_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     string_append_cstr(out, ")");
     if (fn_def->return_type)
         string_append_cstr(out, ssprintf(" -> %s", ast_type_string(fn_def->return_type)));
+}
+
+static void present_method_def(void* self_, ast_method_def_t* method_def, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("fn %s(", method_def->base.base.name));
+    size_t params = vec_size(&method_def->base.params);
+    for (size_t i = 0; i < params; ++i)
+    {
+        ast_visitor_visit(self, vec_get(&method_def->base.params, i), out);
+
+        if (i + 1 < params)
+            string_append_cstr(out, ", ");
+    }
+    string_append_cstr(out, ")");
+    if (method_def->base.return_type)
+        string_append_cstr(out, ssprintf(" -> %s", ast_type_string(method_def->base.return_type)));
 }
 
 static void present_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
@@ -148,6 +189,13 @@ static void present_coercion_expr(void* self_, ast_coercion_expr_t* coercion, vo
     // Do not present anything for compiler-injected node
 }
 
+static void present_construct_expr(void* self_, ast_construct_expr_t* construct_expr, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("%s { ... }", ast_type_string(construct_expr->class_type)));
+}
+
 static void present_bool_lit(void* self_, ast_bool_lit_t* bool_lit, void* out_)
 {
     PRELUDE
@@ -170,6 +218,42 @@ static void present_int_lit(void* self_, ast_int_lit_t* int_lit, void* out_)
         string_append_cstr(out, ssprintf("%ld", int_lit->value.as_signed));
     else
         string_append_cstr(out, ssprintf("%ld", int_lit->value.as_unsigned));
+}
+
+static void present_member_access(void* self_, ast_member_access_t* member_access, void* out_)
+{
+    PRELUDE
+
+    ast_visitor_visit(self, member_access->instance, out);
+    string_append_cstr(out, ".");
+    string_append_cstr(out, member_access->member_name);
+}
+
+static void present_method_call(void* self_, ast_method_call_t* method_call, void* out_)
+{
+    PRELUDE
+
+    ast_visitor_visit(self, method_call->instance, out);
+    string_append_cstr(out, ".");
+    string_append_cstr(out, method_call->member_name);
+    string_append_cstr(out, "(");
+    size_t args = vec_size(&method_call->arguments);
+    for (size_t i = 0; i < args; ++i)
+    {
+        ast_visitor_visit(self, vec_get(&method_call->arguments, i), out);
+
+        if (i + 1 < args)
+            string_append_cstr(out, ", ");
+    }
+    string_append_cstr(out, ")");
+}
+
+static void present_member_init(void* self_, ast_member_init_t* member_init, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("%s = ", member_init->member_name));
+    ast_visitor_visit(self, member_init->init_expr, out);
 }
 
 static void present_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
@@ -275,10 +359,13 @@ ast_presenter_t* ast_presenter_create()
         .base = (ast_visitor_t){
             .visit_root = present_root,
             // Declarations
+            .visit_member_decl = present_member_decl,
             .visit_param_decl = present_param_decl,
             .visit_var_decl = present_var_decl,
             // Definitions
+            .visit_class_def = present_class_def,
             .visit_fn_def = present_fn_def,
+            .visit_method_def = present_method_def,
             // Expressions
             .visit_array_lit = present_array_lit,
             .visit_array_slice = present_array_slice,
@@ -288,8 +375,12 @@ ast_presenter_t* ast_presenter_create()
             .visit_call_expr = present_call_expr,
             .visit_cast_expr = present_cast_expr,
             .visit_coercion_expr = present_coercion_expr,
+            .visit_construct_expr = present_construct_expr,
             .visit_float_lit = present_float_lit,
             .visit_int_lit = present_int_lit,
+            .visit_member_access = present_member_access,
+            .visit_method_call = present_method_call,
+            .visit_member_init = present_member_init,
             .visit_null_lit = present_null_lit,
             .visit_paren_expr = present_paren_expr,
             .visit_ref_expr = present_ref_expr,

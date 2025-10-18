@@ -1,8 +1,12 @@
 #ifndef AST_VISITOR__H
 #define AST_VISITOR__H
 
+#include "ast/decl/member_decl.h"
 #include "ast/decl/param_decl.h"
 #include "ast/decl/var_decl.h"
+#include "ast/def/class_def.h"
+#include "ast/def/fn_def.h"
+#include "ast/def/method_def.h"
 #include "ast/expr/array_lit.h"
 #include "ast/expr/array_slice.h"
 #include "ast/expr/array_subscript.h"
@@ -11,17 +15,20 @@
 #include "ast/expr/call_expr.h"
 #include "ast/expr/cast_expr.h"
 #include "ast/expr/coercion_expr.h"
+#include "ast/expr/construct_expr.h"
 #include "ast/expr/float_lit.h"
+#include "ast/expr/int_lit.h"
+#include "ast/expr/member_access.h"
+#include "ast/expr/method_call.h"
+#include "ast/expr/member_init.h"
 #include "ast/expr/null_lit.h"
-#include "ast/expr/uninit_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/expr/str_lit.h"
 #include "ast/expr/unary_op.h"
+#include "ast/expr/uninit_lit.h"
 #include "ast/node.h"
 #include "ast/root.h"
-#include "ast/def/fn_def.h"
-#include "ast/expr/int_lit.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
@@ -43,11 +50,14 @@ struct ast_visitor
     void (*visit_root)(void* self_, ast_root_t* root, void *out_);
 
     // Declarations
+    void (*visit_member_decl)(void* self_, ast_member_decl_t* member_decl, void *out_);
     void (*visit_param_decl)(void* self, ast_param_decl_t* fn_def, void *out_);
     void (*visit_var_decl)(void* self_, ast_var_decl_t* var_decl, void *out_);
 
     // Definitions
+    void (*visit_class_def)(void* self_, ast_class_def_t* class_def, void *out_);
     void (*visit_fn_def)(void* self_, ast_fn_def_t* fn_def, void *out_);
+    void (*visit_method_def)(void* self_, ast_method_def_t* method_def, void *out_);
 
     // Expressions
     void (*visit_array_lit)(void* self_, ast_array_lit_t* lit, void *out_);
@@ -58,8 +68,12 @@ struct ast_visitor
     void (*visit_call_expr)(void* self_, ast_call_expr_t* call_expr, void *out_);
     void (*visit_cast_expr)(void* self_, ast_cast_expr_t* cast, void *out_);
     void (*visit_coercion_expr)(void* self_, ast_coercion_expr_t* coercion, void *out_);
+    void (*visit_construct_expr)(void* self_, ast_construct_expr_t* construct_expr, void *out_);
     void (*visit_float_lit)(void* self_, ast_float_lit_t* float_lit, void *out_);
     void (*visit_int_lit)(void* self_, ast_int_lit_t* int_lit, void *out_);
+    void (*visit_member_access)(void* self_, ast_member_access_t* member_access, void *out_);
+    void (*visit_member_init)(void* self_, ast_member_init_t* member_init, void *out_);
+    void (*visit_method_call)(void* self_, ast_method_call_t* member_call, void *out_);
     void (*visit_null_lit)(void* self_, ast_null_lit_t* null_lit, void *out_);
     void (*visit_paren_expr)(void* self_, ast_paren_expr_t* paren_expr, void *out_);
     void (*visit_ref_expr)(void* self_, ast_ref_expr_t* ref_expr, void *out_);

@@ -28,7 +28,7 @@ void vec_deinit(vec_t* vec)
 vec_t* vec_create(vec_delete_fn delete_fn)
 {
     vec_t* vec = malloc(sizeof(*vec));
-    // TODO: panic if malloc returns nullptr
+    panic_if(vec == nullptr);
 
     *vec = VEC_INIT(delete_fn);
 
@@ -50,7 +50,7 @@ static void ptr_vec_grow(vec_t* vec)
         PTR_VEC_INITIAL_CAPACITY : (size_t)(vec->capacity * PTR_VEC_GROWTH_FACTOR);
 
     void* new_mem = realloc(vec->mem, new_capacity * sizeof(void*));
-    // TODO: panic if realloc returns nullptr
+    panic_if(new_mem == nullptr);
 
     vec->mem = new_mem;
     vec->capacity = new_capacity;
@@ -88,4 +88,14 @@ void vec_move(vec_t* dst, vec_t* src)
     src->mem = nullptr;
     src->length = 0;
     src->capacity = 0;
+}
+
+void vec_remove(vec_t* vec, size_t index)
+{
+    panic_if(index >= vec->length);
+    if (vec->delete_fn != nullptr)
+        vec->delete_fn(vec_get(vec, index));
+    for (size_t i = index + 1; i < vec->length; ++i)
+        vec->mem[i - 1] = vec->mem[i];
+    --vec->length;
 }
