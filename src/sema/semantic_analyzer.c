@@ -341,6 +341,9 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
             return;
     }
 
+    bool start_safe = slice->start == nullptr;
+    bool end_safe = slice->end == nullptr;
+
     // Visit start & verify bounds if possible
     if (slice->start != nullptr)
     {
@@ -349,7 +352,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
             return;  // don't propagate errors
 
         if (slice->array->type->kind == AST_TYPE_ARRAY && !analyze_fixed_size_array_index(sema, slice,
-            slice->array->type, slice->start, false, &slice->bounds_safe))
+            slice->array->type, slice->start, false, &start_safe))
         {
             slice->base.type = ast_type_invalid();
             return;
@@ -364,7 +367,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
             return;  // don't propagate errors
 
         if (slice->array->type->kind == AST_TYPE_ARRAY && !analyze_fixed_size_array_index(sema, slice,
-            slice->array->type, slice->end, true, &slice->bounds_safe))
+            slice->array->type, slice->end, true, &end_safe))
         {
             slice->base.type = ast_type_invalid();
             return;
@@ -418,6 +421,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
             slice->end = ast_coercion_expr_create(slice->end, ast_type_builtin(TYPE_USIZE));
     }
 
+    slice->bounds_safe = start_safe && end_safe;
     slice->base.is_lvalue = false;
     slice->base.type = ast_type_view(element_type);
 }

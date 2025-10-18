@@ -44,6 +44,39 @@ struct llvm_codegen
     bool function_name;
 };
 
+// Get or declare llvm.ubsantrap intrinsic
+static LLVMValueRef get_ubsantrap_intrinsic(llvm_codegen_t* llvm)
+{
+    const char* intrinsic_name = "llvm.ubsantrap";
+    LLVMValueRef fn = LLVMGetNamedFunction(llvm->module, intrinsic_name);
+    if (fn != nullptr)
+        return fn;
+
+    // declare void @llvm.ubsantrap(i8) noreturn nounwind
+    LLVMTypeRef param_types[] = { LLVMInt8TypeInContext(llvm->context) };
+    LLVMTypeRef fn_type = LLVMFunctionType(LLVMVoidTypeInContext(llvm->context), param_types, 1, false);
+    return LLVMAddFunction(llvm->module, intrinsic_name, fn_type);
+}
+
+// Emit a bounds check failure trap
+static void emit_bounds_check_trap(llvm_codegen_t* llvm, LLVMValueRef condition, const char* safe_label)
+{
+    LLVMBasicBlockRef trap_block = LLVMAppendBasicBlock(llvm->current_function, "bounds_check.trap");
+    LLVMBasicBlockRef safe_block = LLVMAppendBasicBlock(llvm->current_function, safe_label);
+
+    LLVMBuildCondBr(llvm->builder, condition, safe_block, trap_block);
+
+    // Emit trap block
+    LLVMPositionBuilderAtEnd(llvm->builder, trap_block);
+    LLVMValueRef ubsantrap = get_ubsantrap_intrinsic(llvm);
+    LLVMValueRef trap_kind = LLVMConstInt(LLVMInt8TypeInContext(llvm->context), 5, false);  // 5 = out-of-bounds
+    LLVMBuildCall2(llvm->builder, LLVMGlobalGetValueType(ubsantrap), ubsantrap, &trap_kind, 1, "");
+    LLVMBuildUnreachable(llvm->builder);
+
+    // Continue with safe block
+    LLVMPositionBuilderAtEnd(llvm->builder, safe_block);
+}
+
 // Register builtin functions that are implemented in the runtime
 static void register_builtins(llvm_codegen_t* llvm)
 {
@@ -431,7 +464,6 @@ static LLVMValueRef build_view_struct(llvm_codegen_t* llvm, ast_type_t* view_typ
     return view_struct;
 }
 
-// FIXME: Emit range checks if !slice->bounds_safe
 static void emit_array_slice(void* self_, ast_array_slice_t* slice, void* out_)
 {
     llvm_codegen_t* llvm = self_;
@@ -439,6 +471,7 @@ static void emit_array_slice(void* self_, ast_array_slice_t* slice, void* out_)
 
     LLVMValueRef start = nullptr;  // inclusive
     LLVMValueRef end = nullptr;    // exclusive
+    LLVMValueRef array_length = nullptr;  // only computed if needed for bounds checks
 
     // Get value of array
     bool output_lvalue = llvm->lvalue;
@@ -447,31 +480,50 @@ static void emit_array_slice(void* self_, ast_array_slice_t* slice, void* out_)
     ast_visitor_visit(llvm, slice->array, &array_ptr);
     llvm->lvalue = output_lvalue;
 
+    // Can only compute array length for arrays and views, not raw pointers
+    bool can_bounds_check = slice->array->type->kind != AST_TYPE_POINTER;
+
+    // Compute array length if we'll need it for bounds checks or if end is not specified
+    if (can_bounds_check && (!slice->bounds_safe || slice->end == nullptr))
+        array_length = emit_size_of_array(llvm, slice->array->type, array_ptr);
+
     if (slice->start == nullptr)
         start = LLVMConstInt(LLVMInt64TypeInContext(llvm->context), 0, false);
     else
     {
         ast_visitor_visit(llvm, slice->start, &start);
-        // Ensure start is i64 for consistency
-        // FIXME: Sema should already take care of this
-        LLVMTypeRef start_type = LLVMTypeOf(start);
-        if (start_type != LLVMInt64TypeInContext(llvm->context))
-            start = LLVMBuildZExt(llvm->builder, start, LLVMInt64TypeInContext(llvm->context), "start_i64");
+        start = LLVMBuildZExt(llvm->builder, start, LLVMInt64TypeInContext(llvm->context), "start");
     }
 
     if (slice->end == nullptr)
-        end = emit_size_of_array(llvm, slice->array->type, array_ptr);
+    {
+        // For raw pointers without explicit end, this is an error - sema should have caught this
+        panic_if(!can_bounds_check);
+        end = array_length;  // already computed above
+    }
     else
     {
         ast_visitor_visit(llvm, slice->end, &end);
-        // Ensure end is i64 for consistency
-        // FIXME: Sema should already take care of this
-        LLVMTypeRef end_type = LLVMTypeOf(end);
-        if (end_type != LLVMInt64TypeInContext(llvm->context))
-            end = LLVMBuildZExt(llvm->builder, end, LLVMInt64TypeInContext(llvm->context), "end_i64");
+        end = LLVMBuildZExt(llvm->builder, end, LLVMInt64TypeInContext(llvm->context), "end");
     }
 
-    LLVMValueRef length = LLVMBuildSub(llvm->builder, end, start, "view_size");  // FIXME: panic if size is < 0
+    // Emit bounds checks if not verified at compile-time
+    // Note: we don't bounds-check raw pointer slices (only arrays and views)
+    if (!slice->bounds_safe && can_bounds_check)
+    {
+        // Check: start <= end (ensures size >= 0)
+        LLVMValueRef start_le_end = LLVMBuildICmp(llvm->builder, LLVMIntULE, start, end, "start_le_end");
+        emit_bounds_check_trap(llvm, start_le_end, "slice.check_end");
+
+        // Check: end <= array_length (only if end was explicitly provided)
+        if (slice->end != nullptr)
+        {
+            LLVMValueRef end_le_len = LLVMBuildICmp(llvm->builder, LLVMIntULE, end, array_length, "end_le_len");
+            emit_bounds_check_trap(llvm, end_le_len, "slice.safe");
+        }
+    }
+
+    LLVMValueRef length = LLVMBuildSub(llvm->builder, end, start, "view_size");
     LLVMValueRef elem_ptr = emit_ptr_to_array_elem(llvm, slice->array->type, array_ptr, start);
 
     LLVMValueRef view = build_view_struct(llvm, slice->base.type, length, elem_ptr);
@@ -479,7 +531,6 @@ static void emit_array_slice(void* self_, ast_array_slice_t* slice, void* out_)
         *out_val = view;
 }
 
-// FIXME: Emit range checks if !slice->bounds_safe
 static void emit_array_subscript(void* self_, ast_array_subscript_t* subscript, void* out_)
 {
     llvm_codegen_t* llvm = self_;
@@ -510,6 +561,16 @@ static void emit_array_subscript(void* self_, ast_array_subscript_t* subscript, 
     llvm->lvalue = false;
     LLVMValueRef index = nullptr;
     ast_visitor_visit(llvm, subscript->index, &index);
+
+    // Emit bounds check if not verified at compile-time
+    // Note: we don't bounds-check raw pointer subscripts (only arrays and views)
+    if (!subscript->bounds_safe && subscript->array->type->kind != AST_TYPE_POINTER)
+    {
+        LLVMValueRef array_length = emit_size_of_array(llvm, subscript->array->type, array_ptr);
+        // Check: index < array_length (index is already usize/i64 from sema)
+        LLVMValueRef in_bounds = LLVMBuildICmp(llvm->builder, LLVMIntULT, index, array_length, "in_bounds");
+        emit_bounds_check_trap(llvm, in_bounds, "subscript.safe");
+    }
 
     LLVMValueRef elem_ptr = emit_ptr_to_array_elem(llvm, subscript->array->type, array_ptr, index);
 
@@ -800,16 +861,19 @@ static void emit_if_stmt(void* self_, ast_if_stmt_t* stmt, void* out_)
     // Emit then branch
     LLVMPositionBuilderAtEnd(llvm->builder, then_block);
     ast_visitor_visit(llvm, stmt->then_branch, out_);
-    // Only add branch if block doesn't already have a terminator
-    if (LLVMGetBasicBlockTerminator(then_block) == nullptr)
+    // Only add branch if current block doesn't already have a terminator
+    // Note: after emitting then branch, builder may be in a different block (e.g., bounds check safe block)
+    LLVMBasicBlockRef current_block = LLVMGetInsertBlock(llvm->builder);
+    if (LLVMGetBasicBlockTerminator(current_block) == nullptr)
         LLVMBuildBr(llvm->builder, join_block);
 
     // Emit else branch
     LLVMPositionBuilderAtEnd(llvm->builder, else_block);
     if (stmt->else_branch != nullptr)
         ast_visitor_visit(llvm, stmt->else_branch, out_);
-    // Only add branch if block doesn't already have a terminator
-    if (LLVMGetBasicBlockTerminator(else_block) == nullptr)
+    // Only add branch if current block doesn't already have a terminator
+    current_block = LLVMGetInsertBlock(llvm->builder);
+    if (LLVMGetBasicBlockTerminator(current_block) == nullptr)
         LLVMBuildBr(llvm->builder, join_block);
 
     // Continue after if-else
@@ -858,8 +922,10 @@ static void emit_while_stmt(void* self_, ast_while_stmt_t* stmt, void* out_)
     // Emit body block
     LLVMPositionBuilderAtEnd(llvm->builder, body_block);
     ast_visitor_visit(llvm, stmt->body, out_);
-    // Only add branch if block doesn't already have a terminator
-    if (LLVMGetBasicBlockTerminator(body_block) == nullptr)
+    // Only add branch if current block doesn't already have a terminator
+    // Note: after emitting body, builder may be in a different block (e.g., bounds check safe block)
+    LLVMBasicBlockRef current_block = LLVMGetInsertBlock(llvm->builder);
+    if (LLVMGetBasicBlockTerminator(current_block) == nullptr)
         LLVMBuildBr(llvm->builder, cond_block);
 
     // Continue after while loop
