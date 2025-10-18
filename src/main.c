@@ -177,7 +177,11 @@ int main(int argc, char** argv)
     parser_destroy(parser);
 
     if (!ast || failed_parse)
+    {
+        ast_node_destroy(ast);
+        free(source);
         return 2;
+    }
 
     // Create semantic context
     semantic_context_t* ctx = semantic_context_create();
@@ -195,6 +199,7 @@ int main(int argc, char** argv)
         semantic_context_destroy(ctx);
         decl_collector_destroy(decl_collector);
         ast_node_destroy(ast);
+        free(source);
         return 3;
     }
 
@@ -210,6 +215,7 @@ int main(int argc, char** argv)
         semantic_context_destroy(ctx);
         semantic_analyzer_destroy(sema);
         ast_node_destroy(ast);
+        free(source);
         return 4;
     }
 

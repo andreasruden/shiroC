@@ -229,6 +229,7 @@ static ast_expr_t* parse_str_lit(parser_t* parser)
 }
 
 // source set by caller as we are parsed as a postfix to the expr
+// array & start is cleaned up by caller if we return nullptr
 static ast_expr_t* parse_array_slice(parser_t* parser, ast_expr_t* array, ast_expr_t* start)
 {
     if (!lexer_next_token_iff(parser->lexer, TOKEN_DOTDOT))
@@ -237,12 +238,16 @@ static ast_expr_t* parse_array_slice(parser_t* parser, ast_expr_t* array, ast_ex
     ast_expr_t* end = parser_parse_expr(parser);  // OK to be nullptr
 
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET))
+    {
+        ast_node_destroy(end);
         return nullptr;
+    }
 
     return ast_array_slice_create(array, start, end);
 }
 
 // source set by caller as we are parsed as a postfix to the expr
+// array is cleaned up by caller if we return nullptr
 static ast_expr_t* parse_array_subscript(parser_t* parser, ast_expr_t* array)
 {
     if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACKET))
@@ -256,10 +261,18 @@ static ast_expr_t* parse_array_subscript(parser_t* parser, ast_expr_t* array)
         return parse_array_slice(parser, array, nullptr);  // could still be a slice: arr[..end]
 
     if (lexer_peek_token(parser->lexer)->type == TOKEN_DOTDOT)
-        return parse_array_slice(parser, array, index);
+    {
+        ast_expr_t* slice = parse_array_slice(parser, array, index);
+        if (slice == nullptr)
+            ast_node_destroy(index);
+        return slice;
+    }
 
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET))
+    {
+        ast_node_destroy(index);
         return nullptr;
+    }
 
     return ast_array_subscript_create(array, index);
 }
@@ -369,20 +382,25 @@ static ast_expr_t* parse_postfix_expr(parser_t* parser)
     ast_expr_t* postfix_expr = primary;
     while (true)
     {
+        ast_expr_t* new_postfix_expr = nullptr;
         switch (lexer_peek_token(parser->lexer)->type)
         {
             case TOKEN_LPAREN:
-                postfix_expr = parse_call_expr(parser, postfix_expr);
+                new_postfix_expr = parse_call_expr(parser, postfix_expr);
                 break;
             case TOKEN_LBRACKET:
-                postfix_expr = parse_array_subscript(parser, postfix_expr);
+                new_postfix_expr = parse_array_subscript(parser, postfix_expr);
                 break;
             default:
                 goto end;
         }
 
-        if (postfix_expr == nullptr)
+        if (new_postfix_expr == nullptr)
+        {
+            ast_node_destroy(postfix_expr);
             return nullptr;
+        }
+        postfix_expr = new_postfix_expr;
 
         parser_set_source_tok_to_current(parser, postfix_expr, tok_start);
     }

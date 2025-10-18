@@ -16,13 +16,13 @@ static ast_type_t* solve_array_size(semantic_context_t* ctx, ast_type_t* type, a
         return ast_type_invalid();
     }
 
-    intptr_t size = ((ast_int_lit_t*)type->data.array.size_expr)->value.as_signed;
-
-    if (size <= 0)
+    if (((ast_int_lit_t*)type->data.array.size_expr)->has_minus_sign)
     {
         semantic_context_add_error(ctx, node, "array-size must be > 0");
         return ast_type_invalid();
     }
+
+    size_t size = ((ast_int_lit_t*)type->data.array.size_expr)->value.as_unsigned;
 
     return ast_type_array(inner_type, size);
 }

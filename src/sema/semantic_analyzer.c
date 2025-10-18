@@ -874,7 +874,7 @@ static void analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
     (void)out_;
     semantic_analyzer_t* sema = self_;
 
-    symbol_t* symbol = nullptr;
+    symbol_t* symbol = nullptr;  // can be nullptr after visit
     ast_visitor_visit(sema, unary_op->expr, &symbol);
 
     switch (unary_op->op)
@@ -883,7 +883,7 @@ static void analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
             if (!unary_op->expr->is_lvalue)
             {
                 semantic_context_add_error(sema->ctx, unary_op, ssprintf("cannot take address of r-value '%s'",
-                    symbol->name));
+                    symbol == nullptr ? "invalid expression" : symbol->name));
                 return;
             }
             unary_op->base.is_lvalue = false;
