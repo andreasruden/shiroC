@@ -109,12 +109,29 @@ class WarningInstruction(TestInstruction):
 
 
 class StdoutInstruction(TestInstruction):
-    """Expect program output matching the regex"""
+    """Expect program output matching the regex on the next line"""
     def execute(self, context: 'TestContext') -> bool:
         pattern = self.args.strip().strip('"').strip("'")
-        if not re.search(pattern, context.run_output):
-            context.error_message = f"Expected stdout pattern not found: {pattern}"
+
+        # Check if there are more lines available
+        if context.stdout_cursor >= len(context.stdout_lines):
+            context.error_message = (
+                f"Expected stdout pattern '{pattern}' but program produced no more output"
+            )
             return False
+
+        # Get the next line
+        actual_line = context.stdout_lines[context.stdout_cursor]
+
+        # Match pattern against this line
+        if not re.search(pattern, actual_line):
+            context.error_message = (
+                f"Expected stdout pattern '{pattern}' but got: {repr(actual_line)}"
+            )
+            return False
+
+        # Move to next line
+        context.stdout_cursor += 1
         return True
 
 
@@ -152,6 +169,10 @@ class TestContext:
         self.all_warnings: List[Tuple[int, str]] = []
         self.covered_errors: Set[Tuple[int, str]] = set()
         self.covered_warnings: Set[Tuple[int, str]] = set()
+
+        # Track stdout lines for sequential validation
+        self.stdout_lines: List[str] = []
+        self.stdout_cursor: int = 0
 
     def parse_compiler_messages(self):
         """Parse compiler output for errors and warnings"""
@@ -258,6 +279,17 @@ class TestContext:
 
         return True
 
+    def check_uncovered_stdout(self) -> bool:
+        """Check if there are any uncovered stdout lines"""
+        if self.stdout_cursor < len(self.stdout_lines):
+            uncovered = self.stdout_lines[self.stdout_cursor:]
+            self.error_message = "Uncovered stdout found:\n"
+            for i, line in enumerate(uncovered, start=self.stdout_cursor + 1):
+                self.error_message += f"  Line {i}: {repr(line)}\n"
+            return False
+
+        return True
+
     def run(self) -> bool:
         """Run the compiled executable. Returns True if run succeeded as expected."""
         if not self.executable or not os.path.exists(self.executable):
@@ -277,6 +309,9 @@ class TestContext:
             )
             self.run_output = result.stdout
             self.run_returncode = result.returncode
+
+            # Split stdout into lines for sequential validation
+            self.stdout_lines = self.run_output.splitlines()
 
             if result.returncode != 0:
                 self.error_message = f"Program exited with non-zero code: {result.returncode}"
@@ -436,6 +471,13 @@ def run_test(filepath: Path) -> bool:
                 print(f"    {context.error_message}")
                 print(f"    Program output:\n{context.run_output}")
                 return False
+
+        # Check for uncovered stdout
+        if not context.check_uncovered_stdout():
+            print(f"  FAIL: {filepath}")
+            print(f"    {context.error_message}")
+            print(f"    Program output:\n{context.run_output}")
+            return False
 
         print(f"  PASS: {filepath}")
         return True
