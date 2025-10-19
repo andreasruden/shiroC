@@ -11,6 +11,7 @@
 #include "ast/expr/member_access.h"
 #include "ast/expr/member_init.h"
 #include "ast/expr/method_call.h"
+#include "ast/expr/null_lit.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/expr/self_expr.h"
 #include "ast/expr/str_lit.h"
@@ -112,6 +113,21 @@ TEST(ut_sema_classes_fixture_t, member_default_value_type_mismatch)
         nullptr);
 
     ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "does not match annotation");
+
+    ast_node_destroy(root);
+}
+
+TEST(ut_sema_classes_fixture_t, member_default_value_null_for_pointer_type)
+{
+    // Test that a member of pointer type can have null as default value
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Node",
+            ast_member_decl_create("value", ast_type_builtin(TYPE_I32), nullptr),
+            ast_member_decl_create("next", ast_type_pointer(ast_type_user("Node")), ast_null_lit_create()),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
 
     ast_node_destroy(root);
 }

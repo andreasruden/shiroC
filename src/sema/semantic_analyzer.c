@@ -186,7 +186,9 @@ static void analyze_member_decl(void* self_, ast_member_decl_t** member_inout, v
             return;
 
         // We don't allow any coercion for member defaults
-        if (member->base.init_expr->type != member->base.type)
+        if (member->base.init_expr->type != member->base.type &&
+            !(member->base.init_expr->type == ast_type_builtin(TYPE_NULL) &&
+                member->base.type->kind == AST_TYPE_POINTER))
         {
             semantic_context_add_error(sema->ctx, member, ssprintf("type '%s' does not match annotation",
                 ast_type_string(member->base.init_expr->type)));
