@@ -3,10 +3,14 @@
 #include "ast/decl/member_decl.h"
 #include "ast/expr/coercion_expr.h"
 #include "ast/expr/int_lit.h"
+#include "ast/expr/member_access.h"
 #include "ast/expr/member_init.h"
+#include "ast/expr/method_call.h"
+#include "ast/expr/self_expr.h"
 #include "ast/expr/unary_op.h"
 #include "ast/node.h"
 #include "ast/stmt/compound_stmt.h"
+#include "ast/transformer.h"
 #include "ast/type.h"
 #include "ast/visitor.h"
 #include "common/containers/hash_table.h"
@@ -845,10 +849,14 @@ static void analyze_call_expr(void* self_, ast_call_expr_t** call_inout, void* o
     if (symbol == nullptr)
         return;
 
-    // Call expr can upgrade to method call via implicit self expr
+    // Call expr can transform to method call via implicit self expr
     if (symbol->kind == SYMBOL_METHOD)
     {
-        // TODO: Implemenet this
+        ast_expr_t* replacement = ast_method_call_create(ast_self_expr_create(true), symbol->name,
+            &call->arguments);
+        ast_node_destroy(call);
+        *(ast_expr_t**)call_inout = replacement;
+        ast_transformer_transform(sema, call_inout, out_);  // visit method call
         return;
     }
 
@@ -1225,6 +1233,15 @@ static void analyze_ref_expr(void* self_, ast_ref_expr_t** ref_expr_inout, void*
     if (symbol == nullptr)
     {
         semantic_context_add_error(sema->ctx, ref_expr, ssprintf("unknown symbol name '%s'", ref_expr->name));
+        return;
+    }
+
+    // Ref expr can transform to member access via implicit self expr
+    if (symbol->kind == SYMBOL_MEMBER)
+    {
+        *(ast_expr_t**)ref_expr_inout = ast_member_access_create(ast_self_expr_create(true), symbol->name);
+        ast_node_destroy(ref_expr);
+        ast_transformer_transform(sema, ref_expr_inout, out_);  // visit member_access
         return;
     }
 

@@ -579,3 +579,67 @@ TEST(ut_sema_classes_fixture_t, explicit_self_member_assignment)
 
     ast_node_destroy(root);
 }
+
+TEST(ut_sema_classes_fixture_t, implicit_self_member_reference)
+{
+    // Test that a ref_expr referring to a member is transformed to member_access(self, member)
+    ast_stmt_t* return_stmt = ast_return_stmt_create(ast_ref_expr_create("x"));
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Point",
+            ast_member_decl_create("x", ast_type_builtin(TYPE_I32), ast_int_lit_val(0)),
+            ast_member_decl_create("y", ast_type_builtin(TYPE_I32), ast_int_lit_val(0)),
+            ast_method_def_create_va("getX", ast_type_builtin(TYPE_I32),
+                ast_compound_stmt_create_va(return_stmt, nullptr),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    // After semantic analysis, the ref_expr should be replaced with member_access
+    ast_return_stmt_t* ret = (ast_return_stmt_t*)return_stmt;
+    ASSERT_EQ(AST_EXPR_MEMBER_ACCESS, AST_KIND(ret->value_expr));
+    ast_member_access_t* member_access = (ast_member_access_t*)ret->value_expr;
+    ASSERT_EQ(AST_EXPR_SELF, AST_KIND(member_access->instance));
+    ast_self_expr_t* self_expr = (ast_self_expr_t*)member_access->instance;
+    ASSERT_TRUE(self_expr->implicit);
+
+    ast_node_destroy(root);
+}
+
+TEST(ut_sema_classes_fixture_t, implicit_self_method_call)
+{
+    // Test that a call_expr referring to a method is transformed to method_call(self, method)
+    ast_stmt_t* return_stmt = ast_return_stmt_create(
+        ast_bin_op_create(TOKEN_PLUS,
+            ast_call_expr_create_va(ast_ref_expr_create("getValue"), nullptr),
+            ast_int_lit_val(10)));
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Calculator",
+            ast_member_decl_create("value", ast_type_builtin(TYPE_I32), ast_int_lit_val(0)),
+            ast_method_def_create_va("getValue", ast_type_builtin(TYPE_I32),
+                ast_compound_stmt_create_va(
+                    ast_return_stmt_create(ast_ref_expr_create("value")),
+                    nullptr),
+                nullptr),
+            ast_method_def_create_va("compute", ast_type_builtin(TYPE_I32),
+                ast_compound_stmt_create_va(return_stmt, nullptr),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    // After semantic analysis, the call_expr should be replaced with method_call
+    ast_return_stmt_t* ret = (ast_return_stmt_t*)return_stmt;
+    ast_bin_op_t* bin_op = (ast_bin_op_t*)ret->value_expr;
+    ASSERT_EQ(AST_EXPR_METHOD_CALL, AST_KIND(bin_op->lhs));
+    ast_method_call_t* method_call = (ast_method_call_t*)bin_op->lhs;
+    ASSERT_EQ(AST_EXPR_SELF, AST_KIND(method_call->instance));
+    ast_self_expr_t* self_expr = (ast_self_expr_t*)method_call->instance;
+    ASSERT_TRUE(self_expr->implicit);
+
+    ast_node_destroy(root);
+}
