@@ -1,0 +1,57 @@
+//! run
+
+class I32List {
+    var next: I32List* = null;
+    var value: i32;
+
+    fn find_end() -> I32List* {
+        var itr = self;
+        while (itr.next != null) {
+            itr = itr.next;
+        }
+        return itr;
+    }
+
+    fn len() -> i32 {
+        var i = 1;
+        var itr = self;
+        while (itr.next != null) {
+            itr = itr.next;
+            i += 1;
+        }
+        return i;
+    }
+
+    fn push_end(list: I32List*) {
+        var end = find_end();
+        end.next = list;
+    }
+
+    fn sum() -> i32 {
+        var s = 0;
+        var itr = self;
+        while (itr != null) {
+            s += itr.value;
+            itr = itr.next;
+        }
+        return s;
+    }
+}
+
+fn main() -> i32 {
+    var start = I32List { value = 10 };
+
+    var node_a = I32List { value = 20 };
+    start.push_end(&node_a);
+
+    var node_b = I32List { value = 30 };
+    start.push_end(&node_b);
+
+    var node_c = I32List { value = 40 };
+    start.push_end(&node_c);
+
+    printI32(start.len());  //! stdout: "4"
+    printI32(start.sum());  //! stdout: "100"
+
+    return 0;
+}

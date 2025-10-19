@@ -1,7 +1,12 @@
 #include "llvm_codegen.h"
 
 #include "ast/decl/param_decl.h"
+#include "ast/def/class_def.h"
+#include "ast/def/method_def.h"
 #include "ast/expr/coercion_expr.h"
+#include "ast/expr/construct_expr.h"
+#include "ast/expr/member_init.h"
+#include "ast/expr/self_expr.h"
 #include "ast/expr/uninit_lit.h"
 #include "ast/node.h"
 #include "ast/type.h"
@@ -20,6 +25,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct class_layout class_layout_t;
+
 struct llvm_codegen
 {
     ast_visitor_t base;
@@ -32,6 +39,10 @@ struct llvm_codegen
     ast_presenter_t* presenter;
     hash_table_t* symbols;  // name (char*) -> LLVMValueRef (alloca)
 
+    // Classes
+    hash_table_t class_layouts;    // class name (char*) -> class_layout_t*
+    ast_class_def_t* current_class; // set during method generation
+
     // Debug info
     LLVMDIBuilderRef di_builder;
     LLVMMetadataRef di_compile_unit;
@@ -42,6 +53,14 @@ struct llvm_codegen
     bool lvalue;
     bool address_of_lvalue;
     bool function_name;
+};
+
+struct class_layout
+{
+    char* class_name;
+    hash_table_t member_indices;  // member name -> int (index in struct)
+    vec_t member_names;  // member names (char*) in order they appear in LLVM struct
+    vec_t member_types;  // member type (ast_type_t*) in order they appear in LLVM struct
 };
 
 // Get or declare llvm.ubsantrap intrinsic
@@ -141,6 +160,12 @@ static void emit_var_decl(void* self_, ast_var_decl_t* var, void* out_)
                 LLVMValueRef array_val = LLVMBuildLoad2(llvm->builder, array_type, init_value, "load_array");
                 LLVMBuildStore(llvm->builder, array_val, alloc_ref);
             }
+            else if (var->type->kind == AST_TYPE_USER)
+            {
+                LLVMTypeRef class_type = llvm_type(llvm->context, var->type);
+                LLVMValueRef class_val = LLVMBuildLoad2(llvm->builder, class_type, init_value, "load_class");
+                LLVMBuildStore(llvm->builder, class_val, alloc_ref);
+            }
             else
                 LLVMBuildStore(llvm->builder, init_value, alloc_ref);
         }
@@ -148,6 +173,53 @@ static void emit_var_decl(void* self_, ast_var_decl_t* var, void* out_)
 
     hash_table_insert(llvm->symbols, var->name, alloc_ref);
     *out_ref = alloc_ref;
+}
+
+static void emit_class_def(void* self_, ast_class_def_t* class_def, void* out_)
+{
+    (void)out_;
+    llvm_codegen_t* llvm = self_;
+
+    // Register class by name
+    LLVMTypeRef class_type = LLVMStructCreateNamed(llvm->context, class_def->base.name);
+
+    // Register the fields of the class
+    unsigned int member_count = vec_size(&class_def->members);
+    LLVMTypeRef* member_types = malloc(sizeof(LLVMTypeRef) * member_count);
+    for (unsigned int i = 0; i < member_count; ++i)
+    {
+        ast_member_decl_t* member = vec_get(&class_def->members, i);
+        LLVMTypeRef member_type = llvm_type(llvm->context, member->base.type);
+        member_types[i] = member_type;
+    }
+    LLVMStructSetBody(class_type, member_types, member_count, false);
+    free(member_types);
+
+    // Create class layout
+    class_layout_t* layout = malloc(sizeof(*layout));
+    *layout = (class_layout_t){
+        .class_name = strdup(class_def->base.name),
+        .member_names = VEC_INIT(free),
+        .member_types = VEC_INIT(nullptr),
+        .member_indices = HASH_TABLE_INIT(nullptr),
+    };
+
+    // Populate class layout
+    for (size_t i = 0; i < member_count; ++i)
+    {
+        ast_member_decl_t* decl = vec_get(&class_def->members, i);
+        hash_table_insert(&layout->member_indices, decl->base.name, (void*)(intptr_t)i);
+        vec_push(&layout->member_names, strdup(decl->base.name));
+        vec_push(&layout->member_types, decl->base.type);
+    }
+
+    hash_table_insert(&llvm->class_layouts, class_def->base.name, layout);
+
+    // Visit all methods
+    llvm->current_class = class_def;
+    for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
+        ast_visitor_visit(llvm, vec_get(&class_def->methods, i), nullptr);
+    llvm->current_class = nullptr;
 }
 
 static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
@@ -219,6 +291,87 @@ static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     llvm->symbols = nullptr;
 }
 
+static void emit_method_def(void* self_, ast_method_def_t* method, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    (void)out_;
+    panic_if(llvm->current_class == nullptr);
+
+    llvm->symbols = hash_table_create(nullptr);
+
+    // Mangle method name: ClassName.methodName
+    char* mangled_name = ssprintf("%s.%s", llvm->current_class->base.name, method->base.base.name);
+
+    LLVMTypeRef class_ptr_type = LLVMPointerTypeInContext(llvm->context, 0);
+
+    // Build list of params: [*ClassName, ...user_params]
+    size_t user_param_count = vec_size(&method->base.params);
+    size_t total_param_count = 1 + user_param_count;
+    LLVMTypeRef* param_types = malloc(total_param_count * sizeof(LLVMTypeRef));
+    param_types[0] = class_ptr_type;  // implicit self parameter
+    for (size_t i = 0; i < user_param_count; ++i)
+    {
+        ast_param_decl_t* param = vec_get(&method->base.params, i);
+        param_types[i + 1] = llvm_type(llvm->context, param->type);
+    }
+
+    // Emit function
+    LLVMTypeRef fn_type = LLVMFunctionType(llvm_type(llvm->context, method->base.return_type), param_types,
+        total_param_count, false);
+    LLVMValueRef fn_val = LLVMAddFunction(llvm->module, mangled_name, fn_type);
+    llvm->current_function = fn_val;
+    free(param_types);
+
+    // Create debug info for this method
+    if (llvm->di_builder != nullptr)
+    {
+        // Create subroutine type (simplified - just mark as unspecified)
+        LLVMMetadataRef di_param_types[] = {nullptr};
+        LLVMMetadataRef di_fn_type = LLVMDIBuilderCreateSubroutineType(llvm->di_builder, llvm->di_file,
+            di_param_types, 0, LLVMDIFlagZero);
+
+        // Create subprogram (method debug info)
+        char* debug_name = ssprintf("%s.%s", llvm->current_class->base.name, method->base.base.name);
+        LLVMMetadataRef di_subprogram = LLVMDIBuilderCreateFunction(llvm->di_builder, llvm->di_file, debug_name,
+            strlen(debug_name), debug_name, strlen(debug_name), llvm->di_file,
+            (unsigned int)AST_NODE(method)->source_begin.line, di_fn_type, false, true,
+            (unsigned int)AST_NODE(method)->source_begin.line, LLVMDIFlagZero, false);
+
+        LLVMSetSubprogram(fn_val, di_subprogram);
+
+        // Set as current scope for nested instructions
+        llvm->current_di_scope = di_subprogram;
+        hash_table_insert(llvm->di_scopes, debug_name, di_subprogram);
+    }
+
+    // Add entry block and position builder
+    LLVMBasicBlockRef entry_block = LLVMAppendBasicBlock(fn_val, "entry");
+    LLVMPositionBuilderAtEnd(llvm->builder, entry_block);
+
+    set_debug_location(llvm, AST_NODE(method));
+
+    // Allocate space for implicit 'self' parameter
+    LLVMValueRef self_param = LLVMGetParam(fn_val, 0);
+    LLVMValueRef self_alloc = LLVMBuildAlloca(llvm->builder, class_ptr_type, "self.addr");
+    LLVMBuildStore(llvm->builder, self_param, self_alloc);
+    hash_table_insert(llvm->symbols, "self", self_alloc);
+
+    // Allocate space for all user parameters
+    for (size_t i = 0; i < user_param_count; ++i)
+        ast_visitor_visit(llvm, vec_get(&method->base.params, i), LLVMGetParam(fn_val, i + 1));
+
+    LLVMValueRef out_val;
+    ast_visitor_visit(llvm, method->base.body, &out_val);
+
+    if (method->base.return_type == ast_type_builtin(TYPE_VOID))
+        LLVMBuildRetVoid(llvm->builder);
+
+    llvm->current_di_scope = nullptr;
+
+    hash_table_destroy(llvm->symbols);
+    llvm->symbols = nullptr;
+}
+
 static void emit_bool_lit(void* self_, ast_bool_lit_t* lit, void* out_)
 {
     llvm_codegen_t* llvm = self_;
@@ -244,13 +397,126 @@ static void emit_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
         ast_type_is_signed(lit->base.type));
 }
 
-static void emit_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
+static void emit_member_access(void* self_, ast_member_access_t* access, void* out_)
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out_val = out_;
 
-    LLVMTypeRef null_type = llvm_type(llvm->context, lit->base.type);
-    *out_val = LLVMConstNull(null_type);
+    // Get the class type (handle both direct class and pointer to class)
+    ast_type_t* instance_type = access->instance->type;
+    ast_type_t* class_type = instance_type;
+    if (instance_type->kind == AST_TYPE_POINTER)
+        class_type = instance_type->data.pointer.pointee;
+
+    panic_if(class_type->kind != AST_TYPE_USER);
+    const char* class_name = class_type->data.user.name;
+
+    // Get the instance as an lvalue (address of the variable/expression)
+    bool was_lvalue = llvm->lvalue;
+    llvm->lvalue = true;
+    LLVMValueRef instance_addr = nullptr;
+    ast_visitor_visit(llvm, access->instance, &instance_addr);
+    llvm->lvalue = was_lvalue;
+
+    // If the instance type is a pointer, load it to get the pointer to the class
+    // If the instance type is a value, instance_addr already points to the class
+    LLVMValueRef instance_ptr = instance_addr;
+    if (instance_type->kind == AST_TYPE_POINTER)
+        instance_ptr = LLVMBuildLoad2(llvm->builder, LLVMPointerTypeInContext(llvm->context, 0), instance_addr, "");
+
+    class_layout_t* layout = hash_table_find(&llvm->class_layouts, class_name);
+    panic_if(layout == nullptr);
+    panic_if(!hash_table_contains(&layout->member_indices, access->member_name));
+    intptr_t index = (intptr_t)hash_table_find(&layout->member_indices, access->member_name);
+
+    LLVMValueRef ptr_to_member = LLVMBuildStructGEP2(llvm->builder, llvm_type(llvm->context, class_type),
+        instance_ptr, index, class_name);
+
+    if (llvm->lvalue)
+        *out_val = ptr_to_member;
+    else
+    {
+        LLVMTypeRef member_type = llvm_type(llvm->context, (ast_type_t*)vec_get(&layout->member_types, (size_t)index));
+        *out_val = LLVMBuildLoad2(llvm->builder, member_type, ptr_to_member, "member_val");
+    }
+}
+
+static void emit_member_init(void* self_, ast_member_init_t* init, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+
+    bool was_lvalue = llvm->lvalue;
+    llvm->lvalue = false;
+    ast_visitor_visit(self_, init->init_expr, out_);
+    llvm->lvalue = was_lvalue;
+}
+
+static void emit_method_call(void* self_, ast_method_call_t* call, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    LLVMValueRef* out_val = out_;
+
+    // Get the class type (handle both direct class and pointer to class)
+    ast_type_t* instance_type = call->instance->type;
+    ast_type_t* class_type = instance_type;
+    if (instance_type->kind == AST_TYPE_POINTER)
+        class_type = instance_type->data.pointer.pointee;
+
+    panic_if(class_type->kind != AST_TYPE_USER);
+    const char* class_name = class_type->data.user.name;
+
+    set_debug_location(llvm, AST_NODE(call));
+
+    // Mangle method name: ClassName.methodName
+    char* mangled_name = ssprintf("%s.%s", class_name, call->method_name);
+
+    // Get the instance as an lvalue (address of the variable/expression)
+    bool was_lvalue = llvm->lvalue;
+    llvm->lvalue = true;
+    LLVMValueRef instance_addr = nullptr;
+    ast_visitor_visit(llvm, call->instance, &instance_addr);
+    llvm->lvalue = was_lvalue;
+    panic_if(instance_addr == nullptr);
+
+    // If the instance type is a pointer, load it to get the pointer to pass as self
+    // If the instance type is a value, instance_addr is already the pointer to pass as self
+    LLVMValueRef self = instance_addr;
+    if (instance_type->kind == AST_TYPE_POINTER)
+        self = LLVMBuildLoad2(llvm->builder, LLVMPointerTypeInContext(llvm->context, 0), instance_addr, "");
+
+    // Emit all arguments
+    size_t user_arg_count = vec_size(&call->arguments);
+    size_t total_arg_count = user_arg_count + 1;
+    LLVMValueRef* args = malloc(sizeof(LLVMValueRef) * total_arg_count);
+    args[0] = self;  // Implicit self
+    for (size_t i = 0; i < user_arg_count; ++i)
+    {
+        LLVMValueRef arg_val = nullptr;
+        ast_visitor_visit(llvm, vec_get(&call->arguments, i), &arg_val);
+        panic_if(arg_val == nullptr);
+        args[i + 1] = arg_val;
+    }
+
+    // Emit call
+    LLVMValueRef fn = LLVMGetNamedFunction(llvm->module, mangled_name);
+    LLVMTypeRef fn_type = LLVMGlobalGetValueType(fn);
+    LLVMValueRef call_result = LLVMBuildCall2(llvm->builder, fn_type, fn, args, (unsigned int)total_arg_count,
+        call->base.type == ast_type_builtin(TYPE_VOID) ? "" : "method_call");
+
+    if (out_val != nullptr)
+        *out_val = call_result;
+
+    if (args != nullptr)
+        free(args);
+}
+
+static void emit_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    LLVMValueRef* out_val = out_;
+    (void)lit;
+
+    *out_val = LLVMConstNull(LLVMPointerTypeInContext(llvm->context, 0));
 }
 
 static void emit_simple_assignment(void* self_, ast_bin_op_t* bin_op, void* out_)
@@ -733,6 +999,36 @@ static void emit_coercion_expr(void* self_, ast_coercion_expr_t* coercion, void*
     panic("coercion from %s to %s not implemented", ast_type_string(from_type), ast_type_string(to_type));
 }
 
+static void emit_construct_expr(void* self_, ast_construct_expr_t* construct, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    LLVMValueRef* out = out_;
+    panic_if(out == nullptr);
+
+    const char* class_name = construct->class_type->data.user.name;
+    class_layout_t* layout = hash_table_find(&llvm->class_layouts, class_name);
+    panic_if(layout == nullptr);
+
+    LLVMTypeRef class_type = llvm_type(llvm->context, construct->class_type);
+    LLVMValueRef instance = LLVMBuildAlloca(llvm->builder, class_type, "construct");
+
+    for (size_t i = 0; i < vec_size(&construct->member_inits); ++i)
+    {
+        ast_member_init_t* init = vec_get(&construct->member_inits, i);
+
+        panic_if(!hash_table_contains(&layout->member_indices, init->member_name));
+        intptr_t index = (intptr_t)hash_table_find(&layout->member_indices, init->member_name);
+
+        LLVMValueRef init_val = nullptr;
+        ast_visitor_visit(llvm, init->init_expr, &init_val);
+
+        LLVMValueRef ptr_to_member = LLVMBuildStructGEP2(llvm->builder, class_type, instance, index, init->member_name);
+        LLVMBuildStore(llvm->builder, init_val, ptr_to_member);
+    }
+
+    *out = instance;
+}
+
 static void emit_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
 {
     llvm_codegen_t* llvm = self_;
@@ -769,6 +1065,29 @@ static void emit_ref_expr(void* self_, ast_ref_expr_t* ref, void* out_)
         // Otherwise, load the value from the alloca
         LLVMTypeRef var_type = llvm_type(llvm->context, ref->base.type);
         *out = LLVMBuildLoad2(llvm->builder, var_type, alloca_ref, ref->name);
+    }
+}
+
+static void emit_self_expr(void* self_, ast_self_expr_t* self_expr, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    LLVMValueRef* out_val = out_;
+    panic_if(out_val == nullptr);
+
+    // Look up 'self' in symbol table (stored during method setup)
+    LLVMValueRef self_alloc = hash_table_find(llvm->symbols, "self");
+    panic_if(self_alloc == nullptr);
+
+    // If we need an lvalue (address), return the alloca directly
+    if (llvm->lvalue)
+    {
+        *out_val = self_alloc;
+    }
+    else
+    {
+        // Otherwise, load the self pointer value from the alloca
+        LLVMTypeRef self_type = llvm_type(llvm->context, self_expr->base.type);
+        *out_val = LLVMBuildLoad2(llvm->builder, self_type, self_alloc, "self");
     }
 }
 
@@ -932,6 +1251,19 @@ static void emit_while_stmt(void* self_, ast_while_stmt_t* stmt, void* out_)
     LLVMPositionBuilderAtEnd(llvm->builder, end_block);
 }
 
+static void class_layout_destroy(void* layout_)
+{
+    class_layout_t* layout = layout_;
+    if (layout == nullptr)
+        return;
+
+    free(layout->class_name);
+    hash_table_deinit(&layout->member_indices);
+    vec_deinit(&layout->member_names);
+    vec_deinit(&layout->member_types);
+    free(layout);
+}
+
 llvm_codegen_t* llvm_codegen_create()
 {
     llvm_codegen_t* llvm = malloc(sizeof(*llvm));
@@ -948,13 +1280,16 @@ llvm_codegen_t* llvm_codegen_create()
         .module = llvm->module,
         .builder = llvm->builder,
         .presenter = ast_presenter_create(),
+        .class_layouts = HASH_TABLE_INIT(class_layout_destroy),
         .base = (ast_visitor_t){
             .visit_root = emit_root,
             // Declarations
             .visit_param_decl = emit_param_decl,
             .visit_var_decl = emit_var_decl,
             // Definitions
+            .visit_class_def = emit_class_def,
             .visit_fn_def = emit_fn_def,
+            .visit_method_def = emit_method_def,
             // Expressions
             .visit_array_lit = emit_array_lit,
             .visit_array_slice = emit_array_slice,
@@ -963,11 +1298,16 @@ llvm_codegen_t* llvm_codegen_create()
             .visit_bool_lit = emit_bool_lit,
             .visit_call_expr = emit_call_expr,
             .visit_coercion_expr = emit_coercion_expr,
+            .visit_construct_expr = emit_construct_expr,
             .visit_float_lit = emit_float_lit,
             .visit_int_lit = emit_int_lit,
+            .visit_member_access = emit_member_access,
+            .visit_member_init = emit_member_init,
+            .visit_method_call = emit_method_call,
             .visit_null_lit = emit_null_lit,
             .visit_paren_expr = emit_paren_expr,
             .visit_ref_expr = emit_ref_expr,
+            .visit_self_expr = emit_self_expr,
             .visit_unary_op = emit_unary_op,
             .visit_uninit_lit = emit_uninit_lit,
             // .visit_str_lit = emit_str_lit, FIXME:
@@ -1004,6 +1344,7 @@ void llvm_codegen_destroy(llvm_codegen_t* llvm)
         LLVMContextDispose(llvm->context);
 
     ast_presenter_destroy(llvm->presenter);
+    hash_table_deinit(&llvm->class_layouts);
 
     free(llvm);
 }

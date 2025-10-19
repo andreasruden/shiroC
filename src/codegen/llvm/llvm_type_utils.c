@@ -40,13 +40,11 @@ LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
                 case TYPE_F64:
                     return LLVMDoubleTypeInContext(ctx);
                 case TYPE_NULL:
-                    // TODO: NULL type should have been coerced to a pointer type during semantic analysis.
-                    // This is a workaround - we should fix the semantic analyzer to properly coerce null
-                    // in all contexts (especially in comparisons).
-                    // For now, treat it as a generic pointer (opaque)
+                    // TODO: Should SEMA output TYPE_NULL or the actual pointer type?
                     return LLVMPointerTypeInContext(ctx, 0);
                 case TYPE_UNINIT:
                 case TYPE_END:
+                default:
                     panic("Unsupported builtin type for LLVM codegen: %d", type->data.builtin.type);
             }
             break;
@@ -67,8 +65,13 @@ LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
             LLVMTypeRef fields[] = { size_type, element_type };
             return LLVMStructTypeInContext(ctx, fields, 2, false);
         }
-        case AST_TYPE_INVALID:
         case AST_TYPE_USER:
+        {
+            LLVMTypeRef class_type = LLVMGetTypeByName2(ctx, type->data.user.name);
+            panic_if(class_type == nullptr);
+            return class_type;
+        }
+        case AST_TYPE_INVALID:
         case AST_TYPE_HEAP_ARRAY:
             panic("Unsupported type kind for LLVM codegen: %d", type->kind);
     }
