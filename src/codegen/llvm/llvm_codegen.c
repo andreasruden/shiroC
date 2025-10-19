@@ -185,22 +185,7 @@ static void emit_var_decl(void* self_, ast_var_decl_t* var, void* out_)
         ast_visitor_visit(llvm, var->init_expr, &init_value);
         // If RHS is "uninit", init_value will be nullptr
         if (init_value != nullptr)
-        {
-            if (var->type->kind == AST_TYPE_ARRAY)
-            {
-                LLVMTypeRef array_type = llvm_type(llvm->context, var->type);
-                LLVMValueRef array_val = LLVMBuildLoad2(llvm->builder, array_type, init_value, "load_array");
-                LLVMBuildStore(llvm->builder, array_val, alloc_ref);
-            }
-            else if (var->type->kind == AST_TYPE_USER)
-            {
-                LLVMTypeRef class_type = llvm_type(llvm->context, var->type);
-                LLVMValueRef class_val = LLVMBuildLoad2(llvm->builder, class_type, init_value, "load_class");
-                LLVMBuildStore(llvm->builder, class_val, alloc_ref);
-            }
-            else
-                LLVMBuildStore(llvm->builder, init_value, alloc_ref);
-        }
+            LLVMBuildStore(llvm->builder, init_value, alloc_ref);
     }
 
     hash_table_insert(llvm->symbols, var->name, alloc_ref);
@@ -466,6 +451,7 @@ static void emit_member_access(void* self_, ast_member_access_t* access, void* o
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out_val = out_;
+    bool ret_lvalue = llvm->lvalue;
 
     // Get the class type (handle both direct class and pointer to class)
     ast_type_t* instance_type = access->instance->type;
@@ -477,11 +463,10 @@ static void emit_member_access(void* self_, ast_member_access_t* access, void* o
     const char* class_name = class_type->data.user.name;
 
     // Get the instance as an lvalue (address of the variable/expression)
-    bool was_lvalue = llvm->lvalue;
     llvm->lvalue = true;
     LLVMValueRef instance_addr = nullptr;
     ast_visitor_visit(llvm, access->instance, &instance_addr);
-    llvm->lvalue = was_lvalue;
+    llvm->lvalue = false;
 
     // If the instance type is a pointer, load it to get the pointer to the class
     // If the instance type is a value, instance_addr already points to the class
@@ -497,7 +482,7 @@ static void emit_member_access(void* self_, ast_member_access_t* access, void* o
     LLVMValueRef ptr_to_member = LLVMBuildStructGEP2(llvm->builder, llvm_type(llvm->context, class_type),
         instance_ptr, index, class_name);
 
-    if (llvm->lvalue)
+    if (ret_lvalue)
         *out_val = ptr_to_member;
     else
     {
@@ -510,10 +495,7 @@ static void emit_member_init(void* self_, ast_member_init_t* init, void* out_)
 {
     llvm_codegen_t* llvm = self_;
 
-    bool was_lvalue = llvm->lvalue;
-    llvm->lvalue = false;
-    ast_visitor_visit(self_, init->init_expr, out_);
-    llvm->lvalue = was_lvalue;
+    ast_visitor_visit(llvm, init->init_expr, out_);
 }
 
 static void emit_method_call(void* self_, ast_method_call_t* call, void* out_)
@@ -536,11 +518,10 @@ static void emit_method_call(void* self_, ast_method_call_t* call, void* out_)
     char* mangled_name = ssprintf("%s.%s", class_name, call->method_name);
 
     // Get the instance as an lvalue (address of the variable/expression)
-    bool was_lvalue = llvm->lvalue;
     llvm->lvalue = true;
     LLVMValueRef instance_addr = nullptr;
     ast_visitor_visit(llvm, call->instance, &instance_addr);
-    llvm->lvalue = was_lvalue;
+    llvm->lvalue = false;
     panic_if(instance_addr == nullptr);
 
     // If the instance type is a pointer, load it to get the pointer to pass as self
@@ -677,13 +658,10 @@ static void emit_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out_val = out_;
+    bool ret_lvalue = llvm->lvalue;
 
     LLVMTypeRef array_type = llvm_type(llvm->context, lit->base.type);
     LLVMValueRef array_alloc = LLVMBuildAlloca(llvm->builder, array_type, "array_lit");
-
-    // Get the element type of the array
-    ast_type_t* elem_type = lit->base.type->data.array.element_type;
-    LLVMTypeRef llvm_elem_type = llvm_type(llvm->context, elem_type);
 
     for (size_t i = 0; i < vec_size(&lit->exprs); ++i)
     {
@@ -694,23 +672,21 @@ static void emit_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
             LLVMConstInt(LLVMInt64TypeInContext(llvm->context), (uint64_t)i, false)
         };
         LLVMValueRef elem_dst = LLVMBuildInBoundsGEP2(llvm->builder, array_type, array_alloc,  indices, 2, "elem_ptr");
-
-        // If the element is itself an array (nested array literal), we need to copy the value
-        if (elem_type->kind == AST_TYPE_ARRAY)
-        {
-            // Load the array value from the temporary allocation and store it
-            LLVMValueRef array_val = LLVMBuildLoad2(llvm->builder, llvm_elem_type, elem_val, "load_array");
-            LLVMBuildStore(llvm->builder, array_val, elem_dst);
-        }
-        else
-        {
-            // For non-array elements, just store directly
-            LLVMBuildStore(llvm->builder, elem_val, elem_dst);
-        }
+        LLVMBuildStore(llvm->builder, elem_val, elem_dst);
     }
 
     if (out_val != nullptr)
-        *out_val = array_alloc;
+    {
+        if (ret_lvalue)
+        {
+            *out_val = array_alloc;
+        }
+        else
+        {
+            LLVMValueRef loaded_val = LLVMBuildLoad2(llvm->builder, array_type, array_alloc, "load_array");
+            *out_val = loaded_val;
+        }
+    }
 }
 
 static LLVMValueRef emit_ptr_to_array_elem(llvm_codegen_t* llvm, ast_type_t* array_type, LLVMValueRef array_ptr,
@@ -805,11 +781,10 @@ static void emit_array_slice(void* self_, ast_array_slice_t* slice, void* out_)
     LLVMValueRef array_length = nullptr;  // only computed if needed for bounds checks
 
     // Get value of array
-    bool output_lvalue = llvm->lvalue;
     llvm->lvalue = true;
     LLVMValueRef array_ptr = nullptr;
     ast_visitor_visit(llvm, slice->array, &array_ptr);
-    llvm->lvalue = output_lvalue;
+    llvm->lvalue = false;
 
     // Can only compute array length for arrays and views, not raw pointers
     bool can_bounds_check = slice->array->type->kind != AST_TYPE_POINTER;
@@ -866,6 +841,7 @@ static void emit_array_subscript(void* self_, ast_array_subscript_t* subscript, 
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out_val = out_;
+    bool ret_lvalue = llvm->lvalue;
 
     set_debug_location(llvm, AST_NODE(subscript));
 
@@ -873,11 +849,10 @@ static void emit_array_subscript(void* self_, ast_array_subscript_t* subscript, 
     panic_if(arr_kind != AST_TYPE_ARRAY && arr_kind != AST_TYPE_VIEW && arr_kind != AST_TYPE_POINTER);
 
     // Get value of array
-    bool output_lvalue = llvm->lvalue;
     llvm->lvalue = true;
     LLVMValueRef array_ptr = nullptr;
     ast_visitor_visit(llvm, subscript->array, &array_ptr);
-    llvm->lvalue = output_lvalue;
+    llvm->lvalue = false;
 
     // If the array expression is a reference to a pointer variable, load it
     if (subscript->array->type->kind == AST_TYPE_POINTER &&
@@ -888,8 +863,7 @@ static void emit_array_subscript(void* self_, ast_array_subscript_t* subscript, 
         array_ptr = LLVMBuildLoad2(llvm->builder, ptr_type, array_ptr, "ptr_val");
     }
 
-    // Get value of index (must be an rvalue, not an lvalue)
-    llvm->lvalue = false;
+    // Get value of index
     LLVMValueRef index = nullptr;
     ast_visitor_visit(llvm, subscript->index, &index);
 
@@ -905,7 +879,7 @@ static void emit_array_subscript(void* self_, ast_array_subscript_t* subscript, 
 
     LLVMValueRef elem_ptr = emit_ptr_to_array_elem(llvm, subscript->array->type, array_ptr, index);
 
-    if (output_lvalue)
+    if (ret_lvalue)
     {
         if (out_val != nullptr)
             *out_val = elem_ptr;
@@ -976,12 +950,10 @@ static void emit_coercion_expr(void* self_, ast_coercion_expr_t* coercion, void*
     if (from_type->kind == AST_TYPE_ARRAY && to_type->kind == AST_TYPE_VIEW)
     {
         // Array to view coercion
-        // Get the array value (as lvalue)
-        bool output_lvalue = llvm->lvalue;
         llvm->lvalue = true;
         LLVMValueRef array_ptr = nullptr;
         ast_visitor_visit(llvm, coercion->expr, &array_ptr);
-        llvm->lvalue = output_lvalue;
+        llvm->lvalue = false;
 
         LLVMValueRef length = LLVMConstInt(LLVMInt64TypeInContext(llvm->context),
             (unsigned long long)from_type->data.array.size, false);
@@ -1068,6 +1040,7 @@ static void emit_construct_expr(void* self_, ast_construct_expr_t* construct, vo
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out = out_;
+    bool ret_lvalue = llvm->lvalue;
     panic_if(out == nullptr);
 
     const char* class_name = construct->class_type->data.user.name;
@@ -1091,7 +1064,16 @@ static void emit_construct_expr(void* self_, ast_construct_expr_t* construct, vo
         LLVMBuildStore(llvm->builder, init_val, ptr_to_member);
     }
 
-    *out = instance;
+    // Return either the pointer (lvalue) or the loaded value (rvalue)
+    if (ret_lvalue)
+    {
+        *out = instance;
+    }
+    else
+    {
+        LLVMValueRef loaded_val = LLVMBuildLoad2(llvm->builder, class_type, instance, "load_class");
+        *out = loaded_val;
+    }
 }
 
 static void emit_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
@@ -1105,6 +1087,7 @@ static void emit_ref_expr(void* self_, ast_ref_expr_t* ref, void* out_)
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out = out_;
+    bool ret_lvalue = llvm->lvalue;
     panic_if(out == nullptr);
 
     // For function names, we need to look up the function in the module
@@ -1121,7 +1104,7 @@ static void emit_ref_expr(void* self_, ast_ref_expr_t* ref, void* out_)
     panic_if(alloca_ref == nullptr);
 
     // If we need an lvalue (address), return the alloca directly
-    if (llvm->lvalue)
+    if (ret_lvalue)
     {
         *out = alloca_ref;
     }
@@ -1137,6 +1120,7 @@ static void emit_self_expr(void* self_, ast_self_expr_t* self_expr, void* out_)
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out_val = out_;
+    bool ret_lvalue = llvm->lvalue;
     panic_if(out_val == nullptr);
 
     // Look up 'self' in symbol table (stored during method setup)
@@ -1144,7 +1128,7 @@ static void emit_self_expr(void* self_, ast_self_expr_t* self_expr, void* out_)
     panic_if(self_alloc == nullptr);
 
     // If we need an lvalue (address), return the alloca directly
-    if (llvm->lvalue)
+    if (ret_lvalue)
     {
         *out_val = self_alloc;
     }
@@ -1160,6 +1144,7 @@ static void emit_unary_op(void* self_, ast_unary_op_t* unary, void* out_)
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out = out_;
+    bool ret_lvalue = llvm->lvalue;
 
     switch (unary->op)
     {
@@ -1174,13 +1159,11 @@ static void emit_unary_op(void* self_, ast_unary_op_t* unary, void* out_)
         {
             // When dereferencing, we always need the pointer value (rvalue)
             // even if we're in an lvalue context (e.g., *ptr = value)
-            bool output_lvalue = llvm->lvalue;
             llvm->lvalue = false;
             LLVMValueRef ptr_value = nullptr;
             ast_visitor_visit(llvm, unary->expr, &ptr_value);
-            llvm->lvalue = output_lvalue;
 
-            if (llvm->lvalue)
+            if (ret_lvalue)
             {
                 // Return the pointer value itself (the address to store to)
                 *out = ptr_value;

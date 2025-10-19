@@ -6,14 +6,20 @@ fn useC(c: C*) -> i32 {
 
 class C {
     var a: A;
+
+    fn f(a: A*) -> i32 {  //! warning: "'a' shadows previous declaration"
+        return a.i;
+    }
 }
 
 class A {
     var i: i32;
 }
 
-fn main() {
+fn main() -> i32 {
     var c = C { a = A { i = 5 } };
     var result = useC(&c);
-    printI32(result);
+    printI32(result);  //! stdout: "5"
+    printI32(c.f(&c.a));  //! stdout: "5"
+    return 0;
 }
