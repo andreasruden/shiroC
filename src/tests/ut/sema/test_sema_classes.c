@@ -685,3 +685,34 @@ TEST(ut_sema_classes_fixture_t, construction_with_defaults_injected)
 
     ast_node_destroy(root);
 }
+
+TEST(ut_sema_classes_fixture_t, self_reference_via_pointer_is_valid)
+{
+    // Test that a class can contain a pointer to itself (e.g., linked list node)
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Node",
+            ast_member_decl_create("value", ast_type_builtin(TYPE_I32), nullptr),
+            ast_member_decl_create("next", ast_type_pointer(ast_type_user("Node")), nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    ast_node_destroy(root);
+}
+
+TEST(ut_sema_classes_fixture_t, self_reference_without_indirection_is_invalid)
+{
+    // Test that a class cannot directly contain itself (infinite size)
+    ast_decl_t* error_node = ast_member_decl_create("a", ast_type_user("A"), nullptr);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("A",
+            error_node,
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "recursive");
+
+    ast_node_destroy(root);
+}

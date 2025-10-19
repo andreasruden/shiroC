@@ -168,6 +168,14 @@ static void analyze_member_decl(void* self_, ast_member_decl_t** member_inout, v
     if (member->base.type == ast_type_invalid())
         return;  // don't propagate errors
 
+    if (member->base.type == ast_type_user(sema->current_class->base.name))
+    {
+        semantic_context_add_error(sema->ctx, member,
+            ssprintf("infinitely recursive type: needs to be pointer to self (%s*)", sema->current_class->base.name));
+        member->base.type = ast_type_invalid();
+        return;
+    }
+
     if (!verify_type_defined(sema, member->base.type, member))
         return;
 
