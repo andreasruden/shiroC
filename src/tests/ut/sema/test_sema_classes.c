@@ -14,6 +14,7 @@
 #include "ast/expr/ref_expr.h"
 #include "ast/expr/self_expr.h"
 #include "ast/expr/str_lit.h"
+#include "ast/expr/unary_op.h"
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
@@ -415,13 +416,13 @@ TEST(ut_sema_classes_fixture_t, chained_member_access)
 
 TEST(ut_sema_classes_fixture_t, member_access_on_non_class_type)
 {
-    ast_expr_t* error_node = ast_member_access_create(ast_ref_expr_create("x"), "field");
+    ast_expr_t* error_node = ast_ref_expr_create("x");
 
     ast_root_t* root = ast_root_create_va(
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_I32), ast_int_lit_val(5))),
-                ast_expr_stmt_create(error_node),
+                ast_expr_stmt_create(ast_member_access_create(error_node, "field")),
                 nullptr),
             nullptr),
         nullptr);
@@ -713,6 +714,104 @@ TEST(ut_sema_classes_fixture_t, self_reference_without_indirection_is_invalid)
         nullptr);
 
     ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "recursive");
+
+    ast_node_destroy(root);
+}
+
+TEST(ut_sema_classes_fixture_t, pointer_member_access_auto_deref)
+{
+    // Test that pointer to class automatically dereferences for member access
+    // var p: *Point = &point_instance;
+    // p.x  (should auto-deref to (*p).x)
+    ast_expr_t* member_access_node = ast_member_access_create(ast_ref_expr_create("p"), "x");
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Point",
+            ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
+            ast_member_decl_create("y", ast_type_builtin(TYPE_I32), nullptr),
+            nullptr),
+        ast_fn_def_create_va("main", nullptr,
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(
+                    ast_var_decl_create("point", ast_type_user("Point"),
+                        ast_construct_expr_create_va(ast_type_user("Point"),
+                            ast_member_init_create("x", ast_int_lit_val(10)),
+                            ast_member_init_create("y", ast_int_lit_val(20)),
+                            nullptr))),
+                ast_decl_stmt_create(
+                    ast_var_decl_create("p", ast_type_pointer(ast_type_user("Point")),
+                        ast_unary_op_create(TOKEN_AMPERSAND, ast_ref_expr_create("point")))),
+                ast_expr_stmt_create(member_access_node),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    decl_collector_run(fix->collector, AST_NODE(root));
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(root));
+    ASSERT_TRUE(res);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    // The result type should be i32 (type of member x)
+    ASSERT_EQ(ast_type_builtin(TYPE_I32), member_access_node->type);
+
+    ast_node_destroy(root);
+}
+
+TEST(ut_sema_classes_fixture_t, double_pointer_member_access_fails)
+{
+    // Test that double pointer does not auto-deref (only one level supported)
+    // var pp: **Point;
+    ast_expr_t* error_node = ast_ref_expr_create("pp");
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Point",
+            ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
+            nullptr),
+        ast_fn_def_create_va("main", nullptr,
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(
+                    ast_var_decl_create("point", ast_type_user("Point"),
+                        ast_construct_expr_create_va(ast_type_user("Point"),
+                            ast_member_init_create("x", ast_int_lit_val(10)),
+                            nullptr))),
+                ast_decl_stmt_create(
+                    ast_var_decl_create("p", ast_type_pointer(ast_type_user("Point")),
+                        ast_unary_op_create(TOKEN_AMPERSAND, ast_ref_expr_create("point")))),
+                ast_decl_stmt_create(
+                    ast_var_decl_create("pp", ast_type_pointer(ast_type_pointer(ast_type_user("Point"))),
+                        ast_unary_op_create(TOKEN_AMPERSAND, ast_ref_expr_create("p")))),
+                ast_expr_stmt_create(
+                    ast_member_access_create(error_node, "x")),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "not class type");
+
+    ast_node_destroy(root);
+}
+
+TEST(ut_sema_classes_fixture_t, self_is_pointer_to_class)
+{
+    // Test that 'self' in method context has pointer type (*ClassName)
+    ast_expr_t* self_node = ast_self_expr_create(false);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Point",
+            ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
+            ast_method_def_create_va("test", nullptr,
+                ast_compound_stmt_create_va(
+                    ast_expr_stmt_create(self_node),
+                    nullptr),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    // After semantic analysis, self should have type *Point
+    ast_type_t* expected_type = ast_type_pointer(ast_type_user("Point"));
+    ASSERT_EQ(expected_type, self_node->type);
 
     ast_node_destroy(root);
 }

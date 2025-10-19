@@ -1082,39 +1082,57 @@ static void analyze_int_lit(void* self_, ast_int_lit_t** lit_inout, void* out_)
     lit->base.type = type;
 }
 
+// verify that in "instance".<expr> expression, the instance is a valid class instance
+// returns a symbol to the class the instance refers to
+static symbol_t* verify_class_instance(semantic_analyzer_t* sema, ast_expr_t** instance_inout, void* out_)
+{
+    ast_expr_t* instance = *instance_inout;
+
+    bool was_lvalue_ctx = sema->is_lvalue_context;
+    sema->is_lvalue_context = true;
+    ast_transformer_transform(sema, &instance, out_);
+    sema->is_lvalue_context = was_lvalue_ctx;
+
+    if (instance->type == ast_type_invalid())
+        return nullptr;
+
+    if (!instance->is_lvalue)
+    {
+        semantic_context_add_error(sema->ctx, instance, "not l-value");
+        return nullptr;
+    }
+
+    // Expression before '.' must be a user-type or pointer to user type
+    if (instance->type->kind != AST_TYPE_USER &&
+        !(instance->type->kind == AST_TYPE_POINTER && instance->type->data.pointer.pointee->kind == AST_TYPE_USER))
+    {
+        semantic_context_add_error(sema->ctx, instance, "not class type or pointer to class type");
+        return nullptr;
+    }
+
+    // Lookup symbol for class
+    const char* class_name = instance->type->kind == AST_TYPE_USER ? instance->type->data.user.name :
+        instance->type->data.pointer.pointee->data.user.name;
+    symbol_t* class_symb = symbol_table_lookup(sema->ctx->global, class_name);
+    // NOTE: invalid class name should be caught earlier when the instance was declared
+    panic_if(class_symb == nullptr || class_symb->kind != SYMBOL_CLASS);
+
+    return class_symb;
+}
+
 static void analyze_member_access(void* self_, ast_member_access_t** access_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
     ast_member_access_t* access = *access_inout;
 
-    bool was_lvalue_ctx = sema->is_lvalue_context;
-    sema->is_lvalue_context = true;
-    ast_transformer_transform(sema, &access->instance, out_);
-    sema->is_lvalue_context = was_lvalue_ctx;
-    if (access->instance->type == ast_type_invalid())
+    symbol_t* class_symb = verify_class_instance(sema, &access->instance, out_);
+    if (class_symb == nullptr)
     {
-        access->base.type = ast_type_invalid();
-        return;
-    }
-
-    if (!access->instance->is_lvalue)
-    {
-        semantic_context_add_error(sema->ctx, access->instance, "not l-value");
-        access->base.type = ast_type_invalid();
-        return;
-    }
-
-    // Expression before '.' must be a user-type
-    if (access->instance->type->kind != AST_TYPE_USER)
-    {
-        semantic_context_add_error(sema->ctx, access, "not class type");
         access->base.type = ast_type_invalid();
         return;
     }
 
     // Make sure class contains the specified name as a member
-    symbol_t* class_symb = symbol_table_lookup(sema->ctx->global, access->instance->type->data.user.name);
-    panic_if(class_symb == nullptr || class_symb->kind != SYMBOL_CLASS);
     ast_member_decl_t* member_decl = hash_table_find(&class_symb->data.class.members, access->member_name);
     if (member_decl == nullptr)
     {
@@ -1172,34 +1190,14 @@ static void analyze_method_call(void* self_, ast_method_call_t** call_inout, voi
     semantic_analyzer_t* sema = self_;
     ast_method_call_t* call = *call_inout;
 
-    bool was_lvalue_ctx = sema->is_lvalue_context;
-    sema->is_lvalue_context = true;
-    ast_transformer_transform(sema, &call->instance, out_);
-    sema->is_lvalue_context = was_lvalue_ctx;
-    if (call->instance->type == ast_type_invalid())
+    symbol_t* class_symb = verify_class_instance(sema, &call->instance, out_);
+    if (class_symb == nullptr)
     {
-        call->base.type = ast_type_invalid();
-        return;
-    }
-
-    if (!call->instance->is_lvalue)
-    {
-        semantic_context_add_error(sema->ctx, call->instance, "not l-value");
-        call->base.type = ast_type_invalid();
-        return;
-    }
-
-    // Expression before '.' must be a user-type
-    if (call->instance->type->kind != AST_TYPE_USER)
-    {
-        semantic_context_add_error(sema->ctx, call, "not class type");
         call->base.type = ast_type_invalid();
         return;
     }
 
     // Make sure class contains the specified name as a method
-    symbol_t* class_symb = symbol_table_lookup(sema->ctx->global, call->instance->type->data.user.name);
-    panic_if(class_symb == nullptr || class_symb->kind != SYMBOL_CLASS);
     ast_method_def_t* method_def = hash_table_find(&class_symb->data.class.methods, call->method_name);
     if (method_def == nullptr)
     {
@@ -1294,7 +1292,7 @@ static void analyze_self_expr(void* self_, ast_self_expr_t** self_expr_inout, vo
         *symbol_out = symbol;
 
     self_expr->base.is_lvalue = true;
-    self_expr->base.type = ast_type_user(sema->current_class->base.name);
+    self_expr->base.type = ast_type_pointer(ast_type_user(sema->current_class->base.name));
 }
 
 static void analyze_str_lit(void* self_, ast_str_lit_t** lit_inout, void* out_)
