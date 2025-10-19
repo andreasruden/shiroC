@@ -12,6 +12,7 @@
 #include "ast/stmt/compound_stmt.h"
 #include "ast/transformer.h"
 #include "ast/type.h"
+#include "ast/util/cloner.h"
 #include "ast/visitor.h"
 #include "common/containers/hash_table.h"
 #include "common/containers/vec.h"
@@ -927,24 +928,32 @@ static void analyze_construct_expr(void* self_, ast_construct_expr_t** construct
         hash_table_insert(&initialized_members, name, nullptr);
     }
 
-    // Make sure no member initialization that is not default-constructible was left out
+    // Handle default initializations, also make sure no non-default initializable member was left out
     hash_table_iter_t itr;
     for (hash_table_iter_init(&itr, &class_symbol->data.class.members); hash_table_iter_has_next(&itr);
         hash_table_iter_next(&itr))
     {
         hash_table_entry_t* entry = hash_table_iter_current(&itr);
         ast_member_decl_t* member_decl = entry->value;
-        if (member_decl->base.init_expr != nullptr)
+
+        if (hash_table_contains(&initialized_members, entry->key))
             continue;
 
-        if (!hash_table_contains(&initialized_members, entry->key))
+        if (member_decl->base.init_expr == nullptr)
         {
             semantic_context_add_error(sema->ctx, construct, ssprintf("missing initialization for '%s'",
                 member_decl->base.name));
             construct->base.type = ast_type_invalid();
             goto cleanup;
         }
+
+        ast_expr_t* cloned_expr = ast_expr_clone(member_decl->base.init_expr);
+        panic_if(cloned_expr == nullptr);
+        ast_member_init_t* injected_init = ast_member_init_create(member_decl->base.name, cloned_expr);
+        vec_push(&construct->member_inits, injected_init);
     }
+
+    // TODO: Do we want to ensure some consitent initialization ordering
 
     construct->base.type = construct->class_type;
     construct->base.is_lvalue = false;

@@ -85,6 +85,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/stmt/return_stmt.c \
 	$(SRC_DIR)/ast/stmt/stmt.c \
 	$(SRC_DIR)/ast/stmt/while_stmt.c \
+	$(SRC_DIR)/ast/util/cloner.c \
 	$(SRC_DIR)/ast/util/presenter.c \
 	$(SRC_DIR)/ast/util/printer.c \
 	$(SRC_DIR)/common/containers/hash_table.c \

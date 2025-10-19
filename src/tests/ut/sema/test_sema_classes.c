@@ -643,3 +643,45 @@ TEST(ut_sema_classes_fixture_t, implicit_self_method_call)
 
     ast_node_destroy(root);
 }
+
+TEST(ut_sema_classes_fixture_t, construction_with_defaults_injected)
+{
+    // Test that members with default values are automatically injected into member_inits
+    ast_expr_t* construct_expr = ast_construct_expr_create_va(ast_type_user("Point"),
+        ast_member_init_create("x", ast_int_lit_val(10)),
+        nullptr);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Point",
+            ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
+            ast_member_decl_create("y", ast_type_builtin(TYPE_I32), ast_int_lit_val(99)),
+            ast_member_decl_create("z", ast_type_builtin(TYPE_I32), ast_int_lit_val(42)),
+            nullptr),
+        ast_fn_def_create_va("main", nullptr,
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(ast_var_decl_create("p", nullptr, construct_expr)),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    // After SEMA, the construct_expr should have 3 member_inits (x explicit, y and z injected)
+    ast_construct_expr_t* construct = (ast_construct_expr_t*)construct_expr;
+    ASSERT_EQ(3, vec_size(&construct->member_inits));
+
+    // Verify all three members are initialized
+    bool found_x = false, found_y = false, found_z = false;
+    for (size_t i = 0; i < vec_size(&construct->member_inits); ++i)
+    {
+        ast_member_init_t* init = vec_get(&construct->member_inits, i);
+        if (strcmp(init->member_name, "x") == 0) found_x = true;
+        if (strcmp(init->member_name, "y") == 0) found_y = true;
+        if (strcmp(init->member_name, "z") == 0) found_z = true;
+    }
+    ASSERT_TRUE(found_x);
+    ASSERT_TRUE(found_y);
+    ASSERT_TRUE(found_z);
+
+    ast_node_destroy(root);
+}
