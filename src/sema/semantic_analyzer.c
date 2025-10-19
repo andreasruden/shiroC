@@ -13,7 +13,6 @@
 #include "ast/transformer.h"
 #include "ast/type.h"
 #include "ast/util/cloner.h"
-#include "ast/visitor.h"
 #include "common/containers/hash_table.h"
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
@@ -150,40 +149,40 @@ static ast_coercion_kind_t check_coercion_with_expr(semantic_analyzer_t* sema, v
     return coercion;
 }
 
-static void analyze_root(void* self_, ast_root_t** root_inout, void* out_)
+static void* analyze_root(void* self_, ast_root_t* root, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_root_t* root = *root_inout;
 
     for (size_t i = 0; i < vec_size(&root->tl_defs); ++i)
-        AST_VISITOR_TRANSFORM_VEC(sema, &root->tl_defs, i, out_);
+        AST_TRANSFORMER_TRANSFORM_VEC(sema, &root->tl_defs, i, out_);
+
+    return root;
 }
 
-static void analyze_member_decl(void* self_, ast_member_decl_t** member_inout, void* out_)
+static void* analyze_member_decl(void* self_, ast_member_decl_t* member, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_member_decl_t* member = *member_inout;
     panic_if(sema->current_class == nullptr);
 
     if (member->base.type == ast_type_invalid())
-        return;  // don't propagate errors
+        return member;  // don't propagate errors
 
     if (member->base.type == ast_type_user(sema->current_class->base.name))
     {
         semantic_context_add_error(sema->ctx, member,
             ssprintf("infinitely recursive type: needs to be pointer to self (%s*)", sema->current_class->base.name));
         member->base.type = ast_type_invalid();
-        return;
+        return member;
     }
 
     if (!verify_type_defined(sema, member->base.type, member))
-        return;
+        return member;
 
     if (member->base.init_expr != nullptr)
     {
-        ast_transformer_transform(sema, &member->base.init_expr, out_);
+        member->base.init_expr = ast_transformer_transform(sema, member->base.init_expr, out_);
         if (member->base.init_expr->type == ast_type_invalid())
-            return;
+            return member;
 
         // We don't allow any coercion for member defaults
         if (member->base.init_expr->type != member->base.type &&
@@ -192,7 +191,7 @@ static void analyze_member_decl(void* self_, ast_member_decl_t** member_inout, v
         {
             semantic_context_add_error(sema->ctx, member, ssprintf("type '%s' does not match annotation",
                 ast_type_string(member->base.init_expr->type)));
-            return;
+            return member;
         }
     }
 
@@ -200,25 +199,25 @@ static void analyze_member_decl(void* self_, ast_member_decl_t** member_inout, v
     add_variable_to_scope(sema, member, member->base.name, member->base.type, true);
 
     // NOTE: Already added to class symbol by decl_collector
+    return member;
 }
 
-static void analyze_param_decl(void* self_, ast_param_decl_t** param_inout, void* out_)
+static void* analyze_param_decl(void* self_, ast_param_decl_t* param, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
-    ast_param_decl_t* param = *param_inout;
 
     if (param->type == ast_type_invalid())
-        return;  // don't propagate errors
+        return param;  // don't propagate errors
 
     if (!verify_type_defined(sema, param->type, param))
-        return;
+        return param;
 
     if (!ast_type_is_instantiable(param->type))
     {
         semantic_context_add_error(sema->ctx, param, ssprintf("cannot instantiate type '%s'",
             ast_type_string(param->type)));
-        return;
+        return param;
     }
 
     symbol_t* symbol = add_variable_to_scope(sema, param, param->name, param->type, false);
@@ -227,26 +226,26 @@ static void analyze_param_decl(void* self_, ast_param_decl_t** param_inout, void
         symbol->kind = SYMBOL_PARAMETER;
         symbol->type = param->type;
     }
+    return param;
 }
 
-static void analyze_var_decl(void* self_, ast_var_decl_t** var_inout, void* out_)
+static void* analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
-    ast_var_decl_t* var = *var_inout;
 
     if (var->type != nullptr)
     {
         var->type = type_expr_solver_solve(sema->ctx, var->type, var);
         if (var->type == ast_type_invalid())
-            return;  // don't propagate errors
+            return var;  // don't propagate errors
 
         if (!verify_type_defined(sema, var->type, var))
-            return;
+            return var;
     }
 
     if (var->init_expr != nullptr)
-        ast_transformer_transform(sema, &var->init_expr, nullptr);
+        var->init_expr = ast_transformer_transform(sema, var->init_expr, nullptr);
 
     ast_type_t* inferred_type = var->init_expr == nullptr ? nullptr : var->init_expr->type;
     ast_type_t* annotated_type = var->type;
@@ -258,13 +257,13 @@ static void analyze_var_decl(void* self_, ast_var_decl_t** var_inout, void* out_
         if (annotated_type == nullptr)
         {
             semantic_context_add_error(sema->ctx, var, "cannot infer type from 'null'");
-            return;
+            return var;
         }
         if (annotated_type->kind != AST_TYPE_POINTER)
         {
             semantic_context_add_error(sema->ctx, var, ssprintf("cannot assign 'null' to non-pointer type '%s'",
                 ast_type_string(var->type)));
-            return;
+            return var;
         }
     }
 
@@ -273,14 +272,14 @@ static void analyze_var_decl(void* self_, ast_var_decl_t** var_inout, void* out_
         (!inferred_type->data.array.size_known || inferred_type->data.array.size == 0))
     {
         semantic_context_add_error(sema->ctx, var, "cannot infer type of empty array");
-        return;
+        return var;
     }
 
     // Uninit cannot be inferred from
     if (annotated_type == nullptr && inferred_type == ast_type_builtin(TYPE_UNINIT))
     {
         semantic_context_add_error(sema->ctx, var, "missing type annotation");
-        return;
+        return var;
     }
 
     // Do we have both an annotation and an inference?
@@ -290,7 +289,7 @@ static void analyze_var_decl(void* self_, ast_var_decl_t** var_inout, void* out_
 
         if (coercion == COERCION_INVALID)
         {
-            return;
+            return var;
         }
         else if (coercion == COERCION_ALWAYS)
         {
@@ -308,19 +307,19 @@ static void analyze_var_decl(void* self_, ast_var_decl_t** var_inout, void* out_
     {
         semantic_context_add_error(sema->ctx, var, ssprintf("cannot instantiate type '%s'",
             ast_type_string(actual_type)));
-        return;
+        return var;
     }
 
     var->type = actual_type;
     symbol_t* symbol = add_variable_to_scope(sema, var, var->name, actual_type, false);
     if (symbol != nullptr)
         init_tracker_set_initialized(sema->init_tracker, symbol, var->init_expr != nullptr);
+    return var;
 }
 
-static void analyze_class_def(void* self_, ast_class_def_t** class_def_inout, void* out_)
+static void* analyze_class_def(void* self_, ast_class_def_t* class_def, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_class_def_t* class_def = *class_def_inout;
 
     semantic_context_push_scope(sema->ctx, SCOPE_CLASS);
     sema->current_class = class_def;
@@ -331,19 +330,18 @@ static void analyze_class_def(void* self_, ast_class_def_t** class_def_inout, vo
     symbol_table_insert(sema->ctx->current, self_symb);
 
     for (size_t i = 0; i < vec_size(&class_def->members); ++i)
-        AST_VISITOR_TRANSFORM_VEC(sema, &class_def->members, i, out_);
+        AST_TRANSFORMER_TRANSFORM_VEC(sema, &class_def->members, i, out_);
 
     for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
-        AST_VISITOR_TRANSFORM_VEC(sema, &class_def->methods, i, out_);
+        AST_TRANSFORMER_TRANSFORM_VEC(sema, &class_def->methods, i, out_);
 
     ast_node_destroy(self_decl);
     semantic_context_pop_scope(sema->ctx);
     sema->current_class = nullptr;
+    return class_def;
 }
-
-static void analyze_fn_def(void* self_, ast_fn_def_t** fn_inout, void* out_)
+static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
 {
-    ast_fn_def_t* fn = *fn_inout;
     // TODO: This and method is very similar, should try to reuse their impl
 
     semantic_analyzer_t* sema = self_;
@@ -354,9 +352,9 @@ static void analyze_fn_def(void* self_, ast_fn_def_t** fn_inout, void* out_)
     sema->current_function_scope = sema->ctx->current;
 
     for (size_t i = 0; i < vec_size(&fn->params); ++i)
-        AST_VISITOR_TRANSFORM_VEC(sema, &fn->params, i, out_);
+        AST_TRANSFORMER_TRANSFORM_VEC(sema, &fn->params, i, out_);
 
-    ast_transformer_transform(sema, &fn->body, out_);
+    fn->body = ast_transformer_transform(sema, fn->body, out_);
 
     panic_if(AST_KIND(fn->body) != AST_STMT_COMPOUND);
     ast_compound_stmt_t* block = (ast_compound_stmt_t*)fn->body;
@@ -371,11 +369,10 @@ static void analyze_fn_def(void* self_, ast_fn_def_t** fn_inout, void* out_)
     semantic_context_pop_scope(sema->ctx);
     sema->current_function = nullptr;
     sema->current_function_scope = nullptr;
+    return fn;
 }
-
-static void analyze_method_def(void* self_, ast_method_def_t** method_inout, void* out_)
+static void* analyze_method_def(void* self_, ast_method_def_t* method, void* out_)
 {
-    ast_method_def_t* method = *method_inout;
     // TODO: This and fn is very similar, should try to reuse their impl
 
     semantic_analyzer_t* sema = self_;
@@ -390,9 +387,9 @@ static void analyze_method_def(void* self_, ast_method_def_t** method_inout, voi
     sema->current_function_scope = sema->ctx->current;
 
     for (size_t i = 0; i < vec_size(&method->base.params); ++i)
-        AST_VISITOR_TRANSFORM_VEC(sema, &method->base.params, i, out_);
+        AST_TRANSFORMER_TRANSFORM_VEC(sema, &method->base.params, i, out_);
 
-    ast_transformer_transform(sema, &method->base.body, out_);
+    method->base.body = ast_transformer_transform(sema, method->base.body, out_);
 
     panic_if(AST_KIND(method->base.body) != AST_STMT_COMPOUND);
     ast_compound_stmt_t* block = (ast_compound_stmt_t*)method->base.body;
@@ -408,6 +405,7 @@ static void analyze_method_def(void* self_, ast_method_def_t** method_inout, voi
     semantic_context_pop_scope(sema->ctx);
     sema->current_method = nullptr;
     sema->current_function_scope = nullptr;
+    return method;
 }
 
 static bool analyze_fixed_size_array_index(semantic_analyzer_t* sema, void* node, ast_type_t* array_type,
@@ -434,10 +432,9 @@ static bool analyze_fixed_size_array_index(semantic_analyzer_t* sema, void* node
     return true;
 }
 
-static void analyze_array_lit(void* self_, ast_array_lit_t** lit_inout, void* out_)
+static void* analyze_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_array_lit_t* lit = *lit_inout;
 
     ast_type_t* element_type = ast_type_invalid();
     size_t size = vec_size(&lit->exprs);
@@ -445,7 +442,8 @@ static void analyze_array_lit(void* self_, ast_array_lit_t** lit_inout, void* ou
     for (size_t i = 0; i < size; ++i)
     {
         ast_expr_t* expr = vec_get(&lit->exprs, i);
-        ast_transformer_transform(sema, &expr, out_);
+        expr = ast_transformer_transform(sema, expr, out_);
+        vec_replace(&lit->exprs, i, expr);
         if (element_type == ast_type_invalid())
         {
             element_type = expr->type;
@@ -456,22 +454,22 @@ static void analyze_array_lit(void* self_, ast_array_lit_t** lit_inout, void* ou
                 "mixed types in array literal (first elem type is type '%s', elem at index '%lld' is type '%s')",
                     ast_type_string(element_type), (long long)size, ast_type_string(expr->type)));
             lit->base.type = ast_type_invalid();
-            return;
+            return lit;
         }
     }
 
     lit->base.is_lvalue = false;
     lit->base.type = ast_type_array(element_type, size);
+    return lit;
 }
 
-static void analyze_array_slice(void* self_, ast_array_slice_t** slice_inout, void* out_)
+static void* analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_array_slice_t* slice = *slice_inout;
 
-    ast_transformer_transform(sema, &slice->array, out_);
+    slice->array = ast_transformer_transform(sema, slice->array, out_);
     if (slice->array->type == ast_type_invalid())
-        return;  // don't propagate errors
+        return slice;  // don't propagate errors
 
     // Verify type is slicable & extract element-type
     ast_type_t* element_type = ast_type_invalid();
@@ -493,7 +491,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t** slice_inout, vo
             semantic_context_add_error(sema->ctx, slice, ssprintf("cannot slice type '%s'",
                 ast_type_string(slice->array->type)));
             slice->base.type = ast_type_invalid();
-            return;
+            return slice;
     }
 
     bool start_safe = slice->start == nullptr;
@@ -502,30 +500,36 @@ static void analyze_array_slice(void* self_, ast_array_slice_t** slice_inout, vo
     // Visit start & verify bounds if possible
     if (slice->start != nullptr)
     {
-        ast_transformer_transform(sema, &slice->start, out_);
+        slice->start = ast_transformer_transform(sema, slice->start, out_);
         if (slice->start->type == ast_type_invalid())
-            return;  // don't propagate errors
+        {
+            slice->base.type = ast_type_invalid();
+            return slice;  // don't propagate errors
+        }
 
         if (slice->array->type->kind == AST_TYPE_ARRAY && !analyze_fixed_size_array_index(sema, slice,
             slice->array->type, slice->start, false, &start_safe))
         {
             slice->base.type = ast_type_invalid();
-            return;
+            return slice;
         }
     }
 
     // Visit end & verify bounds if possible
     if (slice->end != nullptr)
     {
-        ast_transformer_transform(sema, &slice->end, out_);
+        slice->end = ast_transformer_transform(sema, slice->end, out_);
         if (slice->end->type == ast_type_invalid())
-            return;  // don't propagate errors
+        {
+            slice->base.type = ast_type_invalid();
+            return slice;  // don't propagate errors
+        }
 
         if (slice->array->type->kind == AST_TYPE_ARRAY && !analyze_fixed_size_array_index(sema, slice,
             slice->array->type, slice->end, true, &end_safe))
         {
             slice->base.type = ast_type_invalid();
-            return;
+            return slice;
         }
     }
 
@@ -538,7 +542,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t** slice_inout, vo
         {
             semantic_context_add_error(sema->ctx, slice, "invalid slice bounds: start > end");
             slice->base.type = ast_type_invalid();
-            return;
+            return slice;
         }
     }
 
@@ -552,7 +556,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t** slice_inout, vo
             semantic_context_add_error(sema->ctx, slice, ssprintf("type '%s' is not usable for bounds",
                 ast_type_string(slice->start->type)));
             slice->base.type = ast_type_invalid();
-            return;
+            return slice;
         }
 
         if (coercion != COERCION_EQUAL)
@@ -569,7 +573,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t** slice_inout, vo
             semantic_context_add_error(sema->ctx, slice, ssprintf("type '%s' is not usable for bounds",
                 ast_type_string(slice->end->type)));
             slice->base.type = ast_type_invalid();
-            return;
+            return slice;
         }
 
         if (coercion != COERCION_EQUAL)
@@ -579,18 +583,18 @@ static void analyze_array_slice(void* self_, ast_array_slice_t** slice_inout, vo
     slice->bounds_safe = start_safe && end_safe;
     slice->base.is_lvalue = false;
     slice->base.type = ast_type_view(element_type);
+    return slice;
 }
 
-static void analyze_array_subscript(void* self_, ast_array_subscript_t** subscript_inout, void* out_)
+static void* analyze_array_subscript(void* self_, ast_array_subscript_t* subscript, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_array_subscript_t* subscript = *subscript_inout;
 
-    ast_transformer_transform(sema, &subscript->array, out_);
+    subscript->array = ast_transformer_transform(sema, subscript->array, out_);
     if (subscript->array->type == ast_type_invalid())
-        return;  // don't propagate errors
+        return subscript;  // don't propagate errors
 
-    ast_transformer_transform(sema, &subscript->index, out_);
+    subscript->index = ast_transformer_transform(sema, subscript->index, out_);
 
     ast_type_t* expr_type;
     switch (subscript->array->type->kind)
@@ -600,6 +604,7 @@ static void analyze_array_subscript(void* self_, ast_array_subscript_t** subscri
                 &subscript->bounds_safe))
             {
                 expr_type = ast_type_invalid();
+                return subscript;
             }
             else
                 expr_type = subscript->array->type->data.array.element_type;
@@ -617,7 +622,7 @@ static void analyze_array_subscript(void* self_, ast_array_subscript_t** subscri
             semantic_context_add_error(sema->ctx, subscript, ssprintf("cannot subscript type '%s'",
                 ast_type_string(subscript->array->type)));
             expr_type = ast_type_invalid();
-            break;
+            return subscript;
     }
 
     ast_coercion_kind_t coercion = ast_type_can_coerce(subscript->index->type, ast_type_builtin(TYPE_USIZE));
@@ -630,7 +635,7 @@ static void analyze_array_subscript(void* self_, ast_array_subscript_t** subscri
         semantic_context_add_error(sema->ctx, subscript, ssprintf("type '%s' is not usable as an index",
             ast_type_string(subscript->index->type)));
         subscript->base.type = ast_type_invalid();
-        return;
+        return subscript;
     }
 
     if (coercion != COERCION_EQUAL)
@@ -638,6 +643,7 @@ static void analyze_array_subscript(void* self_, ast_array_subscript_t** subscri
 
     subscript->base.is_lvalue = true;
     subscript->base.type = expr_type;
+    return subscript;
 }
 
 // Returns true if via some coercion we can think of LHS and RHS as the same type
@@ -657,51 +663,60 @@ static bool is_type_equal_for_bin_op(ast_type_t* lhs_type, ast_type_t* rhs_type)
     return false;
 }
 
-static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* bin_op)
+static void* analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* bin_op)
 {
     symbol_t* lhs_symbol = nullptr;
     sema->is_lvalue_context = true;
-    ast_transformer_transform(sema, &bin_op->lhs, &lhs_symbol);
+    bin_op->lhs = ast_transformer_transform(sema, bin_op->lhs, &lhs_symbol);
     sema->is_lvalue_context = false;
 
     if (bin_op->lhs->type == ast_type_invalid())
-        return;  // avoid cascading errors
+    {
+        bin_op->base.type = ast_type_invalid();
+        return bin_op;  // avoid cascading errors
+    }
 
     if (!bin_op->lhs->is_lvalue)
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs, "expr is not l-value");
-        return;
+        bin_op->base.type = ast_type_invalid();
+        return bin_op;
     }
 
     if (lhs_symbol != nullptr && lhs_symbol->kind == SYMBOL_FUNCTION)
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs, "cannot assign to function");
-        return;
+        bin_op->base.type = ast_type_invalid();
+        return bin_op;
     }
 
     // For compound assignments (+=, -=, etc.), check that LHS is initialized first
     if (bin_op->op != TOKEN_ASSIGN && lhs_symbol != nullptr)
     {
         if (!require_variable_initialized(sema, lhs_symbol, bin_op->lhs))
-            return;
+        {
+            bin_op->base.type = ast_type_invalid();
+            return bin_op;
+        }
     }
 
     if (lhs_symbol != nullptr)
         init_tracker_set_initialized(sema->init_tracker, lhs_symbol, true);
 
-    ast_transformer_transform(sema, &bin_op->rhs, nullptr);
+    bin_op->rhs = ast_transformer_transform(sema, bin_op->rhs, nullptr);
     if (bin_op->rhs->type == ast_type_invalid())
-        return;  // avoid cascading errors
+        return bin_op;  // avoid cascading errors
 
     ast_coercion_kind_t coercion = check_coercion_with_expr(sema, bin_op, bin_op->rhs, bin_op->lhs->type);
     if (coercion == COERCION_INVALID)
-        return;
+        return bin_op;
     else if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS)
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs,
             ssprintf("left-hand side type '%s' does not match right-hand side type '%s'",
                 ast_type_string(bin_op->lhs->type), ast_type_string(bin_op->rhs->type)));
-        return;
+        bin_op->base.type = ast_type_invalid();
+        return bin_op;
     }
 
     if (coercion == COERCION_ALWAYS)
@@ -709,6 +724,7 @@ static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* b
 
     bin_op->base.is_lvalue = false;
     bin_op->base.type = bin_op->lhs->type;
+    return bin_op;
 }
 
 static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, ast_type_t** result_type)
@@ -756,35 +772,29 @@ static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, 
     panic("Unhandled operator %d", operator);
 }
 
-static void analyze_bin_op(void* self_, ast_bin_op_t** bin_op_inout, void* out_)
+static void* analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
-    ast_bin_op_t* bin_op = *bin_op_inout;
 
     if (token_type_is_assignment_op(bin_op->op))
-    {
-        analyze_bin_op_assignment(sema, bin_op);
-        return;
-    }
+        return analyze_bin_op_assignment(sema, bin_op);
 
     symbol_t* lhs_symbol = nullptr;
-    ast_transformer_transform(sema, &bin_op->lhs, &lhs_symbol);
-    ast_transformer_transform(sema, &bin_op->rhs, nullptr);
+    bin_op->lhs = ast_transformer_transform(sema, bin_op->lhs, &lhs_symbol);
+    bin_op->rhs = ast_transformer_transform(sema, bin_op->rhs, nullptr);
     if (bin_op->lhs->type == ast_type_invalid() || bin_op->rhs->type == ast_type_invalid())
-        return;  // avoid cascading errors
-
-    if (lhs_symbol != nullptr && lhs_symbol->kind == SYMBOL_FUNCTION && token_type_is_assignment_op(bin_op->op))
     {
-        semantic_context_add_error(sema->ctx, bin_op->lhs, "cannot assign to function");
-        return;
+        bin_op->base.type = ast_type_invalid();
+        return bin_op;  // avoid cascading errors
     }
 
     if (!is_type_equal_for_bin_op(bin_op->lhs->type, bin_op->rhs->type))
     {
         semantic_context_add_error(sema->ctx, bin_op, ssprintf("type mismatch '%s' and '%s'",
             ast_type_string(bin_op->lhs->type), ast_type_string(bin_op->rhs->type)));
-        return;
+        bin_op->base.type = ast_type_invalid();
+        return bin_op;
     }
 
     ast_type_t* result_type = nullptr;
@@ -792,21 +802,23 @@ static void analyze_bin_op(void* self_, ast_bin_op_t** bin_op_inout, void* out_)
     {
         semantic_context_add_error(sema->ctx, bin_op, ssprintf("cannot apply '%s' to '%s' and '%s'",
             token_type_str(bin_op->op), ast_type_string(bin_op->lhs->type), ast_type_string(bin_op->rhs->type)));
-        return;
+        bin_op->base.type = ast_type_invalid();
+        return bin_op;
     }
 
     bin_op->base.is_lvalue = false;
     bin_op->base.type = result_type;
+    return bin_op;
 }
 
-static void analyze_bool_lit(void* self_, ast_bool_lit_t** lit_inout, void* out_)
+static void* analyze_bool_lit(void* self_, ast_bool_lit_t* lit, void* out_)
 {
     (void)self_;
-    ast_bool_lit_t* lit = *lit_inout;
     (void)out_;
 
     lit->base.is_lvalue = false;
     lit->base.type = ast_type_builtin(TYPE_BOOL);
+    return lit;
 }
 
 static bool analyze_call_and_method_shared(semantic_analyzer_t* sema, void* node, const char* fn_name,
@@ -826,7 +838,8 @@ static bool analyze_call_and_method_shared(semantic_analyzer_t* sema, void* node
         ast_param_decl_t* param_decl = vec_get(parameters, (size_t)i);
         ast_expr_t* arg_expr = vec_get(arguments, (size_t)i);
 
-        ast_transformer_transform(sema, &arg_expr, nullptr);
+        arg_expr = ast_transformer_transform(sema, arg_expr, nullptr);
+        vec_replace(arguments, (size_t)i, arg_expr);
 
         ast_coercion_kind_t coercion = check_coercion_with_expr(sema, arg_expr, arg_expr, param_decl->type);
         if (coercion == COERCION_INVALID)
@@ -849,16 +862,18 @@ static bool analyze_call_and_method_shared(semantic_analyzer_t* sema, void* node
     return true;
 }
 
-static void analyze_call_expr(void* self_, ast_call_expr_t** call_inout, void* out_)
+static void* analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
-    ast_call_expr_t* call = *call_inout;
 
     symbol_t* symbol = nullptr;
-    ast_transformer_transform(sema, &call->function, &symbol);
+    call->function = ast_transformer_transform(sema, call->function, &symbol);
     if (symbol == nullptr)
-        return;
+    {
+        call->base.type = ast_type_invalid();
+        return call;
+    }
 
     // Call expr can transform to method call via implicit self expr
     if (symbol->kind == SYMBOL_METHOD)
@@ -866,33 +881,31 @@ static void analyze_call_expr(void* self_, ast_call_expr_t** call_inout, void* o
         ast_expr_t* replacement = ast_method_call_create(ast_self_expr_create(true), symbol->name,
             &call->arguments);
         ast_node_destroy(call);
-        *(ast_expr_t**)call_inout = replacement;
-        ast_transformer_transform(sema, call_inout, out_);  // visit method call
-        return;
+        return ast_transformer_transform(sema, replacement, out_);  // visit method call
     }
 
     if (symbol->kind != SYMBOL_FUNCTION)
     {
-        semantic_context_add_error(sema->ctx, call->function,
-            ssprintf("symbol '%s' is not callable", symbol->name));
-        return;
+        semantic_context_add_error(sema->ctx, call->function, ssprintf("symbol '%s' is not callable", symbol->name));
+        call->base.type = ast_type_invalid();
+        return call;
     }
 
     if (!analyze_call_and_method_shared(sema, call, symbol->name, &symbol->data.function.parameters, &call->arguments))
     {
         call->base.type = ast_type_invalid();
-        return;
+        return call;
     }
 
     call->base.is_lvalue = false;
     call->base.type = symbol->type;
+    return call;
 }
 
-static void analyze_construct_expr(void* self_, ast_construct_expr_t** construct_inout, void* out_)
+static void* analyze_construct_expr(void* self_, ast_construct_expr_t* construct, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
-    ast_construct_expr_t* construct = *construct_inout;
     hash_table_t initialized_members = HASH_TABLE_INIT(nullptr);
 
     // Verify type is correct
@@ -920,7 +933,7 @@ static void analyze_construct_expr(void* self_, ast_construct_expr_t** construct
     {
         // Bit ugly, but we pass in class symbol's name and get member's name in return (or nullptr on failure)
         const char* name = class_symbol->name;
-        AST_VISITOR_TRANSFORM_VEC(sema, &construct->member_inits, i, &name);
+        AST_TRANSFORMER_TRANSFORM_VEC(sema, &construct->member_inits, i, &name);
         if (name == nullptr)  // member init outputs nullptr if invalid
         {
             construct->base.type = ast_type_invalid();
@@ -970,13 +983,13 @@ static void analyze_construct_expr(void* self_, ast_construct_expr_t** construct
 
 cleanup:
     hash_table_deinit(&initialized_members);
+    return construct;
 }
 
-static void analyze_float_lit(void* self_, ast_float_lit_t** lit_inout, void* out_)
+static void* analyze_float_lit(void* self_, ast_float_lit_t* lit, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
-    ast_float_lit_t* lit = *lit_inout;
 
     ast_type_t* type = ast_type_builtin(TYPE_F64);
     if (strcmp(lit->suffix, "f32") == 0) type = ast_type_builtin(TYPE_F32);
@@ -984,7 +997,8 @@ static void analyze_float_lit(void* self_, ast_float_lit_t** lit_inout, void* ou
     else if (strlen(lit->suffix) > 0)
     {
         semantic_context_add_error(sema->ctx, lit, ssprintf("invalid suffix '%s' for integer literal", lit->suffix));
-        return;
+        lit->base.type = ast_type_invalid();
+        return lit;
     }
 
     if (type == ast_type_builtin(TYPE_F32))
@@ -995,26 +1009,28 @@ static void analyze_float_lit(void* self_, ast_float_lit_t** lit_inout, void* ou
         if (isinf(f32_value) && !isinf(lit->value))
         {
             semantic_context_add_error(sema->ctx, lit, "floating-point literal too large for f32");
-            return;
+            lit->base.type = ast_type_invalid();
+            return lit;
         }
 
         // Check for underflow (non-zero became zero)
         if (f32_value == 0.0f && lit->value != 0.0)
         {
             semantic_context_add_error(sema->ctx, lit, "floating-point literal underflows to zero in f32");
-            return;
+            lit->base.type = ast_type_invalid();
+            return lit;
         }
     }
 
     lit->base.is_lvalue = false;
     lit->base.type = type;
+    return lit;
 }
 
-static void analyze_int_lit(void* self_, ast_int_lit_t** lit_inout, void* out_)
+static void* analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
-    ast_int_lit_t* lit = *lit_inout;
 
     ast_type_t* type = ast_type_builtin(TYPE_I32);
     if (strcmp(lit->suffix, "i8") == 0) type = ast_type_builtin(TYPE_I8);
@@ -1028,7 +1044,8 @@ static void analyze_int_lit(void* self_, ast_int_lit_t** lit_inout, void* out_)
     else if (strlen(lit->suffix) > 0)
     {
         semantic_context_add_error(sema->ctx, lit, ssprintf("invalid suffix '%s' for integer literal", lit->suffix));
-        return;
+        lit->base.type = ast_type_invalid();
+        return lit;
     }
 
     bool is_signed = ast_type_is_signed(type);
@@ -1059,7 +1076,8 @@ static void analyze_int_lit(void* self_, ast_int_lit_t** lit_inout, void* out_)
         if (lit->has_minus_sign)
         {
             semantic_context_add_error(sema->ctx, lit, "literal cannot be negative");
-            return;
+            lit->base.type = ast_type_invalid();
+            return lit;
         }
 
         uint64_t max_val;
@@ -1077,23 +1095,25 @@ static void analyze_int_lit(void* self_, ast_int_lit_t** lit_inout, void* out_)
     {
         semantic_context_add_error(sema->ctx, lit, ssprintf("integer literal does not fit in type '%s'",
             ast_type_string(type)));
-        return;
+        lit->base.type = ast_type_invalid();
+        return lit;
     }
 
     lit->base.is_lvalue = false;
     lit->base.type = type;
+    return lit;
 }
 
 // verify that in "instance".<expr> expression, the instance is a valid class instance
 // returns a symbol to the class the instance refers to
 static symbol_t* verify_class_instance(semantic_analyzer_t* sema, ast_expr_t** instance_inout, void* out_)
 {
-    ast_expr_t* instance = *instance_inout;
-
     bool was_lvalue_ctx = sema->is_lvalue_context;
     sema->is_lvalue_context = true;
-    ast_transformer_transform(sema, &instance, out_);
+    *instance_inout = ast_transformer_transform(sema, *instance_inout, out_);
     sema->is_lvalue_context = was_lvalue_ctx;
+
+    ast_expr_t* instance = *instance_inout;
 
     if (instance->type == ast_type_invalid())
         return nullptr;
@@ -1116,22 +1136,25 @@ static symbol_t* verify_class_instance(semantic_analyzer_t* sema, ast_expr_t** i
     const char* class_name = instance->type->kind == AST_TYPE_USER ? instance->type->data.user.name :
         instance->type->data.pointer.pointee->data.user.name;
     symbol_t* class_symb = symbol_table_lookup(sema->ctx->global, class_name);
-    // NOTE: invalid class name should be caught earlier when the instance was declared
-    panic_if(class_symb == nullptr || class_symb->kind != SYMBOL_CLASS);
+    if (class_symb == nullptr || class_symb->kind != SYMBOL_CLASS)
+    {
+        semantic_context_add_error(sema->ctx, instance, class_symb == nullptr ?
+            ssprintf("undefined type '%s'", class_name) : ssprintf("'%s' is not a class", class_name));
+        return nullptr;
+    }
 
     return class_symb;
 }
 
-static void analyze_member_access(void* self_, ast_member_access_t** access_inout, void* out_)
+static void* analyze_member_access(void* self_, ast_member_access_t* access, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_member_access_t* access = *access_inout;
 
     symbol_t* class_symb = verify_class_instance(sema, &access->instance, out_);
     if (class_symb == nullptr)
     {
         access->base.type = ast_type_invalid();
-        return;
+        return access;
     }
 
     // Make sure class contains the specified name as a member
@@ -1141,17 +1164,17 @@ static void analyze_member_access(void* self_, ast_member_access_t** access_inou
         semantic_context_add_error(sema->ctx, access, ssprintf("type '%s' has no member '%s'",
             access->instance->type->data.user.name, access->member_name));
         access->base.type = ast_type_invalid();
-        return;
+        return access;
     }
 
     access->base.type = member_decl->base.type;
     access->base.is_lvalue = true;
+    return access;
 }
 
-static void analyze_member_init(void* self_, ast_member_init_t** init_inout, void* out_)
+static void* analyze_member_init(void* self_, ast_member_init_t* init, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_member_init_t* init = *init_inout;
     const char** name_in_out = out_;
 
     panic_if(name_in_out == nullptr || *name_in_out == nullptr);
@@ -1165,12 +1188,15 @@ static void analyze_member_init(void* self_, ast_member_init_t** init_inout, voi
     {
         *name_in_out = nullptr;
         semantic_context_add_error(sema->ctx, init, ssprintf("class has no member '%s'", init->member_name));
-        return;
+        return init;
     }
 
-    ast_transformer_transform(sema, &init->init_expr, nullptr);
+    init->init_expr = ast_transformer_transform(sema, init->init_expr, nullptr);
     if (init->init_expr->type == ast_type_invalid())
-        return;
+    {
+        *name_in_out = nullptr;
+        return init;
+    }
 
     // Type of member and Expr must be compatible
     ast_coercion_kind_t coercion = check_coercion_with_expr(sema, init, init->init_expr, member_decl->base.type);
@@ -1181,22 +1207,22 @@ static void analyze_member_init(void* self_, ast_member_init_t** init_inout, voi
         *name_in_out = nullptr;
         semantic_context_add_error(sema->ctx, init, ssprintf(
             "cannot coerce to '%s'", ast_type_string(member_decl->base.type)));
-        return;
+        return init;
     }
 
     *name_in_out = member_decl->base.name;
+    return init;
 }
 
-static void analyze_method_call(void* self_, ast_method_call_t** call_inout, void* out_)
+static void* analyze_method_call(void* self_, ast_method_call_t* call, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_method_call_t* call = *call_inout;
 
     symbol_t* class_symb = verify_class_instance(sema, &call->instance, out_);
     if (class_symb == nullptr)
     {
         call->base.type = ast_type_invalid();
-        return;
+        return call;
     }
 
     // Make sure class contains the specified name as a method
@@ -1206,60 +1232,59 @@ static void analyze_method_call(void* self_, ast_method_call_t** call_inout, voi
         semantic_context_add_error(sema->ctx, call, ssprintf("type '%s' has no method '%s'",
             call->instance->type->data.user.name, call->method_name));
         call->base.type = ast_type_invalid();
-        return;
+        return call;
     }
 
     if (!analyze_call_and_method_shared(sema, call, call->method_name, &method_def->base.params, &call->arguments))
     {
         call->base.type = ast_type_invalid();
-        return;
+        return call;
     }
 
     call->base.is_lvalue = false;
     call->base.type = method_def->base.return_type;
+    return call;
 }
-
-static void analyze_null_lit(void* self_, ast_null_lit_t** lit_inout, void* out_)
+static void* analyze_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
 {
     (void)self_;
-    ast_null_lit_t* lit = *lit_inout;
     (void)out_;
 
     lit->base.is_lvalue = false;
     lit->base.type = ast_type_builtin(TYPE_NULL);
+    return lit;
 }
 
-static void analyze_paren_expr(void* self_, ast_paren_expr_t** paren_inout, void* out_)
+static void* analyze_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_paren_expr_t* paren = *paren_inout;
 
-    ast_transformer_transform(sema, &paren->expr, out_);
+    paren->expr = ast_transformer_transform(sema, paren->expr, out_);
 
     paren->base.is_lvalue = paren->expr->is_lvalue;
     paren->base.type = paren->expr->type;
+    return paren;
 }
 
-static void analyze_ref_expr(void* self_, ast_ref_expr_t** ref_expr_inout, void* out_)
+static void* analyze_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_ref_expr_t* ref_expr = *ref_expr_inout;
     symbol_t** symbol_out = out_;
 
     symbol_t* symbol = symbol_table_lookup(sema->ctx->current, ref_expr->name);
     if (symbol == nullptr)
     {
         semantic_context_add_error(sema->ctx, ref_expr, ssprintf("unknown symbol name '%s'", ref_expr->name));
-        return;
+        ref_expr->base.type = ast_type_invalid();
+        return ref_expr;
     }
 
     // Ref expr can transform to member access via implicit self expr
     if (symbol->kind == SYMBOL_MEMBER)
     {
-        *(ast_expr_t**)ref_expr_inout = ast_member_access_create(ast_self_expr_create(true), symbol->name);
+        ast_expr_t* member_access = ast_member_access_create(ast_self_expr_create(true), symbol->name);
         ast_node_destroy(ref_expr);
-        ast_transformer_transform(sema, ref_expr_inout, out_);  // visit member_access
-        return;
+        return ast_transformer_transform(sema, member_access, out_);  // visit member_access
     }
 
     if (symbol_out != nullptr)
@@ -1268,24 +1293,27 @@ static void analyze_ref_expr(void* self_, ast_ref_expr_t** ref_expr_inout, void*
     if (!sema->is_lvalue_context)
     {
         if (!require_variable_initialized(sema, symbol, ref_expr))
-            return;
+        {
+            ref_expr->base.type = ast_type_invalid();
+            return ref_expr;
+        }
     }
 
     ref_expr->base.is_lvalue = true;
     ref_expr->base.type = symbol->type;
+    return ref_expr;
 }
 
-static void analyze_self_expr(void* self_, ast_self_expr_t** self_expr_inout, void* out_)
+static void* analyze_self_expr(void* self_, ast_self_expr_t* self_expr, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_self_expr_t* self_expr = *self_expr_inout;
     symbol_t** symbol_out = out_;
 
     if (sema->current_class == nullptr)
     {
         semantic_context_add_error(sema->ctx, self_expr, "'self' not valid in context");
         self_expr->base.type = ast_type_invalid();
-        return;
+        return self_expr;
     }
 
     symbol_t* symbol = symbol_table_lookup(sema->ctx->current, "self");
@@ -1295,26 +1323,26 @@ static void analyze_self_expr(void* self_, ast_self_expr_t** self_expr_inout, vo
 
     self_expr->base.is_lvalue = true;
     self_expr->base.type = ast_type_pointer(ast_type_user(sema->current_class->base.name));
+    return self_expr;
 }
 
-static void analyze_str_lit(void* self_, ast_str_lit_t** lit_inout, void* out_)
+static void* analyze_str_lit(void* self_, ast_str_lit_t* lit, void* out_)
 {
     (void)self_;
-    ast_str_lit_t* lit = *lit_inout;
     (void)out_;
 
     lit->base.is_lvalue = false;
     lit->base.type = ast_type_builtin(TYPE_VOID);  // FIXME: We don't have a string type yet
+    return lit;
 }
 
-static void analyze_unary_op(void* self_, ast_unary_op_t** unary_op_inout, void* out_)
+static void* analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
-    ast_unary_op_t* unary_op = *unary_op_inout;
 
     symbol_t* symbol = nullptr;  // can be nullptr after visit
-    ast_transformer_transform(sema, &unary_op->expr, &symbol);
+    unary_op->expr = ast_transformer_transform(sema, unary_op->expr, &symbol);
 
     switch (unary_op->op)
     {
@@ -1323,7 +1351,8 @@ static void analyze_unary_op(void* self_, ast_unary_op_t** unary_op_inout, void*
             {
                 semantic_context_add_error(sema->ctx, unary_op, ssprintf("cannot take address of r-value '%s'",
                     symbol == nullptr ? "invalid expression" : symbol->name));
-                return;
+                unary_op->base.type = ast_type_invalid();
+                return unary_op;
             }
             unary_op->base.is_lvalue = false;
             unary_op->base.type = ast_type_pointer(unary_op->expr->type);
@@ -1333,7 +1362,8 @@ static void analyze_unary_op(void* self_, ast_unary_op_t** unary_op_inout, void*
             {
                 semantic_context_add_error(sema->ctx, unary_op, ssprintf("cannot dereference type '%s'",
                     ast_type_string(unary_op->expr->type)));
-                return;
+                unary_op->base.type = ast_type_invalid();
+                return unary_op;
             }
             unary_op->base.is_lvalue = true;
             unary_op->base.type = unary_op->expr->type->data.pointer.pointee;
@@ -1341,54 +1371,55 @@ static void analyze_unary_op(void* self_, ast_unary_op_t** unary_op_inout, void*
         default:
             panic("Unhandled op %d", unary_op->op);
     }
+
+    return unary_op;
 }
 
-static void analyze_uninit_lit(void* self_, ast_uninit_lit_t** lit_inout, void* out_)
+static void* analyze_uninit_lit(void* self_, ast_uninit_lit_t* lit, void* out_)
 {
     (void)self_;
-    ast_uninit_lit_t* lit = *lit_inout;
     (void)out_;
 
     lit->base.type = ast_type_builtin(TYPE_UNINIT);
+    return lit;
 }
 
-static void analyze_compound_statement(void* self_, ast_compound_stmt_t** block_inout, void* out_)
+static void* analyze_compound_statement(void* self_, ast_compound_stmt_t* block, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_compound_stmt_t* block = *block_inout;
 
     semantic_context_push_scope(sema->ctx, SCOPE_BLOCK);
 
     for (size_t i = 0; i < vec_size(&block->inner_stmts); ++i)
-        AST_VISITOR_TRANSFORM_VEC(sema, &block->inner_stmts, i, out_);
+        AST_TRANSFORMER_TRANSFORM_VEC(sema, &block->inner_stmts, i, out_);
 
     semantic_context_pop_scope(sema->ctx);
+    return block;
 }
 
-static void analyze_decl_stmt(void* self_, ast_decl_stmt_t** stmt_inout, void* out_)
+static void* analyze_decl_stmt(void* self_, ast_decl_stmt_t* stmt, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_decl_stmt_t* stmt = *stmt_inout;
 
-    ast_transformer_transform(sema, &stmt->decl, out_);
+    stmt->decl = ast_transformer_transform(sema, stmt->decl, out_);
+    return stmt;
 }
 
-static void analyze_expr_stmt(void* self_, ast_expr_stmt_t** stmt_inout, void* out_)
+static void* analyze_expr_stmt(void* self_, ast_expr_stmt_t* stmt, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_expr_stmt_t* stmt = *stmt_inout;
 
-    ast_transformer_transform(sema, &stmt->expr, out_);
+    stmt->expr = ast_transformer_transform(sema, stmt->expr, out_);
+    return stmt;
 }
 
-static void analyze_if_stmt(void* self_, ast_if_stmt_t** if_stmt_inout, void* out_)
+static void* analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_if_stmt_t* if_stmt = *if_stmt_inout;
 
-    ast_transformer_transform(sema, &if_stmt->condition, out_);
+    if_stmt->condition = ast_transformer_transform(sema, if_stmt->condition, out_);
     if (if_stmt->condition->type == ast_type_invalid())
-        return;  // avoid cascading errors
+        return if_stmt;  // avoid cascading errors
 
     if (if_stmt->condition->type != ast_type_builtin(TYPE_BOOL))
     {
@@ -1401,27 +1432,27 @@ static void analyze_if_stmt(void* self_, ast_if_stmt_t** if_stmt_inout, void* ou
     init_tracker_t* else_tracker = init_tracker_clone(sema->init_tracker);
 
     sema->init_tracker = then_tracker;
-    ast_transformer_transform(sema, &if_stmt->then_branch, out_);
+    if_stmt->then_branch = ast_transformer_transform(sema, if_stmt->then_branch, out_);
     then_tracker = sema->init_tracker;
 
     if (if_stmt->else_branch != nullptr)
     {
         sema->init_tracker = else_tracker;
-        ast_transformer_transform(sema, &if_stmt->else_branch, out_);
+        if_stmt->else_branch = ast_transformer_transform(sema, if_stmt->else_branch, out_);
         else_tracker = sema->init_tracker;
     }
 
     sema->init_tracker = init_tracker_merge(&then_tracker, &else_tracker);
+    return if_stmt;
 }
 
-static void analyze_return_stmt(void* self_, ast_return_stmt_t** ret_stmt_inout, void* out_)
+static void* analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_return_stmt_t* ret_stmt = *ret_stmt_inout;
 
-    ast_transformer_transform(sema, &ret_stmt->value_expr, out_);
+    ret_stmt->value_expr = ast_transformer_transform(sema, ret_stmt->value_expr, out_);
     if (ret_stmt->value_expr->type == ast_type_invalid())
-        return;  // avoid propagating error
+        return ret_stmt;  // avoid propagating error
 
     // Get return type from either current function or current method
     ast_type_t* return_type = sema->current_function ? sema->current_function->return_type :
@@ -1430,20 +1461,21 @@ static void analyze_return_stmt(void* self_, ast_return_stmt_t** ret_stmt_inout,
     ast_coercion_kind_t coercion = check_coercion_with_expr(sema, ret_stmt->value_expr, ret_stmt->value_expr,
         return_type);
     if (coercion == COERCION_INVALID)
-        return;
+        return ret_stmt;
 
     if (coercion == COERCION_ALWAYS || coercion == COERCION_WIDEN)
         ret_stmt->value_expr = ast_coercion_expr_create(ret_stmt->value_expr, return_type);
+
+    return ret_stmt;
 }
 
-static void analyze_while_stmt(void* self_, ast_while_stmt_t** while_stmt_inout, void* out_)
+static void* analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* out_)
 {
     semantic_analyzer_t* sema = self_;
-    ast_while_stmt_t* while_stmt = *while_stmt_inout;
 
-    ast_transformer_transform(sema, &while_stmt->condition, out_);
+    while_stmt->condition = ast_transformer_transform(sema, while_stmt->condition, out_);
     if (while_stmt->condition->type == ast_type_invalid())
-        return;  // avoid cascading errors
+        return while_stmt;  // avoid cascading errors
 
     if (while_stmt->condition->type != ast_type_builtin(TYPE_BOOL))
     {
@@ -1456,11 +1488,12 @@ static void analyze_while_stmt(void* self_, ast_while_stmt_t** while_stmt_inout,
     init_tracker_t* body_tracker = init_tracker_clone(sema->init_tracker);
     sema->init_tracker = body_tracker;
 
-    ast_transformer_transform(sema, &while_stmt->body, out_);
+    while_stmt->body = ast_transformer_transform(sema, while_stmt->body, out_);
 
     // Discard init_tracker state changes inside while
     init_tracker_destroy(sema->init_tracker);
     sema->init_tracker = entry_state;
+    return while_stmt;
 }
 
 semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
@@ -1526,6 +1559,6 @@ void semantic_analyzer_destroy(semantic_analyzer_t* sema)
 bool semantic_analyzer_run(semantic_analyzer_t* sema, ast_node_t* root)
 {
     size_t errors = vec_size(&sema->ctx->error_nodes);
-    ast_transformer_transform(sema, &root, nullptr);
+    ast_transformer_transform(sema, root, nullptr);
     return errors == vec_size(&sema->ctx->error_nodes);  // no new errors
 }

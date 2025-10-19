@@ -72,7 +72,7 @@ typedef struct source_location
 typedef struct ast_node_vtable
 {
     void (*accept)(void* self_, ast_visitor_t* visitor, void* out);
-    void (*accept_transformer)(void* self_, ast_transformer_t* transformer, void* out);
+    void* (*accept_transformer)(void* self_, ast_transformer_t* transformer, void* out);
     void (*destroy)(void* self_);
 } ast_node_vtable_t;
 

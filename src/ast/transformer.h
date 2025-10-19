@@ -39,71 +39,71 @@
 
 /* Transformer for any AST node.
 
-This works exactly like visitor.h, except the argument is taken as a pointer-to-pointer, such that the
-sub-tree can be transformed without the direct involvment of the parent.
+This works like visitor.h, except it returns a potentially new node (if the node was replaced during
+transformation). The transformer may destroy the input node and return a new one, possibly of a different type.
 */
 typedef struct ast_transformer ast_transformer_t;
 struct ast_transformer
 {
-    void (*transform_root)(void* self_, ast_root_t** root, void *out_);
+    void* (*transform_root)(void* self_, ast_root_t* root, void *out_);
 
     // Declarations
-    void (*transform_member_decl)(void* self_, ast_member_decl_t** member_decl, void *out_);
-    void (*transform_param_decl)(void* self, ast_param_decl_t** fn_def, void *out_);
-    void (*transform_var_decl)(void* self_, ast_var_decl_t** var_decl, void *out_);
+    void* (*transform_member_decl)(void* self_, ast_member_decl_t* member_decl, void *out_);
+    void* (*transform_param_decl)(void* self, ast_param_decl_t* fn_def, void *out_);
+    void* (*transform_var_decl)(void* self_, ast_var_decl_t* var_decl, void *out_);
 
     // Definitions
-    void (*transform_class_def)(void* self_, ast_class_def_t** class_def, void *out_);
-    void (*transform_fn_def)(void* self_, ast_fn_def_t** fn_def, void *out_);
-    void (*transform_method_def)(void* self_, ast_method_def_t** method_def, void *out_);
+    void* (*transform_class_def)(void* self_, ast_class_def_t* class_def, void *out_);
+    void* (*transform_fn_def)(void* self_, ast_fn_def_t* fn_def, void *out_);
+    void* (*transform_method_def)(void* self_, ast_method_def_t* method_def, void *out_);
 
     // Expressions
-    void (*transform_array_lit)(void* self_, ast_array_lit_t** lit, void *out_);
-    void (*transform_array_slice)(void* self_, ast_array_slice_t** array_slice, void *out_);
-    void (*transform_array_subscript)(void* self_, ast_array_subscript_t** array_subscript, void *out_);
-    void (*transform_bin_op)(void* self_, ast_bin_op_t** bin_op, void *out_);
-    void (*transform_bool_lit)(void* self_, ast_bool_lit_t** bool_lit, void *out_);
-    void (*transform_call_expr)(void* self_, ast_call_expr_t** call_expr, void *out_);
-    void (*transform_cast_expr)(void* self_, ast_cast_expr_t** cast, void *out_);
-    void (*transform_coercion_expr)(void* self_, ast_coercion_expr_t** coercion, void *out_);
-    void (*transform_construct_expr)(void* self_, ast_construct_expr_t** construct_expr, void *out_);
-    void (*transform_float_lit)(void* self_, ast_float_lit_t** float_lit, void *out_);
-    void (*transform_int_lit)(void* self_, ast_int_lit_t** int_lit, void *out_);
-    void (*transform_member_access)(void* self_, ast_member_access_t** member_access, void *out_);
-    void (*transform_member_init)(void* self_, ast_member_init_t** member_init, void *out_);
-    void (*transform_method_call)(void* self_, ast_method_call_t** member_call, void *out_);
-    void (*transform_null_lit)(void* self_, ast_null_lit_t** null_lit, void *out_);
-    void (*transform_paren_expr)(void* self_, ast_paren_expr_t** paren_expr, void *out_);
-    void (*transform_ref_expr)(void* self_, ast_ref_expr_t** ref_expr, void *out_);
-    void (*transform_self_expr)(void* self_, ast_self_expr_t** self_expr, void *out_);
-    void (*transform_str_lit)(void* self_, ast_str_lit_t** str_lit, void *out_);
-    void (*transform_unary_op)(void* self_, ast_unary_op_t** unary_op, void *out_);
-    void (*transform_uninit_lit)(void* self_, ast_uninit_lit_t** uninit_lit, void *out_);
+    void* (*transform_array_lit)(void* self_, ast_array_lit_t* lit, void *out_);
+    void* (*transform_array_slice)(void* self_, ast_array_slice_t* array_slice, void *out_);
+    void* (*transform_array_subscript)(void* self_, ast_array_subscript_t* array_subscript, void *out_);
+    void* (*transform_bin_op)(void* self_, ast_bin_op_t* bin_op, void *out_);
+    void* (*transform_bool_lit)(void* self_, ast_bool_lit_t* bool_lit, void *out_);
+    void* (*transform_call_expr)(void* self_, ast_call_expr_t* call_expr, void *out_);
+    void* (*transform_cast_expr)(void* self_, ast_cast_expr_t* cast, void *out_);
+    void* (*transform_coercion_expr)(void* self_, ast_coercion_expr_t* coercion, void *out_);
+    void* (*transform_construct_expr)(void* self_, ast_construct_expr_t* construct_expr, void *out_);
+    void* (*transform_float_lit)(void* self_, ast_float_lit_t* float_lit, void *out_);
+    void* (*transform_int_lit)(void* self_, ast_int_lit_t* int_lit, void *out_);
+    void* (*transform_member_access)(void* self_, ast_member_access_t* member_access, void *out_);
+    void* (*transform_member_init)(void* self_, ast_member_init_t* member_init, void *out_);
+    void* (*transform_method_call)(void* self_, ast_method_call_t* member_call, void *out_);
+    void* (*transform_null_lit)(void* self_, ast_null_lit_t* null_lit, void *out_);
+    void* (*transform_paren_expr)(void* self_, ast_paren_expr_t* paren_expr, void *out_);
+    void* (*transform_ref_expr)(void* self_, ast_ref_expr_t* ref_expr, void *out_);
+    void* (*transform_self_expr)(void* self_, ast_self_expr_t* self_expr, void *out_);
+    void* (*transform_str_lit)(void* self_, ast_str_lit_t* str_lit, void *out_);
+    void* (*transform_unary_op)(void* self_, ast_unary_op_t* unary_op, void *out_);
+    void* (*transform_uninit_lit)(void* self_, ast_uninit_lit_t* uninit_lit, void *out_);
 
     // Statements
-    void (*transform_compound_stmt)(void* self_, ast_compound_stmt_t** compound_stmt, void *out_);
-    void (*transform_decl_stmt)(void* self_, ast_decl_stmt_t** decl_stmt, void *out_);
-    void (*transform_expr_stmt)(void* self_, ast_expr_stmt_t** expr_stmt, void *out_);
-    void (*transform_if_stmt)(void* self_, ast_if_stmt_t** if_stmt, void *out_);
-    void (*transform_return_stmt)(void* self_, ast_return_stmt_t** return_stmt, void *out_);
-    void (*transform_while_stmt)(void* self_, ast_while_stmt_t** while_stmt, void *out_);
+    void* (*transform_compound_stmt)(void* self_, ast_compound_stmt_t* compound_stmt, void *out_);
+    void* (*transform_decl_stmt)(void* self_, ast_decl_stmt_t* decl_stmt, void *out_);
+    void* (*transform_expr_stmt)(void* self_, ast_expr_stmt_t* expr_stmt, void *out_);
+    void* (*transform_if_stmt)(void* self_, ast_if_stmt_t* if_stmt, void *out_);
+    void* (*transform_return_stmt)(void* self_, ast_return_stmt_t* return_stmt, void *out_);
+    void* (*transform_while_stmt)(void* self_, ast_while_stmt_t* while_stmt, void *out_);
 };
 
 // Sets up default transformer implementations.
 void ast_transformer_init(ast_transformer_t* self);
 
-// The node_inout_ needs to be the address of a pointer to an AST node (e.g. ast_return_stmt_t**),
-// the transform might replace the sub-tree.
-void ast_transformer_transform(void* self_, void* node_inout_, void* out_);
+// Transforms a node, potentially replacing it with a different node (possibly of a different type).
+// Returns the resulting node (may be the same as input, or a new node if replaced).
+// If replaced, the transformer is responsible for destroying the old node.
+void* ast_transformer_transform(void* self_, void* node, void* out_);
 
 // Helper macro for transforming vector elements with ast_transformer_transform
 #define AST_TRANSFORMER_TRANSFORM_VEC(transformer, vec_ptr, index, out) \
     do { \
-        ast_node_t* _node = vec_get(vec_ptr, index); \
-        ast_transformer_transform(transformer, &_node, out); \
-        if (_node != vec_get(vec_ptr, index)) { \
-            ast_node_destroy(vec_get(vec_ptr, index)); \
-            vec_replace(vec_ptr, index, _node); \
+        ast_node_t* _old_node = vec_get(vec_ptr, index); \
+        ast_node_t* _new_node = ast_transformer_transform(transformer, _old_node, out); \
+        if (_new_node != _old_node) { \
+            vec_replace(vec_ptr, index, _new_node); \
         } \
     } while(0)
 

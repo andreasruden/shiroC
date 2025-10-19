@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 static void ast_array_subscript_accept(void* self_, ast_visitor_t* visitor, void* out);
-static void ast_array_subscript_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
+static void* ast_array_subscript_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
 static void ast_array_subscript_destroy(void* self_);
 
 static ast_node_vtable_t ast_array_subscript_vtable =
@@ -38,10 +38,10 @@ static void ast_array_subscript_accept(void* self_, ast_visitor_t* visitor, void
     visitor->visit_array_subscript(visitor, self, out);
 }
 
-static void ast_array_subscript_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
+static void* ast_array_subscript_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
 {
-    ast_array_subscript_t** self = self_;
-    transformer->transform_array_subscript(transformer, self, out);
+    ast_array_subscript_t* self = self_;
+    return transformer->transform_array_subscript(transformer, self, out);
 }
 
 static void ast_array_subscript_destroy(void* self_)

@@ -263,10 +263,3 @@ void ast_visitor_visit(void* self_, void* node_, void* out_)
     ast_node_t* node = node_;
     node->vtable->accept(node_, visitor, out_);
 }
-
-void ast_visitor_transform(void* self_, ast_node_t** node_inout_, void* out_)
-{
-    ast_visitor_t* visitor = self_;
-    ast_node_t* node = *node_inout_;
-    node->vtable->accept(node_inout_, visitor, out_);
-}

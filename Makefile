@@ -28,8 +28,8 @@ LDFLAGS = $(LLVM_LDFLAGS) $(LLVM_LIBS)
 DEBUGFLAGS = -g -O0
 LD = ld
 FUZZ_CC = clang
-FUZZ_CFLAGS = -fsanitize=fuzzer,address,undefined -g -O1 -I$(SRC_DIR) -std=c23
-FUZZ_LFLAGS = -fsanitize=fuzzer,address,undefined
+FUZZ_CFLAGS = -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined -g -O1 -I$(SRC_DIR) -std=c23
+FUZZ_LFLAGS = -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined
 
 # Coverage tools & flags
 COV_CC = clang

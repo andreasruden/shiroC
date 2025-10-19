@@ -97,19 +97,4 @@ void ast_visitor_init(ast_visitor_t* self);
 
 void ast_visitor_visit(void* self_, void* node_, void* out_);
 
-// Variant of ast_visitor_visit that allows node replacement during traversal.
-// The node pointer may be updated to point to a different (replacement) node.
-void ast_visitor_transform(void* self_, ast_node_t** node_inout_, void* out_);
-
-// Helper macro for transforming vector elements with ast_visitor_transform
-#define AST_VISITOR_TRANSFORM_VEC(visitor, vec_ptr, index, out) \
-    do { \
-        ast_node_t* _node = vec_get(vec_ptr, index); \
-        ast_visitor_transform(visitor, &_node, out); \
-        if (_node != vec_get(vec_ptr, index)) { \
-            ast_node_destroy(vec_get(vec_ptr, index)); \
-            vec_replace(vec_ptr, index, _node); \
-        } \
-    } while(0)
-
 #endif

@@ -10,7 +10,7 @@
 #include <stdlib.h>
 
 static void ast_unary_op_accept(void* self_, ast_visitor_t* visitor, void* out);
-static void ast_unary_op_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
+static void* ast_unary_op_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
 static void ast_unary_op_destroy(void* self_);
 
 static ast_node_vtable_t ast_unary_op_vtable =
@@ -41,10 +41,10 @@ static void ast_unary_op_accept(void* self_, ast_visitor_t* visitor, void* out)
     visitor->visit_unary_op(visitor, self, out);
 }
 
-static void ast_unary_op_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
+static void* ast_unary_op_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
 {
-    ast_unary_op_t** self = self_;
-    transformer->transform_unary_op(transformer, self, out);
+    ast_unary_op_t* self = self_;
+    return transformer->transform_unary_op(transformer, self, out);
 }
 
 static void ast_unary_op_destroy(void* self_)

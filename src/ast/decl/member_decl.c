@@ -9,7 +9,7 @@
 #include <string.h>
 
 static void ast_member_decl_accept(void* self_, ast_visitor_t* visitor, void* out);
-static void ast_member_decl_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
+static void* ast_member_decl_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
 static void ast_member_decl_destroy(void* self_);
 
 static ast_node_vtable_t ast_member_decl_vtable =
@@ -49,10 +49,10 @@ static void ast_member_decl_accept(void* self_, ast_visitor_t* visitor, void* ou
     visitor->visit_member_decl(visitor, self, out);
 }
 
-static void ast_member_decl_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
+static void* ast_member_decl_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
 {
-    ast_member_decl_t** self = self_;
-    transformer->transform_member_decl(transformer, self, out);
+    ast_member_decl_t* self = self_;
+    return transformer->transform_member_decl(transformer, self, out);
 }
 
 static void ast_member_decl_destroy(void* self_)
