@@ -1,0 +1,19 @@
+//! run
+
+fn useC(c: C*) -> i32 {
+    return c.a.i;
+}
+
+class C {
+    var a: A;
+}
+
+class A {
+    var i: i32;
+}
+
+fn main() {
+    var c = C { a = A { i = 5 } };
+    var result = useC(&c);
+    printI32(result);
+}

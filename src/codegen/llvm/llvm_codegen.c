@@ -117,13 +117,45 @@ static void set_debug_location(llvm_codegen_t* llvm, ast_node_t* node)
     LLVMSetCurrentDebugLocation2(llvm->builder, debug_loc);
 }
 
+// Forward declarations for three-pass approach
+static void declare_class_type(llvm_codegen_t* llvm, ast_class_def_t* class_def);
+static void define_class_body(llvm_codegen_t* llvm, ast_class_def_t* class_def);
+static void emit_method_bodies(llvm_codegen_t* llvm, ast_class_def_t* class_def);
+static void declare_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def);
+static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def);
+
 static void emit_root(void* self_, ast_root_t* root, void* out_)
 {
     llvm_codegen_t* llvm = self_;
     (void)out_;
 
+    // Pass 1: Declare all class types (opaque structs)
     for (size_t i = 0; i < vec_size(&root->tl_defs); ++i)
-        ast_visitor_visit(llvm, vec_get(&root->tl_defs, i), nullptr);
+    {
+        ast_node_t* node = vec_get(&root->tl_defs, i);
+        if (AST_KIND(node) == AST_DEF_CLASS)
+            declare_class_type(llvm, (ast_class_def_t*)node);
+    }
+
+    // Pass 2: Declare all function signatures and define class bodies (which declares methods)
+    for (size_t i = 0; i < vec_size(&root->tl_defs); ++i)
+    {
+        ast_node_t* node = vec_get(&root->tl_defs, i);
+        if (AST_KIND(node) == AST_DEF_FN)
+            declare_function(llvm, (ast_fn_def_t*)node);
+        else if (AST_KIND(node) == AST_DEF_CLASS)
+            define_class_body(llvm, (ast_class_def_t*)node);
+    }
+
+    // Pass 3: Define all function and method bodies
+    for (size_t i = 0; i < vec_size(&root->tl_defs); ++i)
+    {
+        ast_node_t* node = vec_get(&root->tl_defs, i);
+        if (AST_KIND(node) == AST_DEF_FN)
+            define_function(llvm, (ast_fn_def_t*)node);
+        else if (AST_KIND(node) == AST_DEF_CLASS)
+            emit_method_bodies(llvm, (ast_class_def_t*)node);
+    }
 }
 
 static void emit_param_decl(void* self_, ast_param_decl_t* param, void* out_)
@@ -175,13 +207,18 @@ static void emit_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     *out_ref = alloc_ref;
 }
 
-static void emit_class_def(void* self_, ast_class_def_t* class_def, void* out_)
+// Pass 1: Declare class type (opaque struct)
+static void declare_class_type(llvm_codegen_t* llvm, ast_class_def_t* class_def)
 {
-    (void)out_;
-    llvm_codegen_t* llvm = self_;
+    // Register class by name (opaque struct - body set in pass 3)
+    LLVMStructCreateNamed(llvm->context, class_def->base.name);
+}
 
-    // Register class by name
-    LLVMTypeRef class_type = LLVMStructCreateNamed(llvm->context, class_def->base.name);
+// Pass 2: Define class body and declare methods
+static void define_class_body(llvm_codegen_t* llvm, ast_class_def_t* class_def)
+{
+    LLVMTypeRef class_type = LLVMGetTypeByName2(llvm->context, class_def->base.name);
+    panic_if(class_type == nullptr);
 
     // Register the fields of the class
     unsigned int member_count = vec_size(&class_def->members);
@@ -215,20 +252,49 @@ static void emit_class_def(void* self_, ast_class_def_t* class_def, void* out_)
 
     hash_table_insert(&llvm->class_layouts, class_def->base.name, layout);
 
-    // Visit all methods
+    // Declare all methods (signatures only)
+    llvm->current_class = class_def;
+    for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
+    {
+        ast_method_def_t* method = vec_get(&class_def->methods, i);
+
+        // Mangle method name: ClassName.methodName
+        char* mangled_name = ssprintf("%s.%s", class_def->base.name, method->base.base.name);
+
+        LLVMTypeRef class_ptr_type = LLVMPointerTypeInContext(llvm->context, 0);
+
+        // Build list of params: [*ClassName, ...user_params]
+        size_t user_param_count = vec_size(&method->base.params);
+        size_t total_param_count = 1 + user_param_count;
+        LLVMTypeRef* param_types = malloc(total_param_count * sizeof(LLVMTypeRef));
+        param_types[0] = class_ptr_type;  // implicit self parameter
+        for (size_t j = 0; j < user_param_count; ++j)
+        {
+            ast_param_decl_t* param = vec_get(&method->base.params, j);
+            param_types[j + 1] = llvm_type(llvm->context, param->type);
+        }
+
+        // Declare function signature
+        LLVMTypeRef fn_type = LLVMFunctionType(llvm_type(llvm->context, method->base.return_type), param_types,
+            total_param_count, false);
+        LLVMAddFunction(llvm->module, mangled_name, fn_type);
+        free(param_types);
+    }
+    llvm->current_class = nullptr;
+}
+
+// Pass 3: Emit method bodies
+static void emit_method_bodies(llvm_codegen_t* llvm, ast_class_def_t* class_def)
+{
     llvm->current_class = class_def;
     for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
         ast_visitor_visit(llvm, vec_get(&class_def->methods, i), nullptr);
     llvm->current_class = nullptr;
 }
 
-static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
+// Pass 2: Declare function signature
+static void declare_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
 {
-    llvm_codegen_t* llvm = self_;
-    (void)out_;
-
-    llvm->symbols = hash_table_create(nullptr);
-
     // Build list of params
     size_t param_count = vec_size(&fn_def->params);
     LLVMTypeRef* param_types = malloc(param_count * sizeof(LLVMTypeRef));
@@ -238,12 +304,22 @@ static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
         param_types[i] = llvm_type(llvm->context, param->type);
     }
 
-    // Emit function
+    // Declare function signature
     LLVMTypeRef fn_type = LLVMFunctionType(llvm_type(llvm->context, fn_def->return_type), param_types,
         param_count, false);
-    LLVMValueRef fn_val = LLVMAddFunction(llvm->module, fn_def->base.name, fn_type);
-    llvm->current_function = fn_val;
+    LLVMAddFunction(llvm->module, fn_def->base.name, fn_type);
     free(param_types);
+}
+
+// Pass 3: Define function body
+static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
+{
+    llvm->symbols = hash_table_create(nullptr);
+
+    // Get the declared function
+    LLVMValueRef fn_val = LLVMGetNamedFunction(llvm->module, fn_def->base.name);
+    panic_if(fn_val == nullptr);
+    llvm->current_function = fn_val;
 
     // Create debug info for this function
     if (llvm->di_builder != nullptr)
@@ -291,6 +367,7 @@ static void emit_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     llvm->symbols = nullptr;
 }
 
+// Pass 3: Define method body (signature already declared in pass 2)
 static void emit_method_def(void* self_, ast_method_def_t* method, void* out_)
 {
     llvm_codegen_t* llvm = self_;
@@ -302,25 +379,12 @@ static void emit_method_def(void* self_, ast_method_def_t* method, void* out_)
     // Mangle method name: ClassName.methodName
     char* mangled_name = ssprintf("%s.%s", llvm->current_class->base.name, method->base.base.name);
 
-    LLVMTypeRef class_ptr_type = LLVMPointerTypeInContext(llvm->context, 0);
-
-    // Build list of params: [*ClassName, ...user_params]
-    size_t user_param_count = vec_size(&method->base.params);
-    size_t total_param_count = 1 + user_param_count;
-    LLVMTypeRef* param_types = malloc(total_param_count * sizeof(LLVMTypeRef));
-    param_types[0] = class_ptr_type;  // implicit self parameter
-    for (size_t i = 0; i < user_param_count; ++i)
-    {
-        ast_param_decl_t* param = vec_get(&method->base.params, i);
-        param_types[i + 1] = llvm_type(llvm->context, param->type);
-    }
-
-    // Emit function
-    LLVMTypeRef fn_type = LLVMFunctionType(llvm_type(llvm->context, method->base.return_type), param_types,
-        total_param_count, false);
-    LLVMValueRef fn_val = LLVMAddFunction(llvm->module, mangled_name, fn_type);
+    // Get the declared function
+    LLVMValueRef fn_val = LLVMGetNamedFunction(llvm->module, mangled_name);
+    panic_if(fn_val == nullptr);
     llvm->current_function = fn_val;
-    free(param_types);
+
+    LLVMTypeRef class_ptr_type = LLVMPointerTypeInContext(llvm->context, 0);
 
     // Create debug info for this method
     if (llvm->di_builder != nullptr)
@@ -357,6 +421,7 @@ static void emit_method_def(void* self_, ast_method_def_t* method, void* out_)
     hash_table_insert(llvm->symbols, "self", self_alloc);
 
     // Allocate space for all user parameters
+    size_t user_param_count = vec_size(&method->base.params);
     for (size_t i = 0; i < user_param_count; ++i)
         ast_visitor_visit(llvm, vec_get(&method->base.params, i), LLVMGetParam(fn_val, i + 1));
 
@@ -1287,8 +1352,7 @@ llvm_codegen_t* llvm_codegen_create()
             .visit_param_decl = emit_param_decl,
             .visit_var_decl = emit_var_decl,
             // Definitions
-            .visit_class_def = emit_class_def,
-            .visit_fn_def = emit_fn_def,
+            // Note: class_def and fn_def are handled directly in emit_root (three-pass approach)
             .visit_method_def = emit_method_def,
             // Expressions
             .visit_array_lit = emit_array_lit,
