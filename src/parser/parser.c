@@ -108,7 +108,8 @@ static ast_expr_t* parse_array_lit(parser_t* parser)
 {
     vec_t exprs = VEC_INIT(ast_node_destroy);
 
-    if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACKET))
+    token_t* tok_lbracket = lexer_next_token_iff(parser->lexer, TOKEN_LBRACKET);
+    if (tok_lbracket == nullptr)
         goto error;
 
     while (true)
@@ -125,7 +126,9 @@ static ast_expr_t* parse_array_lit(parser_t* parser)
 
     lexer_next_token_iff(parser->lexer, TOKEN_RBRACKET);  // emit error, but return node
 
-    return ast_array_lit_create(&exprs);  // ownership transfererd
+    ast_expr_t* array_lit = ast_array_lit_create(&exprs);  // ownership transferred
+    parser_set_source_tok_to_current(parser, array_lit, tok_lbracket);
+    return array_lit;
 
 error:
     vec_deinit(&exprs);
@@ -329,7 +332,9 @@ static ast_member_init_t* parse_member_init(parser_t* parser)
     if (init_expr == nullptr)
         return nullptr;
 
-    return ast_member_init_create(member_name->value, init_expr);
+    ast_member_init_t* init = ast_member_init_create(member_name->value, init_expr);
+    parser_set_source_tok_to_current(parser, init, member_name);
+    return init;
 }
 
 static ast_expr_t* parse_construct_expr(parser_t* parser)
@@ -357,7 +362,9 @@ static ast_expr_t* parse_construct_expr(parser_t* parser)
 
     lexer_next_token_iff(parser->lexer, TOKEN_RBRACE);
 
-    return ast_construct_expr_create(ast_type_user(type_name->value), &inits);
+    ast_expr_t* construct = ast_construct_expr_create(ast_type_user(type_name->value), &inits);
+    parser_set_source_tok_to_current(parser, construct, type_name);
+    return construct;
 
 cleanup:
     vec_deinit(&inits);
@@ -400,6 +407,8 @@ static ast_expr_t* parse_paren_expr(parser_t* parser)
 // instance is freed by caller if we return nullptr
 static ast_expr_t* parse_method_call(parser_t* parser, ast_expr_t* instance, const char* method)
 {
+    token_t* tok_start = lexer_peek_token(parser->lexer);
+
     ast_call_expr_t* call_expr = (ast_call_expr_t*)parse_call_expr(parser, nullptr);
     if (call_expr == nullptr)
         return nullptr;
@@ -407,13 +416,16 @@ static ast_expr_t* parse_method_call(parser_t* parser, ast_expr_t* instance, con
     vec_t* args = &call_expr->arguments;  // moved away by ast_method_call_create
     ast_expr_t* call = ast_method_call_create(instance, method, args);
     ast_node_destroy(call_expr);
+
+    parser_set_source_tok_to_current(parser, call, tok_start);
     return call;
 }
 
 // instance is freed by caller if we return nullptr
 static ast_expr_t* parse_member_access(parser_t* parser, ast_expr_t* instance)
 {
-    if (!lexer_next_token_iff(parser->lexer, TOKEN_DOT))
+    token_t* tok_dot = lexer_next_token_iff(parser->lexer, TOKEN_DOT);
+    if (tok_dot == nullptr)
         return nullptr;
 
     token_t* member = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
@@ -423,15 +435,20 @@ static ast_expr_t* parse_member_access(parser_t* parser, ast_expr_t* instance)
     if (lexer_peek_token(parser->lexer)->type == TOKEN_LPAREN)
         return parse_method_call(parser, instance, member->value);
 
-    return ast_member_access_create(instance, member->value);
+    ast_expr_t* access = ast_member_access_create(instance, member->value);
+    parser_set_source_tok_to_current(parser, access, tok_dot);
+    return access;
 }
 
 static ast_expr_t* parse_self_expr(parser_t* parser)
 {
-    if (!lexer_next_token_iff(parser->lexer, TOKEN_SELF))
+    token_t* tok_self = lexer_next_token_iff(parser->lexer, TOKEN_SELF);
+    if (tok_self == nullptr)
         return nullptr;
 
-    return ast_self_expr_create(false);
+    ast_expr_t* self = ast_self_expr_create(false);
+    parser_set_source_tok_to_current(parser, self, tok_self);
+    return self;
 }
 
 ast_expr_t* parser_parse_primary_expr(parser_t* parser)
@@ -945,19 +962,25 @@ cleanup:
 
 static ast_decl_t* parse_member_decl(parser_t* parser)
 {
+    token_t* tok_start = lexer_peek_token(parser->lexer);
     ast_var_decl_t* var_decl = (ast_var_decl_t*)parse_var_decl(parser);
     if (var_decl == nullptr)
         return nullptr;
     lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON);  // emit but accept error
-    return ast_member_decl_create_from(var_decl);
+    ast_decl_t* member = ast_member_decl_create_from(var_decl);
+    parser_set_source_tok_to_current(parser, member, tok_start);
+    return member;
 }
 
 static ast_def_t* parse_method_def(parser_t* parser)
 {
+    token_t* tok_start = lexer_peek_token(parser->lexer);
     ast_fn_def_t* fn_def = (ast_fn_def_t*)parse_fn_def(parser);
     if (fn_def == nullptr)
         return nullptr;
-    return ast_method_def_create_from(fn_def);
+    ast_def_t* method = ast_method_def_create_from(fn_def);
+    parser_set_source_tok_to_current(parser, method, tok_start);
+    return method;
 }
 
 static ast_def_t* parse_class_def(parser_t* parser)
@@ -1005,7 +1028,9 @@ static ast_def_t* parse_class_def(parser_t* parser)
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACE))
         goto cleanup;
 
-    return ast_class_def_create(tok_id->value, &members, &methods);
+    ast_def_t* class_def = ast_class_def_create(tok_id->value, &members, &methods);
+    parser_set_source_tok_to_current(parser, class_def, tok_class);
+    return class_def;
 
 cleanup:
     vec_deinit(&members);
