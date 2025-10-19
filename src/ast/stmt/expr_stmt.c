@@ -2,16 +2,19 @@
 
 #include "ast/node.h"
 #include "ast/stmt/stmt.h"
+#include "ast/transformer.h"
 #include "ast/visitor.h"
 
 #include <stdlib.h>
 
 static void ast_expr_stmt_accept(void* self_, ast_visitor_t* visitor, void* out);
+static void ast_expr_stmt_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
 static void ast_expr_stmt_destroy(void* self_);
 
 static ast_node_vtable_t ast_expr_stmt_vtable =
 {
     .accept = ast_expr_stmt_accept,
+    .accept_transformer = ast_expr_stmt_accept_transformer,
     .destroy = ast_expr_stmt_destroy
 };
 
@@ -32,6 +35,12 @@ static void ast_expr_stmt_accept(void* self_, ast_visitor_t* visitor, void* out)
 {
     ast_expr_stmt_t* self = self_;
     visitor->visit_expr_stmt(visitor, self, out);
+}
+
+static void ast_expr_stmt_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
+{
+    ast_expr_stmt_t** self = self_;
+    transformer->transform_expr_stmt(transformer, self, out);
 }
 
 static void ast_expr_stmt_destroy(void* self_)

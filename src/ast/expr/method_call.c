@@ -2,6 +2,7 @@
 
 #include "ast/expr/expr.h"
 #include "ast/node.h"
+#include "ast/transformer.h"
 #include "ast/visitor.h"
 #include "common/containers/vec.h"
 
@@ -10,11 +11,13 @@
 #include <string.h>
 
 static void ast_method_call_accept(void* self_, ast_visitor_t* visitor, void* out);
+static void ast_method_call_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
 static void ast_method_call_destroy(void* self_);
 
 static ast_node_vtable_t ast_method_call_vtable =
 {
     .accept = ast_method_call_accept,
+    .accept_transformer = ast_method_call_accept_transformer,
     .destroy = ast_method_call_destroy
 };
 
@@ -52,6 +55,12 @@ static void ast_method_call_accept(void* self_, ast_visitor_t* visitor, void* ou
 {
     ast_method_call_t* self = self_;
     visitor->visit_method_call(visitor, self, out);
+}
+
+static void ast_method_call_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
+{
+    ast_method_call_t** self = self_;
+    transformer->transform_method_call(transformer, self, out);
 }
 
 static void ast_method_call_destroy(void* self_)

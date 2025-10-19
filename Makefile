@@ -47,6 +47,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/compiler_error.c \
 	$(SRC_DIR)/ast/node.c \
 	$(SRC_DIR)/ast/root.c \
+	$(SRC_DIR)/ast/transformer.c \
 	$(SRC_DIR)/ast/type.c \
 	$(SRC_DIR)/ast/visitor.c \
 	$(SRC_DIR)/ast/decl/member_decl.c \

@@ -145,17 +145,19 @@ static ast_coercion_kind_t check_coercion_with_expr(semantic_analyzer_t* sema, v
     return coercion;
 }
 
-static void analyze_root(void* self_, ast_root_t* root, void* out_)
+static void analyze_root(void* self_, ast_root_t** root_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_root_t* root = *root_inout;
 
     for (size_t i = 0; i < vec_size(&root->tl_defs); ++i)
-        ast_visitor_visit(sema, vec_get(&root->tl_defs, i), out_);
+        AST_VISITOR_TRANSFORM_VEC(sema, &root->tl_defs, i, out_);
 }
 
-static void analyze_member_decl(void* self_, ast_member_decl_t* member, void* out_)
+static void analyze_member_decl(void* self_, ast_member_decl_t** member_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_member_decl_t* member = *member_inout;
     panic_if(sema->current_class == nullptr);
 
     if (member->base.type == ast_type_invalid())
@@ -166,7 +168,7 @@ static void analyze_member_decl(void* self_, ast_member_decl_t* member, void* ou
 
     if (member->base.init_expr != nullptr)
     {
-        ast_visitor_visit(sema, member->base.init_expr, out_);
+        ast_transformer_transform(sema, &member->base.init_expr, out_);
         if (member->base.init_expr->type == ast_type_invalid())
             return;
 
@@ -185,10 +187,11 @@ static void analyze_member_decl(void* self_, ast_member_decl_t* member, void* ou
     // NOTE: Already added to class symbol by decl_collector
 }
 
-static void analyze_param_decl(void* self_, ast_param_decl_t* param, void* out_)
+static void analyze_param_decl(void* self_, ast_param_decl_t** param_inout, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
+    ast_param_decl_t* param = *param_inout;
 
     if (param->type == ast_type_invalid())
         return;  // don't propagate errors
@@ -211,10 +214,11 @@ static void analyze_param_decl(void* self_, ast_param_decl_t* param, void* out_)
     }
 }
 
-static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
+static void analyze_var_decl(void* self_, ast_var_decl_t** var_inout, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
+    ast_var_decl_t* var = *var_inout;
 
     if (var->type != nullptr)
     {
@@ -227,7 +231,7 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     }
 
     if (var->init_expr != nullptr)
-        ast_visitor_visit(sema, var->init_expr, nullptr);
+        ast_transformer_transform(sema, &var->init_expr, nullptr);
 
     ast_type_t* inferred_type = var->init_expr == nullptr ? nullptr : var->init_expr->type;
     ast_type_t* annotated_type = var->type;
@@ -298,9 +302,10 @@ static void analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
         init_tracker_set_initialized(sema->init_tracker, symbol, var->init_expr != nullptr);
 }
 
-static void analyze_class_def(void* self_, ast_class_def_t* class_def, void* out_)
+static void analyze_class_def(void* self_, ast_class_def_t** class_def_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_class_def_t* class_def = *class_def_inout;
 
     semantic_context_push_scope(sema->ctx, SCOPE_CLASS);
     sema->current_class = class_def;
@@ -311,18 +316,19 @@ static void analyze_class_def(void* self_, ast_class_def_t* class_def, void* out
     symbol_table_insert(sema->ctx->current, self_symb);
 
     for (size_t i = 0; i < vec_size(&class_def->members); ++i)
-        ast_visitor_visit(sema, vec_get(&class_def->members, i), out_);
+        AST_VISITOR_TRANSFORM_VEC(sema, &class_def->members, i, out_);
 
     for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
-        ast_visitor_visit(sema, vec_get(&class_def->methods, i), out_);
+        AST_VISITOR_TRANSFORM_VEC(sema, &class_def->methods, i, out_);
 
     ast_node_destroy(self_decl);
     semantic_context_pop_scope(sema->ctx);
     sema->current_class = nullptr;
 }
 
-static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
+static void analyze_fn_def(void* self_, ast_fn_def_t** fn_inout, void* out_)
 {
+    ast_fn_def_t* fn = *fn_inout;
     // TODO: This and method is very similar, should try to reuse their impl
 
     semantic_analyzer_t* sema = self_;
@@ -333,9 +339,9 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     sema->current_function_scope = sema->ctx->current;
 
     for (size_t i = 0; i < vec_size(&fn->params); ++i)
-        ast_visitor_visit(sema, vec_get(&fn->params, i), out_);
+        AST_VISITOR_TRANSFORM_VEC(sema, &fn->params, i, out_);
 
-    ast_visitor_visit(sema, fn->body, out_);
+    ast_transformer_transform(sema, &fn->body, out_);
 
     panic_if(AST_KIND(fn->body) != AST_STMT_COMPOUND);
     ast_compound_stmt_t* block = (ast_compound_stmt_t*)fn->body;
@@ -352,8 +358,9 @@ static void analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     sema->current_function_scope = nullptr;
 }
 
-static void analyze_method_def(void* self_, ast_method_def_t* method, void* out_)
+static void analyze_method_def(void* self_, ast_method_def_t** method_inout, void* out_)
 {
+    ast_method_def_t* method = *method_inout;
     // TODO: This and fn is very similar, should try to reuse their impl
 
     semantic_analyzer_t* sema = self_;
@@ -368,9 +375,9 @@ static void analyze_method_def(void* self_, ast_method_def_t* method, void* out_
     sema->current_function_scope = sema->ctx->current;
 
     for (size_t i = 0; i < vec_size(&method->base.params); ++i)
-        ast_visitor_visit(sema, vec_get(&method->base.params, i), out_);
+        AST_VISITOR_TRANSFORM_VEC(sema, &method->base.params, i, out_);
 
-    ast_visitor_visit(sema, method->base.body, out_);
+    ast_transformer_transform(sema, &method->base.body, out_);
 
     panic_if(AST_KIND(method->base.body) != AST_STMT_COMPOUND);
     ast_compound_stmt_t* block = (ast_compound_stmt_t*)method->base.body;
@@ -412,9 +419,10 @@ static bool analyze_fixed_size_array_index(semantic_analyzer_t* sema, void* node
     return true;
 }
 
-static void analyze_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
+static void analyze_array_lit(void* self_, ast_array_lit_t** lit_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_array_lit_t* lit = *lit_inout;
 
     ast_type_t* element_type = ast_type_invalid();
     size_t size = vec_size(&lit->exprs);
@@ -422,7 +430,7 @@ static void analyze_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
     for (size_t i = 0; i < size; ++i)
     {
         ast_expr_t* expr = vec_get(&lit->exprs, i);
-        ast_visitor_visit(sema, expr, out_);
+        ast_transformer_transform(sema, &expr, out_);
         if (element_type == ast_type_invalid())
         {
             element_type = expr->type;
@@ -441,11 +449,12 @@ static void analyze_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
     lit->base.type = ast_type_array(element_type, size);
 }
 
-static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out_)
+static void analyze_array_slice(void* self_, ast_array_slice_t** slice_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_array_slice_t* slice = *slice_inout;
 
-    ast_visitor_visit(sema, slice->array, out_);
+    ast_transformer_transform(sema, &slice->array, out_);
     if (slice->array->type == ast_type_invalid())
         return;  // don't propagate errors
 
@@ -478,7 +487,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
     // Visit start & verify bounds if possible
     if (slice->start != nullptr)
     {
-        ast_visitor_visit(sema, slice->start, out_);
+        ast_transformer_transform(sema, &slice->start, out_);
         if (slice->start->type == ast_type_invalid())
             return;  // don't propagate errors
 
@@ -493,7 +502,7 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
     // Visit end & verify bounds if possible
     if (slice->end != nullptr)
     {
-        ast_visitor_visit(sema, slice->end, out_);
+        ast_transformer_transform(sema, &slice->end, out_);
         if (slice->end->type == ast_type_invalid())
             return;  // don't propagate errors
 
@@ -557,15 +566,16 @@ static void analyze_array_slice(void* self_, ast_array_slice_t* slice, void* out
     slice->base.type = ast_type_view(element_type);
 }
 
-static void analyze_array_subscript(void* self_, ast_array_subscript_t* subscript, void* out_)
+static void analyze_array_subscript(void* self_, ast_array_subscript_t** subscript_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_array_subscript_t* subscript = *subscript_inout;
 
-    ast_visitor_visit(sema, subscript->array, out_);
+    ast_transformer_transform(sema, &subscript->array, out_);
     if (subscript->array->type == ast_type_invalid())
         return;  // don't propagate errors
 
-    ast_visitor_visit(sema, subscript->index, out_);
+    ast_transformer_transform(sema, &subscript->index, out_);
 
     ast_type_t* expr_type;
     switch (subscript->array->type->kind)
@@ -636,7 +646,7 @@ static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* b
 {
     symbol_t* lhs_symbol = nullptr;
     sema->is_lvalue_context = true;
-    ast_visitor_visit(sema, bin_op->lhs, &lhs_symbol);
+    ast_transformer_transform(sema, &bin_op->lhs, &lhs_symbol);
     sema->is_lvalue_context = false;
 
     if (bin_op->lhs->type == ast_type_invalid())
@@ -664,7 +674,7 @@ static void analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* b
     if (lhs_symbol != nullptr)
         init_tracker_set_initialized(sema->init_tracker, lhs_symbol, true);
 
-    ast_visitor_visit(sema, bin_op->rhs, nullptr);
+    ast_transformer_transform(sema, &bin_op->rhs, nullptr);
     if (bin_op->rhs->type == ast_type_invalid())
         return;  // avoid cascading errors
 
@@ -731,10 +741,11 @@ static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, 
     panic("Unhandled operator %d", operator);
 }
 
-static void analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
+static void analyze_bin_op(void* self_, ast_bin_op_t** bin_op_inout, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
+    ast_bin_op_t* bin_op = *bin_op_inout;
 
     if (token_type_is_assignment_op(bin_op->op))
     {
@@ -743,8 +754,8 @@ static void analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
     }
 
     symbol_t* lhs_symbol = nullptr;
-    ast_visitor_visit(sema, bin_op->lhs, &lhs_symbol);
-    ast_visitor_visit(sema, bin_op->rhs, nullptr);
+    ast_transformer_transform(sema, &bin_op->lhs, &lhs_symbol);
+    ast_transformer_transform(sema, &bin_op->rhs, nullptr);
     if (bin_op->lhs->type == ast_type_invalid() || bin_op->rhs->type == ast_type_invalid())
         return;  // avoid cascading errors
 
@@ -773,9 +784,10 @@ static void analyze_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
     bin_op->base.type = result_type;
 }
 
-static void analyze_bool_lit(void* self_, ast_bool_lit_t* lit, void* out_)
+static void analyze_bool_lit(void* self_, ast_bool_lit_t** lit_inout, void* out_)
 {
     (void)self_;
+    ast_bool_lit_t* lit = *lit_inout;
     (void)out_;
 
     lit->base.is_lvalue = false;
@@ -799,7 +811,7 @@ static bool analyze_call_and_method_shared(semantic_analyzer_t* sema, void* node
         ast_param_decl_t* param_decl = vec_get(parameters, (size_t)i);
         ast_expr_t* arg_expr = vec_get(arguments, (size_t)i);
 
-        ast_visitor_visit(sema, arg_expr, nullptr);
+        ast_transformer_transform(sema, &arg_expr, nullptr);
 
         ast_coercion_kind_t coercion = check_coercion_with_expr(sema, arg_expr, arg_expr, param_decl->type);
         if (coercion == COERCION_INVALID)
@@ -822,13 +834,14 @@ static bool analyze_call_and_method_shared(semantic_analyzer_t* sema, void* node
     return true;
 }
 
-static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
+static void analyze_call_expr(void* self_, ast_call_expr_t** call_inout, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
+    ast_call_expr_t* call = *call_inout;
 
     symbol_t* symbol = nullptr;
-    ast_visitor_visit(sema, call->function, &symbol);
+    ast_transformer_transform(sema, &call->function, &symbol);
     if (symbol == nullptr)
         return;
 
@@ -856,10 +869,11 @@ static void analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
     call->base.type = symbol->type;
 }
 
-static void analyze_construct_expr(void* self_, ast_construct_expr_t* construct, void* out_)
+static void analyze_construct_expr(void* self_, ast_construct_expr_t** construct_inout, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
+    ast_construct_expr_t* construct = *construct_inout;
     hash_table_t initialized_members = HASH_TABLE_INIT(nullptr);
 
     // Verify type is correct
@@ -887,7 +901,7 @@ static void analyze_construct_expr(void* self_, ast_construct_expr_t* construct,
     {
         // Bit ugly, but we pass in class symbol's name and get member's name in return (or nullptr on failure)
         const char* name = class_symbol->name;
-        ast_visitor_visit(sema, vec_get(&construct->member_inits, i), &name);
+        AST_VISITOR_TRANSFORM_VEC(sema, &construct->member_inits, i, &name);
         if (name == nullptr)  // member init outputs nullptr if invalid
         {
             construct->base.type = ast_type_invalid();
@@ -931,10 +945,11 @@ cleanup:
     hash_table_deinit(&initialized_members);
 }
 
-static void analyze_float_lit(void* self_, ast_float_lit_t* lit, void* out_)
+static void analyze_float_lit(void* self_, ast_float_lit_t** lit_inout, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
+    ast_float_lit_t* lit = *lit_inout;
 
     ast_type_t* type = ast_type_builtin(TYPE_F64);
     if (strcmp(lit->suffix, "f32") == 0) type = ast_type_builtin(TYPE_F32);
@@ -968,10 +983,11 @@ static void analyze_float_lit(void* self_, ast_float_lit_t* lit, void* out_)
     lit->base.type = type;
 }
 
-static void analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
+static void analyze_int_lit(void* self_, ast_int_lit_t** lit_inout, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
+    ast_int_lit_t* lit = *lit_inout;
 
     ast_type_t* type = ast_type_builtin(TYPE_I32);
     if (strcmp(lit->suffix, "i8") == 0) type = ast_type_builtin(TYPE_I8);
@@ -1041,13 +1057,14 @@ static void analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
     lit->base.type = type;
 }
 
-static void analyze_member_access(void* self_, ast_member_access_t* access, void* out_)
+static void analyze_member_access(void* self_, ast_member_access_t** access_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_member_access_t* access = *access_inout;
 
     bool was_lvalue_ctx = sema->is_lvalue_context;
     sema->is_lvalue_context = true;
-    ast_visitor_visit(sema, access->instance, out_);
+    ast_transformer_transform(sema, &access->instance, out_);
     sema->is_lvalue_context = was_lvalue_ctx;
     if (access->instance->type == ast_type_invalid())
     {
@@ -1086,9 +1103,10 @@ static void analyze_member_access(void* self_, ast_member_access_t* access, void
     access->base.is_lvalue = true;
 }
 
-static void analyze_member_init(void* self_, ast_member_init_t* init, void* out_)
+static void analyze_member_init(void* self_, ast_member_init_t** init_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_member_init_t* init = *init_inout;
     const char** name_in_out = out_;
 
     panic_if(name_in_out == nullptr || *name_in_out == nullptr);
@@ -1105,7 +1123,7 @@ static void analyze_member_init(void* self_, ast_member_init_t* init, void* out_
         return;
     }
 
-    ast_visitor_visit(sema, init->init_expr, nullptr);
+    ast_transformer_transform(sema, &init->init_expr, nullptr);
     if (init->init_expr->type == ast_type_invalid())
         return;
 
@@ -1124,13 +1142,14 @@ static void analyze_member_init(void* self_, ast_member_init_t* init, void* out_
     *name_in_out = member_decl->base.name;
 }
 
-static void analyze_method_call(void* self_, ast_method_call_t* call, void* out_)
+static void analyze_method_call(void* self_, ast_method_call_t** call_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_method_call_t* call = *call_inout;
 
     bool was_lvalue_ctx = sema->is_lvalue_context;
     sema->is_lvalue_context = true;
-    ast_visitor_visit(sema, call->instance, out_);
+    ast_transformer_transform(sema, &call->instance, out_);
     sema->is_lvalue_context = was_lvalue_ctx;
     if (call->instance->type == ast_type_invalid())
     {
@@ -1175,28 +1194,31 @@ static void analyze_method_call(void* self_, ast_method_call_t* call, void* out_
     call->base.type = method_def->base.return_type;
 }
 
-static void analyze_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
+static void analyze_null_lit(void* self_, ast_null_lit_t** lit_inout, void* out_)
 {
     (void)self_;
+    ast_null_lit_t* lit = *lit_inout;
     (void)out_;
 
     lit->base.is_lvalue = false;
     lit->base.type = ast_type_builtin(TYPE_NULL);
 }
 
-static void analyze_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
+static void analyze_paren_expr(void* self_, ast_paren_expr_t** paren_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_paren_expr_t* paren = *paren_inout;
 
-    ast_visitor_visit(sema, paren->expr, out_);
+    ast_transformer_transform(sema, &paren->expr, out_);
 
     paren->base.is_lvalue = paren->expr->is_lvalue;
     paren->base.type = paren->expr->type;
 }
 
-static void analyze_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
+static void analyze_ref_expr(void* self_, ast_ref_expr_t** ref_expr_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_ref_expr_t* ref_expr = *ref_expr_inout;
     symbol_t** symbol_out = out_;
 
     symbol_t* symbol = symbol_table_lookup(sema->ctx->current, ref_expr->name);
@@ -1219,9 +1241,10 @@ static void analyze_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
     ref_expr->base.type = symbol->type;
 }
 
-static void analyze_self_expr(void* self_, ast_self_expr_t* self_expr, void* out_)
+static void analyze_self_expr(void* self_, ast_self_expr_t** self_expr_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_self_expr_t* self_expr = *self_expr_inout;
     symbol_t** symbol_out = out_;
 
     if (sema->current_class == nullptr)
@@ -1240,22 +1263,24 @@ static void analyze_self_expr(void* self_, ast_self_expr_t* self_expr, void* out
     self_expr->base.type = ast_type_user(sema->current_class->base.name);
 }
 
-static void analyze_str_lit(void* self_, ast_str_lit_t* lit, void* out_)
+static void analyze_str_lit(void* self_, ast_str_lit_t** lit_inout, void* out_)
 {
     (void)self_;
+    ast_str_lit_t* lit = *lit_inout;
     (void)out_;
 
     lit->base.is_lvalue = false;
     lit->base.type = ast_type_builtin(TYPE_VOID);  // FIXME: We don't have a string type yet
 }
 
-static void analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
+static void analyze_unary_op(void* self_, ast_unary_op_t** unary_op_inout, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
+    ast_unary_op_t* unary_op = *unary_op_inout;
 
     symbol_t* symbol = nullptr;  // can be nullptr after visit
-    ast_visitor_visit(sema, unary_op->expr, &symbol);
+    ast_transformer_transform(sema, &unary_op->expr, &symbol);
 
     switch (unary_op->op)
     {
@@ -1284,45 +1309,50 @@ static void analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
     }
 }
 
-static void analyze_uninit_lit(void* self_, ast_uninit_lit_t* lit, void* out_)
+static void analyze_uninit_lit(void* self_, ast_uninit_lit_t** lit_inout, void* out_)
 {
     (void)self_;
+    ast_uninit_lit_t* lit = *lit_inout;
     (void)out_;
 
     lit->base.type = ast_type_builtin(TYPE_UNINIT);
 }
 
-static void analyze_compound_statement(void* self_, ast_compound_stmt_t* block, void* out_)
+static void analyze_compound_statement(void* self_, ast_compound_stmt_t** block_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_compound_stmt_t* block = *block_inout;
 
     semantic_context_push_scope(sema->ctx, SCOPE_BLOCK);
 
     for (size_t i = 0; i < vec_size(&block->inner_stmts); ++i)
-        ast_visitor_visit(sema, vec_get(&block->inner_stmts, i), out_);
+        AST_VISITOR_TRANSFORM_VEC(sema, &block->inner_stmts, i, out_);
 
     semantic_context_pop_scope(sema->ctx);
 }
 
-static void analyze_decl_stmt(void* self_, ast_decl_stmt_t* stmt, void* out_)
+static void analyze_decl_stmt(void* self_, ast_decl_stmt_t** stmt_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_decl_stmt_t* stmt = *stmt_inout;
 
-    ast_visitor_visit(sema, stmt->decl, out_);
+    ast_transformer_transform(sema, &stmt->decl, out_);
 }
 
-static void analyze_expr_stmt(void* self_, ast_expr_stmt_t* stmt, void* out_)
+static void analyze_expr_stmt(void* self_, ast_expr_stmt_t** stmt_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_expr_stmt_t* stmt = *stmt_inout;
 
-    ast_visitor_visit(sema, stmt->expr, out_);
+    ast_transformer_transform(sema, &stmt->expr, out_);
 }
 
-static void analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
+static void analyze_if_stmt(void* self_, ast_if_stmt_t** if_stmt_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_if_stmt_t* if_stmt = *if_stmt_inout;
 
-    ast_visitor_visit(sema, if_stmt->condition, out_);
+    ast_transformer_transform(sema, &if_stmt->condition, out_);
     if (if_stmt->condition->type == ast_type_invalid())
         return;  // avoid cascading errors
 
@@ -1337,24 +1367,25 @@ static void analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
     init_tracker_t* else_tracker = init_tracker_clone(sema->init_tracker);
 
     sema->init_tracker = then_tracker;
-    ast_visitor_visit(sema, if_stmt->then_branch, out_);
+    ast_transformer_transform(sema, &if_stmt->then_branch, out_);
     then_tracker = sema->init_tracker;
 
     if (if_stmt->else_branch != nullptr)
     {
         sema->init_tracker = else_tracker;
-        ast_visitor_visit(sema, if_stmt->else_branch, out_);
+        ast_transformer_transform(sema, &if_stmt->else_branch, out_);
         else_tracker = sema->init_tracker;
     }
 
     sema->init_tracker = init_tracker_merge(&then_tracker, &else_tracker);
 }
 
-static void analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void* out_)
+static void analyze_return_stmt(void* self_, ast_return_stmt_t** ret_stmt_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_return_stmt_t* ret_stmt = *ret_stmt_inout;
 
-    ast_visitor_visit(sema, ret_stmt->value_expr, out_);
+    ast_transformer_transform(sema, &ret_stmt->value_expr, out_);
     if (ret_stmt->value_expr->type == ast_type_invalid())
         return;  // avoid propagating error
 
@@ -1371,11 +1402,12 @@ static void analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void* 
         ret_stmt->value_expr = ast_coercion_expr_create(ret_stmt->value_expr, return_type);
 }
 
-static void analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* out_)
+static void analyze_while_stmt(void* self_, ast_while_stmt_t** while_stmt_inout, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    ast_while_stmt_t* while_stmt = *while_stmt_inout;
 
-    ast_visitor_visit(sema, while_stmt->condition, out_);
+    ast_transformer_transform(sema, &while_stmt->condition, out_);
     if (while_stmt->condition->type == ast_type_invalid())
         return;  // avoid cascading errors
 
@@ -1390,7 +1422,7 @@ static void analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* 
     init_tracker_t* body_tracker = init_tracker_clone(sema->init_tracker);
     sema->init_tracker = body_tracker;
 
-    ast_visitor_visit(sema, while_stmt->body, out_);
+    ast_transformer_transform(sema, &while_stmt->body, out_);
 
     // Discard init_tracker state changes inside while
     init_tracker_destroy(sema->init_tracker);
@@ -1405,43 +1437,43 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
     *sema = (semantic_analyzer_t){
         .ctx = ctx,
         .init_tracker = init_tracker_create(),
-        .base = (ast_visitor_t){
-            .visit_root = analyze_root,
+        .base = (ast_transformer_t){
+            .transform_root = analyze_root,
             // Declarations
-            .visit_member_decl = analyze_member_decl,
-            .visit_param_decl = analyze_param_decl,
-            .visit_var_decl = analyze_var_decl,
+            .transform_member_decl = analyze_member_decl,
+            .transform_param_decl = analyze_param_decl,
+            .transform_var_decl = analyze_var_decl,
             // Definitions
-            .visit_class_def = analyze_class_def,
-            .visit_fn_def = analyze_fn_def,
-            .visit_method_def = analyze_method_def,
+            .transform_class_def = analyze_class_def,
+            .transform_fn_def = analyze_fn_def,
+            .transform_method_def = analyze_method_def,
             // Expressions
-            .visit_array_lit = analyze_array_lit,
-            .visit_array_slice = analyze_array_slice,
-            .visit_array_subscript = analyze_array_subscript,
-            .visit_bin_op = analyze_bin_op,
-            .visit_bool_lit = analyze_bool_lit,
-            .visit_call_expr = analyze_call_expr,
-            .visit_construct_expr = analyze_construct_expr,
-            .visit_float_lit = analyze_float_lit,
-            .visit_int_lit = analyze_int_lit,
-            .visit_member_access = analyze_member_access,
-            .visit_member_init = analyze_member_init,
-            .visit_method_call = analyze_method_call,
-            .visit_null_lit = analyze_null_lit,
-            .visit_paren_expr = analyze_paren_expr,
-            .visit_ref_expr = analyze_ref_expr,
-            .visit_self_expr = analyze_self_expr,
-            .visit_str_lit = analyze_str_lit,
-            .visit_unary_op = analyze_unary_op,
-            .visit_uninit_lit = analyze_uninit_lit,
+            .transform_array_lit = analyze_array_lit,
+            .transform_array_slice = analyze_array_slice,
+            .transform_array_subscript = analyze_array_subscript,
+            .transform_bin_op = analyze_bin_op,
+            .transform_bool_lit = analyze_bool_lit,
+            .transform_call_expr = analyze_call_expr,
+            .transform_construct_expr = analyze_construct_expr,
+            .transform_float_lit = analyze_float_lit,
+            .transform_int_lit = analyze_int_lit,
+            .transform_member_access = analyze_member_access,
+            .transform_member_init = analyze_member_init,
+            .transform_method_call = analyze_method_call,
+            .transform_null_lit = analyze_null_lit,
+            .transform_paren_expr = analyze_paren_expr,
+            .transform_ref_expr = analyze_ref_expr,
+            .transform_self_expr = analyze_self_expr,
+            .transform_str_lit = analyze_str_lit,
+            .transform_unary_op = analyze_unary_op,
+            .transform_uninit_lit = analyze_uninit_lit,
             // Statements
-            .visit_compound_stmt = analyze_compound_statement,
-            .visit_decl_stmt = analyze_decl_stmt,
-            .visit_expr_stmt = analyze_expr_stmt,
-            .visit_if_stmt = analyze_if_stmt,
-            .visit_return_stmt = analyze_return_stmt,
-            .visit_while_stmt = analyze_while_stmt,
+            .transform_compound_stmt = analyze_compound_statement,
+            .transform_decl_stmt = analyze_decl_stmt,
+            .transform_expr_stmt = analyze_expr_stmt,
+            .transform_if_stmt = analyze_if_stmt,
+            .transform_return_stmt = analyze_return_stmt,
+            .transform_while_stmt = analyze_while_stmt,
         },
     };
 
@@ -1460,6 +1492,6 @@ void semantic_analyzer_destroy(semantic_analyzer_t* sema)
 bool semantic_analyzer_run(semantic_analyzer_t* sema, ast_node_t* root)
 {
     size_t errors = vec_size(&sema->ctx->error_nodes);
-    ast_visitor_visit(sema, root, nullptr);
+    ast_transformer_transform(sema, &root, nullptr);
     return errors == vec_size(&sema->ctx->error_nodes);  // no new errors
 }

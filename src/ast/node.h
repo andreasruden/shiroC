@@ -59,6 +59,7 @@ typedef enum ast_node_kind
 
 typedef struct ast_node ast_node_t;
 typedef struct ast_visitor ast_visitor_t;
+typedef struct ast_transformer ast_transformer_t;
 typedef struct compiler_error compiler_error_t;
 
 typedef struct source_location
@@ -71,6 +72,7 @@ typedef struct source_location
 typedef struct ast_node_vtable
 {
     void (*accept)(void* self_, ast_visitor_t* visitor, void* out);
+    void (*accept_transformer)(void* self_, ast_transformer_t* transformer, void* out);
     void (*destroy)(void* self_);
 } ast_node_vtable_t;
 

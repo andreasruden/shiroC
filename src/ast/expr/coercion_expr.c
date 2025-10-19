@@ -1,16 +1,19 @@
 #include "coercion_expr.h"
 
 #include "ast/node.h"
+#include "ast/transformer.h"
 #include "ast/visitor.h"
 
 #include <stdlib.h>
 
 static void ast_coercion_expr_accept(void* self_, ast_visitor_t* visitor, void* out);
+static void ast_coercion_expr_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
 static void ast_coercion_expr_destroy(void* self_);
 
 static ast_node_vtable_t ast_coercion_expr_vtable =
 {
     .accept = ast_coercion_expr_accept,
+    .accept_transformer = ast_coercion_expr_accept_transformer,
     .destroy = ast_coercion_expr_destroy
 };
 
@@ -33,6 +36,12 @@ static void ast_coercion_expr_accept(void* self_, ast_visitor_t* visitor, void* 
 {
     ast_coercion_expr_t* self = self_;
     visitor->visit_coercion_expr(visitor, self, out);
+}
+
+static void ast_coercion_expr_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
+{
+    ast_coercion_expr_t** self = self_;
+    transformer->transform_coercion_expr(transformer, self, out);
 }
 
 static void ast_coercion_expr_destroy(void* self_)

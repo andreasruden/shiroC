@@ -1,6 +1,7 @@
 #include "root.h"
 
 #include "ast/node.h"
+#include "ast/transformer.h"
 #include "ast/visitor.h"
 #include "common/containers/vec.h"
 
@@ -8,11 +9,13 @@
 #include <stdlib.h>
 
 static void ast_root_accept(void* self_, ast_visitor_t* visitor, void* out);
+static void ast_root_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
 static void ast_root_destroy(void* self_);
 
 static ast_node_vtable_t ast_root_vtable =
 {
     .accept = ast_root_accept,
+    .accept_transformer = ast_root_accept_transformer,
     .destroy = ast_root_destroy
 };
 
@@ -49,6 +52,12 @@ static void ast_root_accept(void* self_, ast_visitor_t* visitor, void* out)
 {
     ast_root_t* self = self_;
     visitor->visit_root(visitor, self, out);
+}
+
+static void ast_root_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
+{
+    ast_root_t** self = self_;
+    transformer->transform_root(transformer, self, out);
 }
 
 static void ast_root_destroy(void* self_)

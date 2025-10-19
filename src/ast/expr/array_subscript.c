@@ -1,16 +1,19 @@
 #include "array_subscript.h"
 
 #include "ast/node.h"
+#include "ast/transformer.h"
 #include "ast/visitor.h"
 
 #include <stdlib.h>
 
 static void ast_array_subscript_accept(void* self_, ast_visitor_t* visitor, void* out);
+static void ast_array_subscript_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
 static void ast_array_subscript_destroy(void* self_);
 
 static ast_node_vtable_t ast_array_subscript_vtable =
 {
     .accept = ast_array_subscript_accept,
+    .accept_transformer = ast_array_subscript_accept_transformer,
     .destroy = ast_array_subscript_destroy
 };
 
@@ -33,6 +36,12 @@ static void ast_array_subscript_accept(void* self_, ast_visitor_t* visitor, void
 {
     ast_array_subscript_t* self = self_;
     visitor->visit_array_subscript(visitor, self, out);
+}
+
+static void ast_array_subscript_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
+{
+    ast_array_subscript_t** self = self_;
+    transformer->transform_array_subscript(transformer, self, out);
 }
 
 static void ast_array_subscript_destroy(void* self_)

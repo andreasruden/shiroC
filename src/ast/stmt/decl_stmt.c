@@ -2,17 +2,20 @@
 
 #include "ast/decl/decl.h"
 #include "ast/node.h"
+#include "ast/transformer.h"
 #include "ast/visitor.h"
 
 #include <stdarg.h>
 #include <stdlib.h>
 
 static void ast_decl_stmt_accept(void* self_, ast_visitor_t* visitor, void* out);
+static void ast_decl_stmt_accept_transformer(void* self_, ast_transformer_t* transformer, void* out);
 static void ast_decl_stmt_destroy(void* self_);
 
 static ast_node_vtable_t ast_decl_stmt_vtable =
 {
     .accept = ast_decl_stmt_accept,
+    .accept_transformer = ast_decl_stmt_accept_transformer,
     .destroy = ast_decl_stmt_destroy
 };
 
@@ -33,6 +36,12 @@ static void ast_decl_stmt_accept(void* self_, ast_visitor_t* visitor, void* out)
 {
     ast_decl_stmt_t* self = self_;
     visitor->visit_decl_stmt(visitor, self, out);
+}
+
+static void ast_decl_stmt_accept_transformer(void* self_, ast_transformer_t* transformer, void* out)
+{
+    ast_decl_stmt_t** self = self_;
+    transformer->transform_decl_stmt(transformer, self, out);
 }
 
 static void ast_decl_stmt_destroy(void* self_)
