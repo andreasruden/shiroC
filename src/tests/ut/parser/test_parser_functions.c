@@ -151,3 +151,23 @@ TEST(parser_functions_fixture_t, parse_complex_type_annotation_in_parameter)
     ast_node_destroy(root);
     ast_node_destroy(expected);
 }
+
+TEST(parser_functions_fixture_t, parse_complex_type_annotation_in_return_type)
+{
+    // Parse source code with complex return type: view[i32]* (pointer to view)
+    parser_set_source(fix->parser, "test", "fn f() -> view[i32]* { }");
+    ast_root_t* root = parser_parse(fix->parser);
+    ASSERT_NEQ(nullptr, root);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_type_t* view_ptr_type = ast_type_pointer(
+        ast_type_view(ast_type_builtin(TYPE_I32)));
+
+    ast_root_t* expected = ast_root_create_va(
+        ast_fn_def_create_va("f", view_ptr_type, ast_compound_stmt_create_empty(), nullptr),
+        nullptr);
+
+    ASSERT_TREES_EQUAL(expected, root);
+    ast_node_destroy(root);
+    ast_node_destroy(expected);
+}

@@ -923,7 +923,7 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     if (lexer_peek_token(parser->lexer)->type == TOKEN_ARROW)
     {
         lexer_next_token(parser->lexer);
-        ret_type = ast_type_from_token(lexer_next_token(parser->lexer));
+        ret_type = parse_type_annotation(parser);;
     }
 
     // Body
