@@ -1,9 +1,11 @@
 #include "ast/decl/var_decl.h"
 #include "ast/expr/bin_op.h"
+#include "ast/expr/bool_lit.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
+#include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/for_stmt.h"
 #include "ast/stmt/if_stmt.h"
 #include "ast/stmt/inc_dec_stmt.h"
@@ -158,4 +160,120 @@ TEST(ut_sema_cf_fixture_t, for_all_parts_nullable_is_valid)
     ASSERT_TRUE(res);
 
     ast_node_destroy(for_stmt);
+}
+
+// Variable declared inside if-then branch should not be accessible after if statement
+TEST(ut_sema_cf_fixture_t, if_then_branch_variable_not_accessible_after)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("x");
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_if_stmt_create(
+            ast_bool_lit_create(true),
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(ast_var_decl_create("x", ast_type_builtin(TYPE_I32), ast_int_lit_val(42))),
+                nullptr
+            ),
+            nullptr
+        ),
+        // x is not accessible here
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "unknown symbol name 'x'");
+
+    ast_node_destroy(block);
+}
+
+// Variable declared inside if-else branch should not be accessible after if statement
+TEST(ut_sema_cf_fixture_t, if_else_branch_variable_not_accessible_after)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("y");
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_if_stmt_create(
+            ast_bool_lit_create(false),
+            ast_compound_stmt_create_empty(),
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(ast_var_decl_create("y", ast_type_builtin(TYPE_I32), ast_int_lit_val(99))),
+                nullptr
+            )
+        ),
+        // y is not accessible here
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "unknown symbol name 'y'");
+
+    ast_node_destroy(block);
+}
+
+// Variable declared inside while loop body should not be accessible after loop
+TEST(ut_sema_cf_fixture_t, while_body_variable_not_accessible_after)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("z");
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("count", nullptr, ast_int_lit_val(0))),
+        ast_while_stmt_create(
+            ast_bin_op_create(TOKEN_LT, ast_ref_expr_create("count"), ast_int_lit_val(10)),
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(ast_var_decl_create("z", ast_type_builtin(TYPE_I32), ast_int_lit_val(100))),
+                ast_inc_dec_stmt_create(ast_ref_expr_create("count"), true),
+                nullptr
+            )
+        ),
+        // z is not accessible here
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "unknown symbol name 'z'");
+
+    ast_node_destroy(block);
+}
+
+// Variable declared inside for loop body should not be accessible after loop
+TEST(ut_sema_cf_fixture_t, for_body_variable_not_accessible_after)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("temp");
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", nullptr, ast_int_lit_val(0))),
+        ast_for_stmt_create(
+            nullptr,
+            ast_bin_op_create(TOKEN_LT, ast_ref_expr_create("i"), ast_int_lit_val(5)),
+            ast_inc_dec_stmt_create(ast_ref_expr_create("i"), true),
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(ast_var_decl_create("temp", ast_type_builtin(TYPE_I32), ast_int_lit_val(99))),
+                nullptr
+            )
+        ),
+        // temp is not accessible here
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "unknown symbol name 'temp'");
+
+    ast_node_destroy(block);
+}
+
+// Variable declared in for loop init should not be accessible after loop
+TEST(ut_sema_cf_fixture_t, for_init_variable_not_accessible_after)
+{
+    ast_expr_t* error_node = ast_ref_expr_create("j");
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_for_stmt_create(
+            ast_decl_stmt_create(ast_var_decl_create("j", ast_type_builtin(TYPE_I32), ast_int_lit_val(0))),
+            ast_bin_op_create(TOKEN_LT, ast_ref_expr_create("j"), ast_int_lit_val(10)),
+            ast_inc_dec_stmt_create(ast_ref_expr_create("j"), true),
+            ast_compound_stmt_create_empty()
+        ),
+        // j is not accessible here
+        ast_expr_stmt_create(error_node),
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "unknown symbol name 'j'");
+
+    ast_node_destroy(block);
 }
