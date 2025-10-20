@@ -265,6 +265,20 @@ static void* ast_transformer_transform_while_stmt(void* self_, ast_while_stmt_t*
     return while_stmt;
 }
 
+static void* ast_transformer_transform_break_stmt(void* self_, ast_break_stmt_t* break_stmt, void* out_)
+{
+    (void)self_;
+    (void)out_;
+    return break_stmt;
+}
+
+static void* ast_transformer_transform_continue_stmt(void* self_, ast_continue_stmt_t* continue_stmt, void* out_)
+{
+    (void)self_;
+    (void)out_;
+    return continue_stmt;
+}
+
 void ast_transformer_init(ast_transformer_t* transformer)
 {
     *transformer = (ast_transformer_t){
@@ -300,7 +314,9 @@ void ast_transformer_init(ast_transformer_t* transformer)
         .transform_unary_op = ast_transformer_transform_unary_op,
         .transform_uninit_lit = ast_transformer_transform_uninit_lit,
         // Statements
+        .transform_break_stmt = ast_transformer_transform_break_stmt,
         .transform_compound_stmt = ast_transformer_transform_compound_stmt,
+        .transform_continue_stmt = ast_transformer_transform_continue_stmt,
         .transform_decl_stmt = ast_transformer_transform_decl_stmt,
         .transform_expr_stmt = ast_transformer_transform_expr_stmt,
         .transform_for_stmt = ast_transformer_transform_for_stmt,

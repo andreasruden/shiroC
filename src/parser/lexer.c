@@ -22,7 +22,9 @@ typedef struct
 static keyword_t lexer_keywords[] =
 {
     {"bool", TOKEN_BOOL},
+    {"break", TOKEN_BREAK},
     {"class", TOKEN_CLASS},
+    {"continue", TOKEN_CONTINUE},
     {"else", TOKEN_ELSE},
     {"f32", TOKEN_F32},
     {"f64", TOKEN_F64},
@@ -102,6 +104,8 @@ const char* token_type_str(token_type_t type)
         case TOKEN_TRUE: return "true";
         case TOKEN_FLOAT: return "float";
         case TOKEN_BOOL: return "bool";
+        case TOKEN_BREAK: return "break";
+        case TOKEN_CONTINUE: return "continue";
         case TOKEN_VOID: return "void";
         case TOKEN_I8: return "i8";
         case TOKEN_I16: return "i16";

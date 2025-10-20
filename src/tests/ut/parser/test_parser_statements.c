@@ -4,7 +4,9 @@
 #include "ast/expr/int_lit.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/node.h"
+#include "ast/stmt/break_stmt.h"
 #include "ast/stmt/compound_stmt.h"
+#include "ast/stmt/continue_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/for_stmt.h"
@@ -368,4 +370,34 @@ TEST(parser_statements_fixture_t, parse_for_stmt_syntax_errors_but_valid_ast)
     ASSERT_EQ(AST_STMT_COMPOUND, AST_KIND(for_stmt->body));
 
     ast_node_destroy(stmt);
+}
+
+TEST(parser_statements_fixture_t, parse_break_stmt)
+{
+    parser_set_source(fix->parser, "test", "break");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_break_stmt_create();
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(stmt);
+    ast_node_destroy(expected);
+}
+
+TEST(parser_statements_fixture_t, parse_continue_stmt)
+{
+    parser_set_source(fix->parser, "test", "continue");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_continue_stmt_create();
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(stmt);
+    ast_node_destroy(expected);
 }

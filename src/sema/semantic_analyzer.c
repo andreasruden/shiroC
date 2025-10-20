@@ -1446,7 +1446,9 @@ static void* analyze_for_stmt(void* self_, ast_for_stmt_t* for_stmt, void* out_)
         for_stmt->post_stmt = ast_transformer_transform(sema, for_stmt->post_stmt, out_);
 
     // Body
+    sema->loop_depth++;
     for_stmt->body = ast_transformer_transform(sema, for_stmt->body, out_);
+    sema->loop_depth--;
 
 cleanup:
     // Discard init_tracker state changes inside for
@@ -1559,12 +1561,36 @@ static void* analyze_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void*
     init_tracker_t* body_tracker = init_tracker_clone(sema->init_tracker);
     sema->init_tracker = body_tracker;
 
+    sema->loop_depth++;
     while_stmt->body = ast_transformer_transform(sema, while_stmt->body, out_);
+    sema->loop_depth--;
 
     // Discard init_tracker state changes inside while
     init_tracker_destroy(sema->init_tracker);
     sema->init_tracker = entry_state;
     return while_stmt;
+}
+
+static void* analyze_break_stmt(void* self_, ast_break_stmt_t* break_stmt, void* out_)
+{
+    semantic_analyzer_t* sema = self_;
+    (void)out_;
+
+    if (sema->loop_depth == 0)
+        semantic_context_add_error(sema->ctx, break_stmt, "break statement not in loop");
+
+    return break_stmt;
+}
+
+static void* analyze_continue_stmt(void* self_, ast_continue_stmt_t* continue_stmt, void* out_)
+{
+    semantic_analyzer_t* sema = self_;
+    (void)out_;
+
+    if (sema->loop_depth == 0)
+        semantic_context_add_error(sema->ctx, continue_stmt, "continue statement not in loop");
+
+    return continue_stmt;
 }
 
 semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
@@ -1606,7 +1632,9 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             .transform_unary_op = analyze_unary_op,
             .transform_uninit_lit = analyze_uninit_lit,
             // Statements
+            .transform_break_stmt = analyze_break_stmt,
             .transform_compound_stmt = analyze_compound_statement,
+            .transform_continue_stmt = analyze_continue_stmt,
             .transform_decl_stmt = analyze_decl_stmt,
             .transform_expr_stmt = analyze_expr_stmt,
             .transform_for_stmt = analyze_for_stmt,

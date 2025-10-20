@@ -51,5 +51,48 @@ fn main() -> i32 {
 
 	var result = f(10, i);
 	printI32(result);  //! stdout: "120"
+
+	// Test break in while loop
+	var count = 0;
+	while (true) {
+		++count;
+		if (count == 3) {
+			break;
+		}
+	}
+	printI32(count);  //! stdout: "3"
+
+	// Test continue in while loop
+	var oddSum = 0;
+	var idx = 0;
+	while (idx < 5) {
+		++idx;
+		if (idx % 2 == 0) {
+			continue;
+		}
+		oddSum += idx;
+	}
+	printI32(oddSum);  //! stdout: "9"
+
+	// Test break in for loop
+	var breakCount = 0;
+	for (var m = 0; m < 10; ++m) {
+		if (m == 4) {
+			break;
+		}
+		++breakCount;
+	}
+	printI32(breakCount);  //! stdout: "4"
+
+	// Test continue in for loop
+	var evenCount = 0;
+	for (var n = 0; n < 10; ++n) {
+		if (n % 2 != 0) {
+			continue;
+		}
+		++evenCount;
+	}
+	printI32(evenCount);  //! stdout: "5"
+
 	return 0;
 }

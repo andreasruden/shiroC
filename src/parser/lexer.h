@@ -10,7 +10,9 @@ typedef enum
 {
     // Keywords
     TOKEN_BOOL,
+    TOKEN_BREAK,
     TOKEN_CLASS,
+    TOKEN_CONTINUE,
     TOKEN_ELSE,
     TOKEN_F32,
     TOKEN_F64,

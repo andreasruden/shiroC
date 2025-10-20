@@ -48,7 +48,9 @@ typedef enum ast_node_kind
     AST_EXPR_END, // Sentinel
 
     // Statements
+    AST_STMT_BREAK,
     AST_STMT_COMPOUND,
+    AST_STMT_CONTINUE,
     AST_STMT_DECL,
     AST_STMT_EXPR,
     AST_STMT_FOR,

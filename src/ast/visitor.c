@@ -229,6 +229,20 @@ static void ast_visitor_visit_while_stmt(void* self_, ast_while_stmt_t* while_st
     ast_visitor_visit(self_, while_stmt->body, out_);
 }
 
+static void ast_visitor_visit_break_stmt(void* self_, ast_break_stmt_t* break_stmt, void* out_)
+{
+    (void)self_;
+    (void)break_stmt;
+    (void)out_;
+}
+
+static void ast_visitor_visit_continue_stmt(void* self_, ast_continue_stmt_t* continue_stmt, void* out_)
+{
+    (void)self_;
+    (void)continue_stmt;
+    (void)out_;
+}
+
 void ast_visitor_init(ast_visitor_t* visitor)
 {
     *visitor = (ast_visitor_t){
@@ -264,7 +278,9 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_unary_op = ast_visitor_visit_unary_op,
         .visit_uninit_lit = ast_visitor_visit_uninit_lit,
         // Statements
+        .visit_break_stmt = ast_visitor_visit_break_stmt,
         .visit_compound_stmt = ast_visitor_visit_compound_stmt,
+        .visit_continue_stmt = ast_visitor_visit_continue_stmt,
         .visit_decl_stmt = ast_visitor_visit_decl_stmt,
         .visit_expr_stmt = ast_visitor_visit_expr_stmt,
         .visit_for_stmt = ast_visitor_visit_for_stmt,

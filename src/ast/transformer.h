@@ -30,7 +30,9 @@
 #include "ast/expr/uninit_lit.h"
 #include "ast/node.h"
 #include "ast/root.h"
+#include "ast/stmt/break_stmt.h"
 #include "ast/stmt/compound_stmt.h"
+#include "ast/stmt/continue_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/for_stmt.h"
@@ -83,7 +85,9 @@ struct ast_transformer
     void* (*transform_uninit_lit)(void* self_, ast_uninit_lit_t* uninit_lit, void *out_);
 
     // Statements
+    void* (*transform_break_stmt)(void* self_, ast_break_stmt_t* break_stmt, void *out_);
     void* (*transform_compound_stmt)(void* self_, ast_compound_stmt_t* compound_stmt, void *out_);
+    void* (*transform_continue_stmt)(void* self_, ast_continue_stmt_t* continue_stmt, void *out_);
     void* (*transform_decl_stmt)(void* self_, ast_decl_stmt_t* decl_stmt, void *out_);
     void* (*transform_expr_stmt)(void* self_, ast_expr_stmt_t* expr_stmt, void *out_);
     void* (*transform_for_stmt)(void* self_, ast_for_stmt_t* for_stmt, void *out_);

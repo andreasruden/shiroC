@@ -28,6 +28,14 @@
 #include <string.h>
 
 typedef struct class_layout class_layout_t;
+typedef struct loop_context loop_context_t;
+
+struct loop_context
+{
+    LLVMBasicBlockRef continue_block;  // Block to jump to for continue
+    LLVMBasicBlockRef break_block;     // Block to jump to for break
+    loop_context_t* parent;            // Parent loop context for nested loops
+};
 
 struct llvm_codegen
 {
@@ -51,6 +59,9 @@ struct llvm_codegen
     LLVMMetadataRef di_file;
     hash_table_t* di_scopes;  // function name (char*) -> LLVMMetadataRef (DISubprogram)
     LLVMMetadataRef current_di_scope;
+
+    // Loop context for break/continue
+    loop_context_t* loop_context;
 
     bool lvalue;
     bool address_of_lvalue;
@@ -1290,6 +1301,28 @@ static void emit_return_stmt(void* self_, ast_return_stmt_t* stmt, void* out_)
     }
 }
 
+static void emit_break_stmt(void* self_, ast_break_stmt_t* stmt, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    (void)out_;
+
+    set_debug_location(llvm, AST_NODE(stmt));
+
+    // Jump to the break block of the current loop
+    LLVMBuildBr(llvm->builder, llvm->loop_context->break_block);
+}
+
+static void emit_continue_stmt(void* self_, ast_continue_stmt_t* stmt, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    (void)out_;
+
+    set_debug_location(llvm, AST_NODE(stmt));
+
+    // Jump to the continue block of the current loop
+    LLVMBuildBr(llvm->builder, llvm->loop_context->continue_block);
+}
+
 static void emit_while_stmt(void* self_, ast_while_stmt_t* stmt, void* out_)
 {
     llvm_codegen_t* llvm = self_;
@@ -1300,6 +1333,15 @@ static void emit_while_stmt(void* self_, ast_while_stmt_t* stmt, void* out_)
     LLVMBasicBlockRef cond_block = LLVMAppendBasicBlock(llvm->current_function, "while.cond");
     LLVMBasicBlockRef body_block = LLVMAppendBasicBlock(llvm->current_function, "while.body");
     LLVMBasicBlockRef end_block = LLVMAppendBasicBlock(llvm->current_function, "while.end");
+
+    // Set up loop context for break/continue
+    loop_context_t loop_ctx =
+    {
+        .continue_block = cond_block,
+        .break_block = end_block,
+        .parent = llvm->loop_context
+    };
+    llvm->loop_context = &loop_ctx;
 
     // Branch to condition block
     LLVMBuildBr(llvm->builder, cond_block);
@@ -1318,6 +1360,9 @@ static void emit_while_stmt(void* self_, ast_while_stmt_t* stmt, void* out_)
     LLVMBasicBlockRef current_block = LLVMGetInsertBlock(llvm->builder);
     if (LLVMGetBasicBlockTerminator(current_block) == nullptr)
         LLVMBuildBr(llvm->builder, cond_block);
+
+    // Restore parent loop context
+    llvm->loop_context = loop_ctx.parent;
 
     // Continue after while loop
     LLVMPositionBuilderAtEnd(llvm->builder, end_block);
@@ -1338,6 +1383,15 @@ static void emit_for_stmt(void* self_, ast_for_stmt_t* stmt, void* out_)
     LLVMBasicBlockRef body_block = LLVMAppendBasicBlock(llvm->current_function, "for.body");
     LLVMBasicBlockRef post_block = LLVMAppendBasicBlock(llvm->current_function, "for.post");
     LLVMBasicBlockRef end_block = LLVMAppendBasicBlock(llvm->current_function, "for.end");
+
+    // Set up loop context for break/continue (continue jumps to post, not cond)
+    loop_context_t loop_ctx =
+    {
+        .continue_block = post_block,
+        .break_block = end_block,
+        .parent = llvm->loop_context
+    };
+    llvm->loop_context = &loop_ctx;
 
     // Branch to condition block
     LLVMBuildBr(llvm->builder, cond_block);
@@ -1368,6 +1422,9 @@ static void emit_for_stmt(void* self_, ast_for_stmt_t* stmt, void* out_)
         ast_visitor_visit(llvm, stmt->post_stmt, out_);
     // Branch back to condition
     LLVMBuildBr(llvm->builder, cond_block);
+
+    // Restore parent loop context
+    llvm->loop_context = loop_ctx.parent;
 
     // Continue after for loop
     LLVMPositionBuilderAtEnd(llvm->builder, end_block);
@@ -1433,7 +1490,9 @@ llvm_codegen_t* llvm_codegen_create()
             .visit_uninit_lit = emit_uninit_lit,
             // .visit_str_lit = emit_str_lit, FIXME:
             // Statements
+            .visit_break_stmt = emit_break_stmt,
             .visit_compound_stmt = emit_compound_stmt,
+            .visit_continue_stmt = emit_continue_stmt,
             .visit_decl_stmt = emit_decl_stmt,
             .visit_expr_stmt = emit_expr_stmt,
             .visit_for_stmt = emit_for_stmt,

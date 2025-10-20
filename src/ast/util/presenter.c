@@ -376,6 +376,22 @@ static void present_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* 
     (void)while_stmt;
 }
 
+static void present_break_stmt(void* self_, ast_break_stmt_t* break_stmt, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, "break");
+    (void)break_stmt;
+}
+
+static void present_continue_stmt(void* self_, ast_continue_stmt_t* continue_stmt, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, "continue");
+    (void)continue_stmt;
+}
+
 ast_presenter_t* ast_presenter_create()
 {
     ast_presenter_t* presenter = malloc(sizeof(*presenter));
@@ -415,7 +431,9 @@ ast_presenter_t* ast_presenter_create()
             .visit_unary_op = present_unary_op,
             .visit_uninit_lit = present_uninit_lit,
             // Statements
+            .visit_break_stmt = present_break_stmt,
             .visit_compound_stmt = present_compound_stmt,
+            .visit_continue_stmt = present_continue_stmt,
             .visit_decl_stmt = present_decl_stmt,
             .visit_expr_stmt = present_expr_stmt,
             .visit_for_stmt = present_for_stmt,

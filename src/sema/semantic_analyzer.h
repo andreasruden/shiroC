@@ -23,6 +23,7 @@ typedef struct semantic_analyzer
     symbol_table_t* current_function_scope;
     init_tracker_t* init_tracker;
     bool is_lvalue_context;
+    int loop_depth;  // Track nesting depth of loops for break/continue validation
 } semantic_analyzer_t;
 
 semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx);

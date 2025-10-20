@@ -545,6 +545,26 @@ static void print_while_stmt(void* self_, ast_while_stmt_t* while_stmt, void* ou
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_break_stmt(void* self_, ast_break_stmt_t* break_stmt, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sBreakStmt", self->indentation, ""));
+    print_source_location(self, break_stmt, out);
+    string_append_cstr(out, "\n");
+}
+
+static void print_continue_stmt(void* self_, ast_continue_stmt_t* continue_stmt, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sContinueStmt", self->indentation, ""));
+    print_source_location(self, continue_stmt, out);
+    string_append_cstr(out, "\n");
+}
+
 ast_printer_t* ast_printer_create()
 {
     ast_printer_t* printer = malloc(sizeof(*printer));
@@ -584,7 +604,9 @@ ast_printer_t* ast_printer_create()
             .visit_unary_op = print_unary_op,
             .visit_uninit_lit = print_uninit_lit,
             // Statements
+            .visit_break_stmt = print_break_stmt,
             .visit_compound_stmt = print_compound_stmt,
+            .visit_continue_stmt = print_continue_stmt,
             .visit_decl_stmt = print_decl_stmt,
             .visit_expr_stmt = print_expr_stmt,
             .visit_for_stmt = print_for_stmt,

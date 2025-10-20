@@ -29,7 +29,9 @@
 #include "ast/expr/uninit_lit.h"
 #include "ast/node.h"
 #include "ast/root.h"
+#include "ast/stmt/break_stmt.h"
 #include "ast/stmt/compound_stmt.h"
+#include "ast/stmt/continue_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/for_stmt.h"
@@ -605,6 +607,32 @@ static ast_stmt_t* parse_return_stmt(parser_t* parser)
     return stmt;
 }
 
+static ast_stmt_t* parse_break_stmt(parser_t* parser)
+{
+    token_t* tok_break = lexer_next_token_iff(parser->lexer, TOKEN_BREAK);
+    if (tok_break == nullptr)
+        return nullptr;
+
+    ast_stmt_t* stmt = ast_break_stmt_create();
+
+    parser_set_source_tok_to_current(parser, stmt, tok_break);
+
+    return stmt;
+}
+
+static ast_stmt_t* parse_continue_stmt(parser_t* parser)
+{
+    token_t* tok_continue = lexer_next_token_iff(parser->lexer, TOKEN_CONTINUE);
+    if (tok_continue == nullptr)
+        return nullptr;
+
+    ast_stmt_t* stmt = ast_continue_stmt_create();
+
+    parser_set_source_tok_to_current(parser, stmt, tok_continue);
+
+    return stmt;
+}
+
 static ast_stmt_t* parse_while_stmt(parser_t* parser)
 {
     ast_expr_t* condition = nullptr;
@@ -965,6 +993,10 @@ ast_stmt_t* parser_parse_stmt(parser_t* parser)
     {
         case TOKEN_RETURN:
             return parse_return_stmt(parser);
+        case TOKEN_BREAK:
+            return parse_break_stmt(parser);
+        case TOKEN_CONTINUE:
+            return parse_continue_stmt(parser);
         case TOKEN_LBRACE:
             return parse_compound_stmt(parser);
         case TOKEN_VAR:

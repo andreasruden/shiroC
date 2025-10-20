@@ -78,7 +78,9 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/expr/str_lit.c \
 	$(SRC_DIR)/ast/expr/unary_op.c \
 	$(SRC_DIR)/ast/expr/uninit_lit.c \
+	$(SRC_DIR)/ast/stmt/break_stmt.c \
 	$(SRC_DIR)/ast/stmt/compound_stmt.c \
+	$(SRC_DIR)/ast/stmt/continue_stmt.c \
 	$(SRC_DIR)/ast/stmt/decl_stmt.c \
 	$(SRC_DIR)/ast/stmt/expr_stmt.c \
 	$(SRC_DIR)/ast/stmt/for_stmt.c \

@@ -3,7 +3,9 @@
 #include "ast/expr/bool_lit.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/ref_expr.h"
+#include "ast/stmt/break_stmt.h"
 #include "ast/stmt/compound_stmt.h"
+#include "ast/stmt/continue_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/for_stmt.h"
@@ -274,6 +276,58 @@ TEST(ut_sema_cf_fixture_t, for_init_variable_not_accessible_after)
     );
 
     ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "unknown symbol name 'j'");
+
+    ast_node_destroy(block);
+}
+
+// Break inside while loop is valid
+TEST(ut_sema_cf_fixture_t, break_inside_while_loop_valid)
+{
+    ast_stmt_t* while_stmt = ast_while_stmt_create(
+        ast_bool_lit_create(true),
+        ast_compound_stmt_create_va(
+            ast_break_stmt_create(),
+            nullptr));
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(while_stmt));
+    ASSERT_TRUE(res);
+
+    ast_node_destroy(while_stmt);
+}
+
+// Continue inside while loop is valid
+TEST(ut_sema_cf_fixture_t, continue_inside_while_loop_valid)
+{
+    ast_stmt_t* while_stmt = ast_while_stmt_create(
+        ast_bool_lit_create(true),
+        ast_compound_stmt_create_va(
+            ast_continue_stmt_create(),
+            nullptr));
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(while_stmt));
+    ASSERT_TRUE(res);
+
+    ast_node_destroy(while_stmt);
+}
+
+// Break outside loop is an error
+TEST(ut_sema_cf_fixture_t, break_outside_loop_error)
+{
+    ast_stmt_t* error_node = ast_break_stmt_create();
+    ast_stmt_t* block = ast_compound_stmt_create_va(error_node, nullptr);
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "break statement not in loop");
+
+    ast_node_destroy(block);
+}
+
+// Continue outside loop is an error
+TEST(ut_sema_cf_fixture_t, continue_outside_loop_error)
+{
+    ast_stmt_t* error_node = ast_continue_stmt_create();
+    ast_stmt_t* block = ast_compound_stmt_create_va(error_node, nullptr);
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "continue statement not in loop");
 
     ast_node_destroy(block);
 }
