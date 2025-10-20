@@ -7,6 +7,7 @@
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/if_stmt.h"
+#include "ast/stmt/inc_dec_stmt.h"
 #include "ast/stmt/while_stmt.h"
 #include "ast/type.h"
 #include "compiler_error.h"
@@ -33,7 +34,7 @@ TEST_TEARDOWN(parser_statements_fixture_t)
 
 TEST(parser_statements_fixture_t, parse_decl_stmt_no_init)
 {
-    parser_set_source(fix->parser, "test", "var x: i32;");
+    parser_set_source(fix->parser, "test", "var x: i32");
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
@@ -49,7 +50,7 @@ TEST(parser_statements_fixture_t, parse_decl_stmt_no_init)
 
 TEST(parser_statements_fixture_t, parse_decl_stmt_with_init)
 {
-    parser_set_source(fix->parser, "test", "var x = 42;");
+    parser_set_source(fix->parser, "test", "var x = 42");
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
@@ -65,7 +66,7 @@ TEST(parser_statements_fixture_t, parse_decl_stmt_with_init)
 
 TEST(parser_statements_fixture_t, parse_var_decls_with_no_type)
 {
-    parser_set_source(fix->parser, "test", "var x;");
+    parser_set_source(fix->parser, "test", "var x");
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
@@ -80,7 +81,7 @@ TEST(parser_statements_fixture_t, parse_var_decls_with_no_type)
 
 TEST(parser_statements_fixture_t, parse_var_decls_type_and_init_expr)
 {
-    parser_set_source(fix->parser, "test", "var x: i32 = 42;");
+    parser_set_source(fix->parser, "test", "var x: i32 = 42");
 
     ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
     ASSERT_NEQ(nullptr, stmt);
@@ -254,4 +255,34 @@ TEST(parser_statements_fixture_t, invalid_int_literal)
     ASSERT_NEQ(nullptr, strstr(error->description, "invalid integer literal"));
 
     ast_node_destroy(stmt);
+}
+
+TEST(parser_statements_fixture_t, parse_increment_stmt)
+{
+    parser_set_source(fix->parser, "test", "++i");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_inc_dec_stmt_create(ast_ref_expr_create("i"), true);
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(stmt);
+    ast_node_destroy(expected);
+}
+
+TEST(parser_statements_fixture_t, parse_decrement_stmt)
+{
+    parser_set_source(fix->parser, "test", "--count");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_inc_dec_stmt_create(ast_ref_expr_create("count"), false);
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(stmt);
+    ast_node_destroy(expected);
 }

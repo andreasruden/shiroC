@@ -481,6 +481,21 @@ static void print_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_inc_dec_stmt(void* self_, ast_inc_dec_stmt_t* inc_dec_stmt, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sIncDecStmt %s", self->indentation, "",
+        inc_dec_stmt->increment ? "++" : "--"));
+    print_source_location(self, inc_dec_stmt, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self, inc_dec_stmt->operand, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 static void print_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void* out_)
 {
     string_t* out = out_;
@@ -553,6 +568,7 @@ ast_printer_t* ast_printer_create()
             .visit_decl_stmt = print_decl_stmt,
             .visit_expr_stmt = print_expr_stmt,
             .visit_if_stmt = print_if_stmt,
+            .visit_inc_dec_stmt = print_inc_dec_stmt,
             .visit_return_stmt = print_return_stmt,
             .visit_while_stmt = print_while_stmt,
         },

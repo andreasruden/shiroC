@@ -1446,6 +1446,32 @@ static void* analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
     return if_stmt;
 }
 
+static void* analyze_inc_dec_stmt(void* self_, ast_inc_dec_stmt_t* inc_dec, void* out_)
+{
+    semantic_analyzer_t* sema = self_;
+
+    sema->is_lvalue_context = true;
+    inc_dec->operand = ast_transformer_transform(sema, inc_dec->operand, out_);
+    sema->is_lvalue_context = false;
+
+    if (inc_dec->operand->type == ast_type_invalid())
+        return inc_dec;
+
+    if (!inc_dec->operand->is_lvalue)
+    {
+        semantic_context_add_error(sema->ctx, inc_dec->operand, "not l-value");
+        return inc_dec;
+    }
+
+    if (!ast_type_is_integer(inc_dec->operand->type))
+    {
+        semantic_context_add_error(sema->ctx, inc_dec->operand, "not integer type");
+        return inc_dec;
+    }
+
+    return inc_dec;
+}
+
 static void* analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void* out_)
 {
     semantic_analyzer_t* sema = self_;
@@ -1539,6 +1565,7 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             .transform_decl_stmt = analyze_decl_stmt,
             .transform_expr_stmt = analyze_expr_stmt,
             .transform_if_stmt = analyze_if_stmt,
+            .transform_inc_dec_stmt = analyze_inc_dec_stmt,
             .transform_return_stmt = analyze_return_stmt,
             .transform_while_stmt = analyze_while_stmt,
         },

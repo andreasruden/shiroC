@@ -56,6 +56,10 @@ typedef enum
     TOKEN_DOT,
     TOKEN_DOTDOT,
 
+    // Unary opeerators
+    TOKEN_PLUSPLUS,
+    TOKEN_MINUSMINUS,
+
     // Unary & Binary Operators
     TOKEN_PLUS,
     TOKEN_MINUS,

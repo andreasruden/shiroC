@@ -234,6 +234,12 @@ static void* ast_transformer_transform_if_stmt(void* self_, ast_if_stmt_t* if_st
     return if_stmt;
 }
 
+static void* ast_transformer_transform_inc_dec_stmt(void* self_, ast_inc_dec_stmt_t* inc_dec_stmt, void* out_)
+{
+    inc_dec_stmt->operand = ast_transformer_transform(self_, inc_dec_stmt->operand, out_);
+    return inc_dec_stmt;
+}
+
 static void* ast_transformer_transform_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void* out_)
 {
     return_stmt->value_expr = ast_transformer_transform(self_, return_stmt->value_expr, out_);
@@ -286,6 +292,7 @@ void ast_transformer_init(ast_transformer_t* transformer)
         .transform_decl_stmt = ast_transformer_transform_decl_stmt,
         .transform_expr_stmt = ast_transformer_transform_expr_stmt,
         .transform_if_stmt = ast_transformer_transform_if_stmt,
+        .transform_inc_dec_stmt = ast_transformer_transform_inc_dec_stmt,
         .transform_return_stmt = ast_transformer_transform_return_stmt,
         .transform_while_stmt = ast_transformer_transform_while_stmt,
     };

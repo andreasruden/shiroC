@@ -82,6 +82,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/stmt/decl_stmt.c \
 	$(SRC_DIR)/ast/stmt/expr_stmt.c \
 	$(SRC_DIR)/ast/stmt/if_stmt.c \
+	$(SRC_DIR)/ast/stmt/inc_dec_stmt.c \
 	$(SRC_DIR)/ast/stmt/return_stmt.c \
 	$(SRC_DIR)/ast/stmt/stmt.c \
 	$(SRC_DIR)/ast/stmt/while_stmt.c \

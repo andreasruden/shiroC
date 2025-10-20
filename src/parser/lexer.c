@@ -87,6 +87,8 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_PLUSPLUS: return "++";
+        case TOKEN_MINUSMINUS: return "--";
         case TOKEN_SELF: return "self";
         case TOKEN_CLASS: return "class";
         case TOKEN_UNINIT: return "uninit";
@@ -478,6 +480,10 @@ static token_t* lex_symbol(lexer_t* lexer)
                 lexer_advance(lexer);
                 return token_create(lexer, TOKEN_PLUS_ASSIGN, "+=", line, col);
             }
+            else if (lexer_peek(lexer) == '+') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_PLUSPLUS, "++", line, col);
+            }
             return token_create(lexer, TOKEN_PLUS, "+", line, col);
 
         case '*':
@@ -509,6 +515,10 @@ static token_t* lex_symbol(lexer_t* lexer)
             else if (lexer_peek(lexer) == '=') {
                 lexer_advance(lexer);
                 return token_create(lexer, TOKEN_MINUS_ASSIGN, "-=", line, col);
+            }
+            else if (lexer_peek(lexer) == '-') {
+                lexer_advance(lexer);
+                return token_create(lexer, TOKEN_MINUSMINUS, "--", line, col);
             }
             return token_create(lexer, TOKEN_MINUS, "-", line, col);
 

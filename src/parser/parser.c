@@ -33,6 +33,7 @@
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/if_stmt.h"
+#include "ast/stmt/inc_dec_stmt.h"
 #include "ast/stmt/return_stmt.h"
 #include "ast/stmt/stmt.h"
 #include "ast/stmt/while_stmt.h"
@@ -874,6 +875,25 @@ error:
     return nullptr;
 }
 
+static ast_stmt_t* parse_inc_dec_stmt(parser_t* parser)
+{
+    token_t* tok_op = lexer_peek_token(parser->lexer);
+    if (tok_op->type != TOKEN_PLUSPLUS && tok_op->type != TOKEN_MINUSMINUS)
+    {
+        lexer_emit_token_malformed(parser->lexer, tok_op, "expected ++ or --");
+        return nullptr;
+    }
+    lexer_next_token(parser->lexer);
+
+    ast_expr_t* operand = parser_parse_expr(parser);
+    if (operand == nullptr)
+        return nullptr;
+
+    ast_stmt_t* inc_dec = ast_inc_dec_stmt_create(operand, tok_op->type == TOKEN_PLUSPLUS);
+    parser_set_source_tok_to_current(parser, inc_dec, tok_op);
+    return inc_dec;
+}
+
 ast_stmt_t* parser_parse_stmt(parser_t* parser)
 {
     switch (lexer_peek_token(parser->lexer)->type)
@@ -888,6 +908,9 @@ ast_stmt_t* parser_parse_stmt(parser_t* parser)
             return parse_if_stmt(parser);
         case TOKEN_WHILE:
             return parse_while_stmt(parser);
+        case TOKEN_PLUSPLUS:
+        case TOKEN_MINUSMINUS:
+            return parse_inc_dec_stmt(parser);
         default:
             return parse_expr_stmt(parser);
     }

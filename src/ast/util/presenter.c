@@ -344,6 +344,14 @@ static void present_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
     (void)if_stmt;
 }
 
+static void present_inc_dec_stmt(void* self_, ast_inc_dec_stmt_t* inc_dec_stmt, void* out_)
+{
+    PRELUDE
+
+    ast_visitor_visit(self, inc_dec_stmt->operand, out);
+    string_append_cstr(out, inc_dec_stmt->increment ? "++" : "--");
+}
+
 static void present_return_stmt(void* self_, ast_return_stmt_t* return_stmt, void* out_)
 {
     PRELUDE
@@ -403,6 +411,7 @@ ast_presenter_t* ast_presenter_create()
             .visit_decl_stmt = present_decl_stmt,
             .visit_expr_stmt = present_expr_stmt,
             .visit_if_stmt = present_if_stmt,
+            .visit_inc_dec_stmt = present_inc_dec_stmt,
             .visit_return_stmt = present_return_stmt,
             .visit_while_stmt = present_while_stmt,
         },

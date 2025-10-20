@@ -8,17 +8,33 @@ fn main() -> i32 {
 	var i: i32;
 
 	i = 3;
+	++i;  // i = 4
+	printI32(i);  //! stdout: "4"
+
+	++i;  // i = 5
+	printI32(i);  //! stdout: "5"
+
+	i += 10;  // i = 15
+	printI32(i);  //! stdout: "15"
+
+	i -= 3;  // i = 12
+	printI32(i);  //! stdout: "12"
+
 	if (i > 5) {
 		i = 10;
 	}
 	else {
 		i = 20;
 	}
-	printI32(i);  //! stdout: "20"
+	printI32(i);  //! stdout: "10"
 
-	while (i > 10) {
-		i = 10;
+	while (i > 5) {
+		--i;
 	}
+	printI32(i);  //! stdout: "5"
+
+	i *= 2;  // i = 10
+	printI32(i);  //! stdout: "10"
 
 	var result = f(10, i);
 	printI32(result);  //! stdout: "120"

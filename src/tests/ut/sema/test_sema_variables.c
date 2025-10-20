@@ -3,12 +3,14 @@
 #include "ast/decl/var_decl.h"
 #include "ast/def/fn_def.h"
 #include "ast/expr/bin_op.h"
+#include "ast/expr/bool_lit.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
 #include "ast/stmt/if_stmt.h"
+#include "ast/stmt/inc_dec_stmt.h"
 #include "ast/type.h"
 #include "sema/decl_collector.h"
 #include "sema/semantic_analyzer.h"
@@ -453,4 +455,39 @@ TEST(ut_sema_var_fixture_t, variable_declaration_with_void_type_error)
     ASSERT_SEMA_ERROR(AST_NODE(stmt), error_node, "cannot instantiate type 'void'");
 
     ast_node_destroy(stmt);
+}
+
+// Increment and decrement statements should work on integer types
+TEST(ut_sema_var_fixture_t, inc_dec_on_integer_success)
+{
+    // var i = 5;
+    // ++i;
+    // i--;
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", nullptr, ast_int_lit_val(5))),
+        ast_inc_dec_stmt_create(ast_ref_expr_create("i"), true),  // ++i
+        ast_inc_dec_stmt_create(ast_ref_expr_create("i"), false), // i--
+        nullptr
+    );
+
+    ASSERT_SEMA_SUCCESS(AST_NODE(block));
+
+    ast_node_destroy(block);
+}
+
+// Increment and decrement statements should fail on non-integer types
+TEST(ut_sema_var_fixture_t, inc_dec_on_non_integer_error)
+{
+    // var b = true;
+    // ++b;  // Error: cannot apply ++ to bool
+    ast_expr_t* error_node = ast_ref_expr_create("b");
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("b", nullptr, ast_bool_lit_create(true))),
+        ast_inc_dec_stmt_create(error_node, true),  // ++b
+        nullptr
+    );
+
+    ASSERT_SEMA_ERROR(AST_NODE(block), error_node, "integer type");
+
+    ast_node_destroy(block);
 }

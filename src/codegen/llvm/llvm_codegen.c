@@ -8,6 +8,7 @@
 #include "ast/expr/member_init.h"
 #include "ast/expr/self_expr.h"
 #include "ast/expr/uninit_lit.h"
+#include "ast/stmt/inc_dec_stmt.h"
 #include "ast/node.h"
 #include "ast/type.h"
 #include "ast/util/presenter.h"
@@ -1247,6 +1248,28 @@ static void emit_if_stmt(void* self_, ast_if_stmt_t* stmt, void* out_)
     LLVMPositionBuilderAtEnd(llvm->builder, join_block);
 }
 
+static void emit_inc_dec_stmt(void* self_, ast_inc_dec_stmt_t* stmt, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    (void)out_;
+
+    set_debug_location(llvm, AST_NODE(stmt));
+
+    llvm->lvalue = true;
+    LLVMValueRef operand_addr = nullptr;
+    ast_visitor_visit(llvm, stmt->operand, &operand_addr);
+    llvm->lvalue = false;
+
+    LLVMTypeRef operand_type = llvm_type(llvm->context, stmt->operand->type);
+    LLVMValueRef current_value = LLVMBuildLoad2(llvm->builder, operand_type, operand_addr, "inc_dec.load");
+    LLVMValueRef one = LLVMConstInt(operand_type, 1, false);
+    LLVMValueRef new_value = stmt->increment ?
+        LLVMBuildAdd(llvm->builder, current_value, one, "inc") :
+        LLVMBuildSub(llvm->builder, current_value, one, "dec");
+
+    LLVMBuildStore(llvm->builder, new_value, operand_addr);
+}
+
 static void emit_return_stmt(void* self_, ast_return_stmt_t* stmt, void* out_)
 {
     llvm_codegen_t* llvm = self_;
@@ -1363,6 +1386,7 @@ llvm_codegen_t* llvm_codegen_create()
             .visit_decl_stmt = emit_decl_stmt,
             .visit_expr_stmt = emit_expr_stmt,
             .visit_if_stmt = emit_if_stmt,
+            .visit_inc_dec_stmt = emit_inc_dec_stmt,
             .visit_return_stmt = emit_return_stmt,
             .visit_while_stmt = emit_while_stmt,
         },
