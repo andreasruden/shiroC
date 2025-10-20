@@ -1413,6 +1413,51 @@ static void* analyze_expr_stmt(void* self_, ast_expr_stmt_t* stmt, void* out_)
     return stmt;
 }
 
+static void* analyze_for_stmt(void* self_, ast_for_stmt_t* for_stmt, void* out_)
+{
+    semantic_analyzer_t* sema = self_;
+
+    semantic_context_push_scope(sema->ctx, SCOPE_BLOCK);
+
+    init_tracker_t* entry_state = sema->init_tracker;
+    init_tracker_t* body_tracker = init_tracker_clone(sema->init_tracker);
+    sema->init_tracker = body_tracker;
+
+    // Init statement
+    if (for_stmt->init_stmt != nullptr)
+        for_stmt->init_stmt = ast_transformer_transform(sema, for_stmt->init_stmt, out_);
+
+    // Condition expression
+    if (for_stmt->cond_expr != nullptr)
+    {
+        for_stmt->cond_expr = ast_transformer_transform(sema, for_stmt->cond_expr, out_);
+        if (for_stmt->cond_expr->type == ast_type_invalid())
+            goto cleanup;
+
+        if (for_stmt->cond_expr->type != ast_type_builtin(TYPE_BOOL))
+        {
+            semantic_context_add_error(sema->ctx, for_stmt->cond_expr, "must be bool");
+            goto cleanup;
+        }
+    }
+
+    // Post statement
+    if (for_stmt->post_stmt != nullptr)
+        for_stmt->post_stmt = ast_transformer_transform(sema, for_stmt->post_stmt, out_);
+
+    // Body
+    for_stmt->body = ast_transformer_transform(sema, for_stmt->body, out_);
+
+cleanup:
+    // Discard init_tracker state changes inside for
+    init_tracker_destroy(sema->init_tracker);
+    sema->init_tracker = entry_state;
+
+    semantic_context_pop_scope(sema->ctx);
+
+    return for_stmt;
+}
+
 static void* analyze_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
 {
     semantic_analyzer_t* sema = self_;
@@ -1564,6 +1609,7 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             .transform_compound_stmt = analyze_compound_statement,
             .transform_decl_stmt = analyze_decl_stmt,
             .transform_expr_stmt = analyze_expr_stmt,
+            .transform_for_stmt = analyze_for_stmt,
             .transform_if_stmt = analyze_if_stmt,
             .transform_inc_dec_stmt = analyze_inc_dec_stmt,
             .transform_return_stmt = analyze_return_stmt,

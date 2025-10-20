@@ -1,11 +1,13 @@
 #include "ast/decl/var_decl.h"
 #include "ast/expr/bin_op.h"
+#include "ast/expr/call_expr.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/node.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
+#include "ast/stmt/for_stmt.h"
 #include "ast/stmt/if_stmt.h"
 #include "ast/stmt/inc_dec_stmt.h"
 #include "ast/stmt/while_stmt.h"
@@ -285,4 +287,85 @@ TEST(parser_statements_fixture_t, parse_decrement_stmt)
     ASSERT_TREES_EQUAL(expected, stmt);
     ast_node_destroy(stmt);
     ast_node_destroy(expected);
+}
+
+TEST(parser_statements_fixture_t, parse_for_stmt_complete)
+{
+    parser_set_source(fix->parser, "test",
+        "for (var i = 0; i < 10; ++i) {\n"
+        "    var x = i;\n"
+        "}");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_for_stmt_create(
+        ast_decl_stmt_create(ast_var_decl_create("i", nullptr, ast_int_lit_val(0))),
+        ast_bin_op_create(TOKEN_LT, ast_ref_expr_create("i"), ast_int_lit_val(10)),
+        ast_inc_dec_stmt_create(ast_ref_expr_create("i"), true),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(ast_var_decl_create("x", nullptr, ast_ref_expr_create("i"))),
+            nullptr));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
+}
+
+TEST(parser_statements_fixture_t, parse_for_stmt_minimal)
+{
+    parser_set_source(fix->parser, "test",
+        "for (;;) {\n"
+        "    break_out();\n"
+        "}");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_stmt_t* expected = ast_for_stmt_create(
+        nullptr,
+        nullptr,
+        nullptr,
+        ast_compound_stmt_create_va(
+            ast_expr_stmt_create(ast_call_expr_create_va(ast_ref_expr_create("break_out"), nullptr)),
+            nullptr));
+
+    ASSERT_TREES_EQUAL(expected, stmt);
+    ast_node_destroy(expected);
+    ast_node_destroy(stmt);
+}
+
+TEST(parser_statements_fixture_t, parse_for_stmt_syntax_errors_but_valid_ast)
+{
+    parser_set_source(fix->parser, "test",
+        "for (var i = 0 i < 10 ++i) {\n"
+        "  body(); }");
+
+    ast_stmt_t* stmt = parser_parse_stmt(fix->parser);
+
+    // Should produce a valid AST despite syntax errors
+    ASSERT_NEQ(nullptr, stmt);
+    ASSERT_EQ(AST_STMT_FOR, AST_KIND(stmt));
+    ASSERT_LT(0, vec_size(parser_errors(fix->parser)));
+
+    // Verify AST structure is intact
+    ast_for_stmt_t* for_stmt = (ast_for_stmt_t*)stmt;
+
+    // Init should be parsed
+    ASSERT_NEQ(nullptr, for_stmt->init_stmt);
+
+    // Condition should be parsed (i < 10)
+    ASSERT_NEQ(nullptr, for_stmt->cond_expr);
+    ASSERT_EQ(AST_EXPR_BIN_OP, AST_KIND(for_stmt->cond_expr));
+
+    // Post should be parsed (++i)
+    ASSERT_NEQ(nullptr, for_stmt->post_stmt);
+
+    // Body should exist
+    ASSERT_NEQ(nullptr, for_stmt->body);
+    ASSERT_EQ(AST_STMT_COMPOUND, AST_KIND(for_stmt->body));
+
+    ast_node_destroy(stmt);
 }

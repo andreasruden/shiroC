@@ -225,6 +225,18 @@ static void* ast_transformer_transform_expr_stmt(void* self_, ast_expr_stmt_t* e
     return expr_stmt;
 }
 
+static void* ast_transformer_transform_for_stmt(void* self_, ast_for_stmt_t* for_stmt, void* out_)
+{
+    if (for_stmt->init_stmt != nullptr)
+        for_stmt->init_stmt = ast_transformer_transform(self_, for_stmt->init_stmt, out_);
+    if (for_stmt->cond_expr != nullptr)
+        for_stmt->cond_expr = ast_transformer_transform(self_, for_stmt->cond_expr, out_);
+    if (for_stmt->post_stmt != nullptr)
+        for_stmt->post_stmt = ast_transformer_transform(self_, for_stmt->post_stmt, out_);
+    for_stmt->body = ast_transformer_transform(self_, for_stmt->body, out_);
+    return for_stmt;
+}
+
 static void* ast_transformer_transform_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
 {
     if_stmt->condition = ast_transformer_transform(self_, if_stmt->condition, out_);
@@ -291,6 +303,7 @@ void ast_transformer_init(ast_transformer_t* transformer)
         .transform_compound_stmt = ast_transformer_transform_compound_stmt,
         .transform_decl_stmt = ast_transformer_transform_decl_stmt,
         .transform_expr_stmt = ast_transformer_transform_expr_stmt,
+        .transform_for_stmt = ast_transformer_transform_for_stmt,
         .transform_if_stmt = ast_transformer_transform_if_stmt,
         .transform_inc_dec_stmt = ast_transformer_transform_inc_dec_stmt,
         .transform_return_stmt = ast_transformer_transform_return_stmt,

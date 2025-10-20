@@ -28,6 +28,7 @@ static keyword_t lexer_keywords[] =
     {"f64", TOKEN_F64},
     {"false", TOKEN_FALSE},
     {"fn", TOKEN_FN},
+    {"for", TOKEN_FOR},
     {"if", TOKEN_IF},
     {"i8", TOKEN_I8},
     {"i16", TOKEN_I16},
@@ -136,6 +137,7 @@ const char* token_type_str(token_type_t type)
         case TOKEN_NOT: return "!";
         case TOKEN_ELSE: return "else";
         case TOKEN_FN: return "else";
+        case TOKEN_FOR: return "for";
         case TOKEN_IF: return "if";
         case TOKEN_VAR: return "var";
         case TOKEN_WHILE: return "while";

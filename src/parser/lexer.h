@@ -16,6 +16,7 @@ typedef enum
     TOKEN_F64,
     TOKEN_FALSE,
     TOKEN_FN,
+    TOKEN_FOR,
     TOKEN_IF,
     TOKEN_I8,
     TOKEN_I16,

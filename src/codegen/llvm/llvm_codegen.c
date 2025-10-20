@@ -8,6 +8,7 @@
 #include "ast/expr/member_init.h"
 #include "ast/expr/self_expr.h"
 #include "ast/expr/uninit_lit.h"
+#include "ast/stmt/for_stmt.h"
 #include "ast/stmt/inc_dec_stmt.h"
 #include "ast/node.h"
 #include "ast/type.h"
@@ -1322,6 +1323,56 @@ static void emit_while_stmt(void* self_, ast_while_stmt_t* stmt, void* out_)
     LLVMPositionBuilderAtEnd(llvm->builder, end_block);
 }
 
+static void emit_for_stmt(void* self_, ast_for_stmt_t* stmt, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+
+    set_debug_location(llvm, AST_NODE(stmt));
+
+    // Emit init statement (if present) in current block
+    if (stmt->init_stmt != nullptr)
+        ast_visitor_visit(llvm, stmt->init_stmt, out_);
+
+    // Create basic blocks for condition, body, post, and end
+    LLVMBasicBlockRef cond_block = LLVMAppendBasicBlock(llvm->current_function, "for.cond");
+    LLVMBasicBlockRef body_block = LLVMAppendBasicBlock(llvm->current_function, "for.body");
+    LLVMBasicBlockRef post_block = LLVMAppendBasicBlock(llvm->current_function, "for.post");
+    LLVMBasicBlockRef end_block = LLVMAppendBasicBlock(llvm->current_function, "for.end");
+
+    // Branch to condition block
+    LLVMBuildBr(llvm->builder, cond_block);
+
+    // Emit condition block
+    LLVMPositionBuilderAtEnd(llvm->builder, cond_block);
+    if (stmt->cond_expr != nullptr) {
+        // Evaluate condition and branch
+        LLVMValueRef cond_val = nullptr;
+        ast_visitor_visit(llvm, stmt->cond_expr, &cond_val);
+        LLVMBuildCondBr(llvm->builder, cond_val, body_block, end_block);
+    } else {
+        // No condition = infinite loop, always branch to body
+        LLVMBuildBr(llvm->builder, body_block);
+    }
+
+    // Emit body block
+    LLVMPositionBuilderAtEnd(llvm->builder, body_block);
+    ast_visitor_visit(llvm, stmt->body, out_);
+    // Only add branch if current block doesn't already have a terminator
+    LLVMBasicBlockRef current_block = LLVMGetInsertBlock(llvm->builder);
+    if (LLVMGetBasicBlockTerminator(current_block) == nullptr)
+        LLVMBuildBr(llvm->builder, post_block);
+
+    // Emit post block
+    LLVMPositionBuilderAtEnd(llvm->builder, post_block);
+    if (stmt->post_stmt != nullptr)
+        ast_visitor_visit(llvm, stmt->post_stmt, out_);
+    // Branch back to condition
+    LLVMBuildBr(llvm->builder, cond_block);
+
+    // Continue after for loop
+    LLVMPositionBuilderAtEnd(llvm->builder, end_block);
+}
+
 static void class_layout_destroy(void* layout_)
 {
     class_layout_t* layout = layout_;
@@ -1385,6 +1436,7 @@ llvm_codegen_t* llvm_codegen_create()
             .visit_compound_stmt = emit_compound_stmt,
             .visit_decl_stmt = emit_decl_stmt,
             .visit_expr_stmt = emit_expr_stmt,
+            .visit_for_stmt = emit_for_stmt,
             .visit_if_stmt = emit_if_stmt,
             .visit_inc_dec_stmt = emit_inc_dec_stmt,
             .visit_return_stmt = emit_return_stmt,

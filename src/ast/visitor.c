@@ -194,6 +194,17 @@ static void ast_visitor_visit_expr_stmt(void* self_, ast_expr_stmt_t* expr_stmt,
     ast_visitor_visit(self_, expr_stmt->expr, out_);
 }
 
+static void ast_visitor_visit_for_stmt(void* self_, ast_for_stmt_t* for_stmt, void* out_)
+{
+    if (for_stmt->init_stmt != nullptr)
+        ast_visitor_visit(self_, for_stmt->init_stmt, out_);
+    if (for_stmt->cond_expr != nullptr)
+        ast_visitor_visit(self_, for_stmt->cond_expr, out_);
+    if (for_stmt->post_stmt != nullptr)
+        ast_visitor_visit(self_, for_stmt->post_stmt, out_);
+    ast_visitor_visit(self_, for_stmt->body, out_);
+}
+
 static void ast_visitor_visit_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
 {
     ast_visitor_visit(self_, if_stmt->condition, out_);
@@ -256,6 +267,7 @@ void ast_visitor_init(ast_visitor_t* visitor)
         .visit_compound_stmt = ast_visitor_visit_compound_stmt,
         .visit_decl_stmt = ast_visitor_visit_decl_stmt,
         .visit_expr_stmt = ast_visitor_visit_expr_stmt,
+        .visit_for_stmt = ast_visitor_visit_for_stmt,
         .visit_if_stmt = ast_visitor_visit_if_stmt,
         .visit_inc_dec_stmt = ast_visitor_visit_inc_dec_stmt,
         .visit_return_stmt = ast_visitor_visit_return_stmt,

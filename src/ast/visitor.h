@@ -33,6 +33,7 @@
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
+#include "ast/stmt/for_stmt.h"
 #include "ast/stmt/if_stmt.h"
 #include "ast/stmt/inc_dec_stmt.h"
 #include "ast/stmt/return_stmt.h"
@@ -88,6 +89,7 @@ struct ast_visitor
     void (*visit_compound_stmt)(void* self_, ast_compound_stmt_t* compound_stmt, void *out_);
     void (*visit_decl_stmt)(void* self_, ast_decl_stmt_t* decl_stmt, void *out_);
     void (*visit_expr_stmt)(void* self_, ast_expr_stmt_t* expr_stmt, void *out_);
+    void (*visit_for_stmt)(void* self_, ast_for_stmt_t* for_stmt, void *out_);
     void (*visit_if_stmt)(void* self_, ast_if_stmt_t* if_stmt, void *out_);
     void (*visit_inc_dec_stmt)(void* self_, ast_inc_dec_stmt_t* inc_dec_stmt, void *out_);
     void (*visit_return_stmt)(void* self_, ast_return_stmt_t* return_stmt, void *out_);

@@ -51,6 +51,7 @@ typedef enum ast_node_kind
     AST_STMT_COMPOUND,
     AST_STMT_DECL,
     AST_STMT_EXPR,
+    AST_STMT_FOR,
     AST_STMT_IF,
     AST_STMT_INC_DEC,
     AST_STMT_RETURN,

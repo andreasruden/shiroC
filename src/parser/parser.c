@@ -32,6 +32,7 @@
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
 #include "ast/stmt/expr_stmt.h"
+#include "ast/stmt/for_stmt.h"
 #include "ast/stmt/if_stmt.h"
 #include "ast/stmt/inc_dec_stmt.h"
 #include "ast/stmt/return_stmt.h"
@@ -638,6 +639,69 @@ error:
     return nullptr;
 }
 
+static ast_stmt_t* parse_for_stmt(parser_t* parser)
+{
+    ast_stmt_t* init = nullptr;
+    ast_expr_t* condition = nullptr;
+    ast_stmt_t* post = nullptr;
+    ast_stmt_t* body = nullptr;
+
+    // for
+    token_t* tok_while = lexer_next_token_iff(parser->lexer, TOKEN_FOR);
+    if (tok_while == nullptr)
+        goto error;
+
+    // (
+    lexer_next_token_iff(parser->lexer, TOKEN_LPAREN);  // emits error
+
+    // init-stmt
+    if (lexer_peek_token(parser->lexer)->type != TOKEN_SEMICOLON)
+    {
+        init = parser_parse_stmt(parser);
+        if (init == nullptr)
+            goto error;
+    }
+
+    // ;
+    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON);
+
+    // cond-expr
+    if (lexer_peek_token(parser->lexer)->type != TOKEN_SEMICOLON)
+    {
+        condition = parser_parse_expr(parser);
+        if (condition == nullptr)
+            goto error;
+    }
+
+    // ;
+    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON);
+
+    // post-stmt
+    if (lexer_peek_token(parser->lexer)->type != TOKEN_RPAREN)
+    {
+        post = parser_parse_stmt(parser);
+        if (post == nullptr)
+            goto error;
+    }
+
+    // )
+    lexer_next_token_iff(parser->lexer, TOKEN_RPAREN);
+
+    // body
+    body = parse_compound_stmt(parser);
+    if (body == nullptr)
+        goto error;
+
+    ast_stmt_t* stmt = ast_for_stmt_create(init, condition, post, body);
+    parser_set_source_tok_to_current(parser, stmt, tok_while);
+    return stmt;
+
+error:
+    ast_node_destroy(condition);
+    ast_node_destroy(body);
+    return nullptr;
+}
+
 static ast_stmt_t* parse_compound_stmt(parser_t* parser)
 {
     token_t* tok_lbrace = lexer_next_token_iff(parser->lexer, TOKEN_LBRACE);
@@ -660,6 +724,7 @@ static ast_stmt_t* parse_compound_stmt(parser_t* parser)
         // Verify statements that require ';' for separation are followed by such
         switch (AST_KIND(inner_stmt))
         {
+            case AST_STMT_FOR:
             case AST_STMT_IF:
             case AST_STMT_WHILE:
                 break;
@@ -908,6 +973,8 @@ ast_stmt_t* parser_parse_stmt(parser_t* parser)
             return parse_if_stmt(parser);
         case TOKEN_WHILE:
             return parse_while_stmt(parser);
+        case TOKEN_FOR:
+            return parse_for_stmt(parser);
         case TOKEN_PLUSPLUS:
         case TOKEN_MINUSMINUS:
             return parse_inc_dec_stmt(parser);

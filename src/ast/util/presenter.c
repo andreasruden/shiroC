@@ -336,6 +336,14 @@ static void present_expr_stmt(void* self_, ast_expr_stmt_t* expr_stmt, void* out
     (void)expr_stmt;
 }
 
+static void present_for_stmt(void* self_, ast_for_stmt_t* for_stmt, void* out_)
+{
+    PRELUDE
+
+    // Nothing to output
+    (void)for_stmt;
+}
+
 static void present_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
 {
     PRELUDE
@@ -410,6 +418,7 @@ ast_presenter_t* ast_presenter_create()
             .visit_compound_stmt = present_compound_stmt,
             .visit_decl_stmt = present_decl_stmt,
             .visit_expr_stmt = present_expr_stmt,
+            .visit_for_stmt = present_for_stmt,
             .visit_if_stmt = present_if_stmt,
             .visit_inc_dec_stmt = present_inc_dec_stmt,
             .visit_return_stmt = present_return_stmt,

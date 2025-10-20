@@ -33,6 +33,19 @@ fn main() -> i32 {
 	}
 	printI32(i);  //! stdout: "5"
 
+	var sum = 0;
+	for (var j = 1; j <= 5; ++j) {
+		sum += j;
+	}
+	printI32(sum);  //! stdout: "15"
+
+	//! stdout: "3"
+	//! stdout: "2"
+	//! stdout: "1"
+	for (var k = 3; k > 0; --k) {
+		printI32(k);
+	}
+
 	i *= 2;  // i = 10
 	printI32(i);  //! stdout: "10"
 

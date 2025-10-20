@@ -462,6 +462,26 @@ static void print_expr_stmt(void* self_, ast_expr_stmt_t* expr_stmt, void* out_)
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 
+static void print_for_stmt(void* self_, ast_for_stmt_t* for_stmt, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sForStmt", self->indentation, ""));
+    print_source_location(self, for_stmt, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    if (for_stmt->init_stmt != nullptr)
+        ast_visitor_visit(self, for_stmt->init_stmt, out);
+    if (for_stmt->cond_expr != nullptr)
+        ast_visitor_visit(self, for_stmt->cond_expr, out);
+    if (for_stmt->post_stmt != nullptr)
+        ast_visitor_visit(self, for_stmt->post_stmt, out);
+    ast_visitor_visit(self, for_stmt->body, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 static void print_if_stmt(void* self_, ast_if_stmt_t* if_stmt, void* out_)
 {
     string_t* out = out_;
@@ -567,6 +587,7 @@ ast_printer_t* ast_printer_create()
             .visit_compound_stmt = print_compound_stmt,
             .visit_decl_stmt = print_decl_stmt,
             .visit_expr_stmt = print_expr_stmt,
+            .visit_for_stmt = print_for_stmt,
             .visit_if_stmt = print_if_stmt,
             .visit_inc_dec_stmt = print_inc_dec_stmt,
             .visit_return_stmt = print_return_stmt,

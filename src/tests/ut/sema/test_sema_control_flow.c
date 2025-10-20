@@ -4,7 +4,9 @@
 #include "ast/expr/ref_expr.h"
 #include "ast/stmt/compound_stmt.h"
 #include "ast/stmt/decl_stmt.h"
+#include "ast/stmt/for_stmt.h"
 #include "ast/stmt/if_stmt.h"
+#include "ast/stmt/inc_dec_stmt.h"
 #include "ast/stmt/while_stmt.h"
 #include "ast/type.h"
 #include "sema/semantic_analyzer.h"
@@ -75,4 +77,85 @@ TEST(ut_sema_cf_fixture_t, comparison_in_if_condition)
     ASSERT_TRUE(res);
 
     ast_node_destroy(block);
+}
+
+// For statement with non-boolean condition
+TEST(ut_sema_cf_fixture_t, for_condition_must_be_boolean_expr)
+{
+    ast_expr_t* error_node = ast_int_lit_val(42);
+
+    ast_stmt_t* for_stmt = ast_for_stmt_create(
+        nullptr,
+        error_node,  // Should be boolean
+        nullptr,
+        ast_compound_stmt_create_empty());
+
+    ASSERT_SEMA_ERROR(AST_NODE(for_stmt), error_node, "must be bool");
+
+    ast_node_destroy(for_stmt);
+}
+
+// Comparison is valid in for-condition
+TEST(ut_sema_cf_fixture_t, for_comparison_in_condition)
+{
+    ast_stmt_t* block = ast_compound_stmt_create_va(
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), ast_int_lit_val(0))),
+        ast_for_stmt_create(
+            nullptr,
+            ast_bin_op_create(TOKEN_LT, ast_ref_expr_create("i"), ast_int_lit_val(10)),
+            ast_inc_dec_stmt_create(ast_ref_expr_create("i"), true),
+            ast_compound_stmt_create_empty()),
+        nullptr);
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(block));
+    ASSERT_TRUE(res);
+
+    ast_node_destroy(block);
+}
+
+// For loop init declares variable in scope
+TEST(ut_sema_cf_fixture_t, for_init_declares_variable_in_scope)
+{
+    ast_stmt_t* for_stmt = ast_for_stmt_create(
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), ast_int_lit_val(0))),
+        ast_bin_op_create(TOKEN_LT, ast_ref_expr_create("i"), ast_int_lit_val(10)),
+        nullptr,
+        ast_compound_stmt_create_va(
+            ast_expr_stmt_create(ast_ref_expr_create("i")),
+            nullptr));
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(for_stmt));
+    ASSERT_TRUE(res);
+
+    ast_node_destroy(for_stmt);
+}
+
+// For loop post can reference init variable
+TEST(ut_sema_cf_fixture_t, for_post_can_reference_init_variable)
+{
+    ast_stmt_t* for_stmt = ast_for_stmt_create(
+        ast_decl_stmt_create(ast_var_decl_create("i", ast_type_builtin(TYPE_I32), ast_int_lit_val(0))),
+        ast_bin_op_create(TOKEN_LT, ast_ref_expr_create("i"), ast_int_lit_val(10)),
+        ast_inc_dec_stmt_create(ast_ref_expr_create("i"), true),
+        ast_compound_stmt_create_empty());
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(for_stmt));
+    ASSERT_TRUE(res);
+
+    ast_node_destroy(for_stmt);
+}
+
+// For loop with all parts nullable is valid
+TEST(ut_sema_cf_fixture_t, for_all_parts_nullable_is_valid)
+{
+    ast_stmt_t* for_stmt = ast_for_stmt_create(
+        nullptr,
+        nullptr,
+        nullptr,
+        ast_compound_stmt_create_empty());
+
+    bool res = semantic_analyzer_run(fix->sema, AST_NODE(for_stmt));
+    ASSERT_TRUE(res);
+
+    ast_node_destroy(for_stmt);
 }
