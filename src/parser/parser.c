@@ -47,6 +47,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static ast_stmt_t* parse_compound_stmt(parser_t* parser);
+
 parser_t* parser_create()
 {
     parser_t* parser = malloc(sizeof(*parser));
@@ -595,7 +597,6 @@ static ast_stmt_t* parse_return_stmt(parser_t* parser)
         return nullptr;
 
     ast_stmt_t* stmt = ast_return_stmt_create(expr);
-    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
 
     parser_set_source_tok_to_current(parser, stmt, tok_return);
 
@@ -622,7 +623,7 @@ static ast_stmt_t* parse_while_stmt(parser_t* parser)
     if (lexer_peek_token(parser->lexer)->type != TOKEN_LBRACE)
         lexer_emit_error_for_token(parser->lexer, lexer_peek_token(parser->lexer), TOKEN_LBRACE);
 
-    body = parser_parse_stmt(parser);
+    body = parse_compound_stmt(parser);
     if (body == nullptr)
         goto error;
 
@@ -654,6 +655,17 @@ static ast_stmt_t* parse_compound_stmt(parser_t* parser)
             continue;  // don't add faulty sub-statement, but don't abort
         }
         vec_push(&inner_stmts, inner_stmt);
+
+        // Verify statements that require ';' for separation are followed by such
+        switch (AST_KIND(inner_stmt))
+        {
+            case AST_STMT_IF:
+            case AST_STMT_WHILE:
+                break;
+            default:
+                lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON);
+                break;
+        }
     }
 
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACE))
@@ -796,7 +808,6 @@ static ast_stmt_t* parse_decl_stmt(parser_t* parser)
         return nullptr;
 
     ast_stmt_t* stmt = ast_decl_stmt_create(decl);
-    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // do not fail stmt
     parser_set_source_tok_to_current(parser, stmt, tok_start);
 
     return stmt;
@@ -810,7 +821,6 @@ static ast_stmt_t* parse_expr_stmt(parser_t* parser)
         return nullptr;
 
     ast_stmt_t* stmt = ast_expr_stmt_create(expr);
-    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON); // this emits error, but keep stmt
     parser_set_source_tok_to_current(parser, stmt, tok_start);
 
     return stmt;
@@ -837,7 +847,7 @@ static ast_stmt_t* parse_if_stmt(parser_t* parser)
     if (lexer_peek_token(parser->lexer)->type != TOKEN_LBRACE)
         lexer_emit_error_for_token(parser->lexer, lexer_peek_token(parser->lexer), TOKEN_LBRACE);
 
-    then_branch = parser_parse_stmt(parser);
+    then_branch = parse_compound_stmt(parser);
     if (then_branch == nullptr)
         goto error;
 
@@ -847,7 +857,7 @@ static ast_stmt_t* parse_if_stmt(parser_t* parser)
         if (lexer_peek_token(parser->lexer)->type == TOKEN_IF)
             else_branch = parse_if_stmt(parser);
         else
-            else_branch = parser_parse_stmt(parser);
+            else_branch = parse_compound_stmt(parser);
 
         if (else_branch == nullptr)
             goto error;
