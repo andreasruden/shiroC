@@ -95,6 +95,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/common/containers/hash_table.c \
 	$(SRC_DIR)/common/containers/string.c \
 	$(SRC_DIR)/common/containers/vec.c \
+	$(SRC_DIR)/common/toml_parser.c \
 	$(SRC_DIR)/parser/lexer.c \
     $(SRC_DIR)/parser/parser.c \
 	$(SRC_DIR)/sema/decl_collector.c \
@@ -110,6 +111,7 @@ COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMMON_SRCS))
 UT_SRCS = \
 	$(UT_SRC_DIR)/ut_decl_collector.c \
 	$(UT_SRC_DIR)/ut_hash_table.c \
+	$(UT_SRC_DIR)/test_toml_parser.c \
 	$(UT_SRC_DIR)/parser/test_parser_arrays.c \
 	$(UT_SRC_DIR)/parser/test_parser_classes.c \
 	$(UT_SRC_DIR)/parser/test_parser_errors.c \
