@@ -1523,13 +1523,20 @@ static void* analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void*
 {
     semantic_analyzer_t* sema = self_;
 
-    ret_stmt->value_expr = ast_transformer_transform(sema, ret_stmt->value_expr, out_);
-    if (ret_stmt->value_expr->type == ast_type_invalid())
-        return ret_stmt;  // avoid propagating error
-
     // Get return type from either current function or current method
     ast_type_t* return_type = sema->current_function ? sema->current_function->return_type :
         sema->current_method->base.return_type;
+
+    if (ret_stmt->value_expr == nullptr)
+    {
+        if (return_type != ast_type_builtin(TYPE_VOID))
+            semantic_context_add_error(sema->ctx, ret_stmt, "Non-void function must return a value");
+        return ret_stmt;
+    }
+
+    ret_stmt->value_expr = ast_transformer_transform(sema, ret_stmt->value_expr, out_);
+    if (ret_stmt->value_expr->type == ast_type_invalid())
+        return ret_stmt;  // avoid propagating error
 
     ast_coercion_kind_t coercion = check_coercion_with_expr(sema, ret_stmt->value_expr, ret_stmt->value_expr,
         return_type);

@@ -7,7 +7,7 @@
 typedef struct ast_return_stmt
 {
     ast_stmt_t base;
-    ast_expr_t* value_expr;
+    ast_expr_t* value_expr;  // can be nullptr
 } ast_return_stmt_t;
 
 ast_stmt_t* ast_return_stmt_create(ast_expr_t* value_expr);

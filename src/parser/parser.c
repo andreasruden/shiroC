@@ -597,8 +597,6 @@ static ast_stmt_t* parse_return_stmt(parser_t* parser)
         return nullptr;
 
     ast_expr_t* expr = parser_parse_expr(parser);
-    if (expr == nullptr)
-        return nullptr;
 
     ast_stmt_t* stmt = ast_return_stmt_create(expr);
 

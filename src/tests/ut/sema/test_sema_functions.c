@@ -243,3 +243,46 @@ TEST(ut_sema_fn_fixture_t, self_not_valid_in_function_context)
 
     ast_node_destroy(root);
 }
+
+// Value-less return in void function should succeed
+TEST(ut_sema_fn_fixture_t, valueless_return_in_void_function_success)
+{
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", ast_type_builtin(TYPE_VOID),
+        ast_compound_stmt_create_va(
+            ast_return_stmt_create(nullptr),  // return; with no value
+            nullptr
+        ), nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(foo_fn));
+
+    ast_node_destroy(foo_fn);
+}
+
+// Value-less return in non-void function should error
+TEST(ut_sema_fn_fixture_t, valueless_return_in_nonvoid_function_error)
+{
+    ast_stmt_t* error_node = ast_return_stmt_create(nullptr);  // return; with no value
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", ast_type_builtin(TYPE_I32),
+        ast_compound_stmt_create_va(
+            error_node,
+            nullptr
+        ), nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "must return a value");
+
+    ast_node_destroy(foo_fn);
+}
+
+// Value-less return in function with no explicit return type (void) should succeed
+TEST(ut_sema_fn_fixture_t, valueless_return_in_implicit_void_function_success)
+{
+    ast_def_t* foo_fn = ast_fn_def_create_va("foo", nullptr,  // nullptr return type = void
+        ast_compound_stmt_create_va(
+            ast_return_stmt_create(nullptr),  // return; with no value
+            nullptr
+        ), nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(foo_fn));
+
+    ast_node_destroy(foo_fn);
+}
