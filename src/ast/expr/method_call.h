@@ -9,7 +9,8 @@ typedef struct ast_method_call
     ast_expr_t base;
     ast_expr_t* instance;
     char* method_name;
-    vec_t arguments;  // ast_expr_t*
+    vec_t arguments;        // ast_expr_t*
+    size_t overload_index;  // set by SEMA during overload resolution
 } ast_method_call_t;
 
 ast_expr_t* ast_method_call_create(ast_expr_t* instance, const char* method_name, vec_t* arguments);

@@ -44,6 +44,11 @@ void vec_destroy(vec_t* vec)
     free(vec);
 }
 
+void vec_destroy_void(void* vec)
+{
+    vec_destroy(vec);
+}
+
 static void ptr_vec_grow(vec_t* vec)
 {
     size_t new_capacity = vec->capacity == 0 ?

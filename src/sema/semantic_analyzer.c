@@ -1,6 +1,9 @@
 #include "semantic_analyzer.h"
 
 #include "ast/decl/member_decl.h"
+#include "ast/decl/param_decl.h"
+#include "ast/def/fn_def.h"
+#include "ast/def/method_def.h"
 #include "ast/expr/coercion_expr.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/member_access.h"
@@ -117,7 +120,7 @@ static bool require_variable_initialized(semantic_analyzer_t* sema, symbol_t* sy
 // Check if from_expr can be coerced to to_type, considering expression properties like lvalue.
 // Returns the coercion kind and if the coercion kind is INVALID, adds an error to the semantic context.
 static ast_coercion_kind_t check_coercion_with_expr(semantic_analyzer_t* sema, void* node, ast_expr_t* from_expr,
-    ast_type_t* to_type)
+    ast_type_t* to_type, bool emit_error)
 {
     ast_coercion_kind_t coercion = ast_type_can_coerce(from_expr->type, to_type);
     const char* error = nullptr;
@@ -140,7 +143,7 @@ static ast_coercion_kind_t check_coercion_with_expr(semantic_analyzer_t* sema, v
         coercion = COERCION_INVALID;
     }
 
-    if (coercion == COERCION_INVALID)
+    if (coercion == COERCION_INVALID && emit_error)
     {
         semantic_context_add_error(sema->ctx, node, error ? error : ssprintf("cannot coerce type '%s' into type '%s",
             ast_type_string(from_expr->type), ast_type_string(to_type)));
@@ -167,10 +170,10 @@ static void* analyze_member_decl(void* self_, ast_member_decl_t* member, void* o
     if (member->base.type == ast_type_invalid())
         return member;  // don't propagate errors
 
-    if (member->base.type == ast_type_user(sema->current_class->base.name))
+    if (member->base.type == ast_type_user(sema->current_class->name))
     {
         semantic_context_add_error(sema->ctx, member,
-            ssprintf("infinitely recursive type: needs to be pointer to self (%s*)", sema->current_class->base.name));
+            ssprintf("infinitely recursive type: needs to be pointer to self (%s*)", sema->current_class->name));
         member->base.type = ast_type_invalid();
         return member;
     }
@@ -285,7 +288,7 @@ static void* analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     // Do we have both an annotation and an inference?
     if (annotated_type != nullptr && inferred_type != nullptr)
     {
-        ast_coercion_kind_t coercion = check_coercion_with_expr(sema, var, var->init_expr, annotated_type);
+        ast_coercion_kind_t coercion = check_coercion_with_expr(sema, var, var->init_expr, annotated_type, true);
 
         if (coercion == COERCION_INVALID)
         {
@@ -322,16 +325,30 @@ static void* analyze_class_def(void* self_, ast_class_def_t* class_def, void* ou
     semantic_analyzer_t* sema = self_;
 
     semantic_context_push_scope(sema->ctx, SCOPE_CLASS);
-    sema->current_class = class_def;
+
+    // Locate self in global scope
+    symbol_t* class_symb = symbol_table_lookup(sema->ctx->global, class_def->base.name);
+    panic_if(class_symb == nullptr);
+    panic_if(class_symb->ast != AST_NODE(class_def));
+    sema->current_class = class_symb;
 
     // Add "self" to scope
     ast_decl_t* self_decl = ast_member_decl_create("self", ast_type_user(class_def->base.name), nullptr);
     symbol_t* self_symb = symbol_create("self", SYMBOL_MEMBER, self_decl);
     symbol_table_insert(sema->ctx->current, self_symb);
 
+    // Add method symbols to class scope
+    for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
+    {
+        ast_method_def_t* method = vec_get(&class_def->methods, i);
+        symbol_table_insert(sema->ctx->current, symbol_clone(method->symbol));
+    }
+
+    // Visit members first to add them to the class scope
     for (size_t i = 0; i < vec_size(&class_def->members); ++i)
         AST_TRANSFORMER_TRANSFORM_VEC(sema, &class_def->members, i, out_);
 
+    // Visit method implementations
     for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
         AST_TRANSFORMER_TRANSFORM_VEC(sema, &class_def->methods, i, out_);
 
@@ -346,9 +363,10 @@ static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
 
     semantic_analyzer_t* sema = self_;
     panic_if(fn->return_type == nullptr);  // solved by decl_collector
+    panic_if(fn->symbol == nullptr);
 
     semantic_context_push_scope(sema->ctx, SCOPE_FUNCTION);
-    sema->current_function = fn;
+    sema->current_function = fn->symbol;
     sema->current_function_scope = sema->ctx->current;
 
     for (size_t i = 0; i < vec_size(&fn->params); ++i)
@@ -371,6 +389,7 @@ static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     sema->current_function_scope = nullptr;
     return fn;
 }
+
 static void* analyze_method_def(void* self_, ast_method_def_t* method, void* out_)
 {
     // TODO: This and fn is very similar, should try to reuse their impl
@@ -378,13 +397,11 @@ static void* analyze_method_def(void* self_, ast_method_def_t* method, void* out
     semantic_analyzer_t* sema = self_;
     panic_if(sema->current_class == nullptr);
     panic_if(method->base.return_type == nullptr);  // solved by decl_collector
-
-    symbol_t* method_symbol = symbol_create(method->base.base.name, SYMBOL_METHOD, method);
-    symbol_table_insert(sema->ctx->current, method_symbol);
+    panic_if(method->symbol == nullptr);
 
     semantic_context_push_scope(sema->ctx, SCOPE_METHOD);
-    sema->current_method = method;
     sema->current_function_scope = sema->ctx->current;
+    sema->current_method = method->symbol;
 
     for (size_t i = 0; i < vec_size(&method->base.params); ++i)
         AST_TRANSFORMER_TRANSFORM_VEC(sema, &method->base.params, i, out_);
@@ -707,7 +724,7 @@ static void* analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* 
     if (bin_op->rhs->type == ast_type_invalid())
         return bin_op;  // avoid cascading errors
 
-    ast_coercion_kind_t coercion = check_coercion_with_expr(sema, bin_op, bin_op->rhs, bin_op->lhs->type);
+    ast_coercion_kind_t coercion = check_coercion_with_expr(sema, bin_op, bin_op->rhs, bin_op->lhs->type, true);
     if (coercion == COERCION_INVALID)
         return bin_op;
     else if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS)
@@ -821,35 +838,88 @@ static void* analyze_bool_lit(void* self_, ast_bool_lit_t* lit, void* out_)
     return lit;
 }
 
-static bool analyze_call_and_method_shared(semantic_analyzer_t* sema, void* node, const char* fn_name,
-    vec_t* parameters, vec_t* arguments)
+static symbol_t* function_overload_resolution(semantic_analyzer_t* sema, void* node, vec_t* fn_symbols,
+    vec_t* arguments)
 {
-    int num_params = (int)vec_size(parameters);
+    symbol_t* match = nullptr;
+
+    size_t num_args = vec_size(arguments);
+    for (size_t i = 0; i < vec_size(fn_symbols); ++i)
+    {
+        symbol_t* candidate = vec_get(fn_symbols, i);
+        if (num_args != vec_size(&candidate->data.function.parameters))
+            continue;
+
+        // Verify if arguments can coerce to parameter types
+        bool valid = true;
+        for (size_t j = 0; j < num_args && valid; ++j)
+        {
+            ast_param_decl_t* param = vec_get(&candidate->data.function.parameters, j);
+            ast_expr_t* arg = vec_get(arguments, j);
+
+            ast_coercion_kind_t coercion = check_coercion_with_expr(sema, node, arg, param->type, false);
+            if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS && coercion != COERCION_WIDEN)
+                valid = false;
+        }
+
+        // Verify we find only one candidate method
+        if (valid)
+        {
+            if (match != nullptr)
+            {
+                semantic_context_add_error(sema->ctx, node, "ambiguous resolution, multiple signatures match");
+                break;
+            }
+            match = candidate;
+        }
+    }
+
+    if (match == nullptr)
+        semantic_context_add_error(sema->ctx, node, "no signature matches");
+
+    return match;
+}
+
+static symbol_t* analyze_call_and_method_shared(semantic_analyzer_t* sema, void* node, vec_t* fn_symbols,
+    vec_t* arguments)
+{
+    // Resolve arguments before overload resolution
     int num_args = (int)vec_size(arguments);
+    for (int i = 0; i < num_args; ++i)
+        AST_TRANSFORMER_TRANSFORM_VEC(sema, arguments, (size_t)i, nullptr);
+
+    symbol_t* function = nullptr;
+    if (vec_size(fn_symbols) == 1)
+        function = vec_get(fn_symbols, 0);
+    else
+    {
+        function = function_overload_resolution(sema, node, fn_symbols, arguments);
+        if (function == nullptr)
+            return nullptr;
+    }
+
+    int num_params = (int)vec_size(&function->data.function.parameters);
     if (num_params != num_args)
     {
         semantic_context_add_error(sema->ctx, node,
-            ssprintf("function '%s' takes %d arguments but %d given", fn_name, num_params, num_args));
-        return false;
+            ssprintf("function '%s' takes %d arguments but %d given", function->name, num_params, num_args));
+        return nullptr;
     }
 
     for (int i = 0; i < num_args; ++i)
     {
-        ast_param_decl_t* param_decl = vec_get(parameters, (size_t)i);
+        ast_param_decl_t* param_decl = vec_get(&function->data.function.parameters, (size_t)i);
         ast_expr_t* arg_expr = vec_get(arguments, (size_t)i);
 
-        arg_expr = ast_transformer_transform(sema, arg_expr, nullptr);
-        vec_replace(arguments, (size_t)i, arg_expr);
-
-        ast_coercion_kind_t coercion = check_coercion_with_expr(sema, arg_expr, arg_expr, param_decl->type);
+        ast_coercion_kind_t coercion = check_coercion_with_expr(sema, arg_expr, arg_expr, param_decl->type, true);
         if (coercion == COERCION_INVALID)
-            return false;
+            return nullptr;
         else if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS && coercion != COERCION_WIDEN)
         {
             semantic_context_add_error(sema->ctx, arg_expr,
                 ssprintf("arg type '%s' does not match parameter '%s' type '%s'", ast_type_string(arg_expr->type),
                     param_decl->name, ast_type_string(param_decl->type)));
-            return false;
+            return nullptr;
         }
 
         if (coercion != COERCION_EQUAL)
@@ -859,7 +929,7 @@ static bool analyze_call_and_method_shared(semantic_analyzer_t* sema, void* node
         }
     }
 
-    return true;
+    return function;
 }
 
 static void* analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
@@ -891,14 +961,21 @@ static void* analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
         return call;
     }
 
-    if (!analyze_call_and_method_shared(sema, call, symbol->name, &symbol->data.function.parameters, &call->arguments))
+    vec_t* symbols = symbol_table_overloads(sema->ctx->global, symbol->name);
+    panic_if(symbols == nullptr);
+
+    symbol_t* chosen_fn = analyze_call_and_method_shared(sema, call, symbols, &call->arguments);
+    if (chosen_fn == nullptr)
     {
         call->base.type = ast_type_invalid();
         return call;
     }
+    panic_if(chosen_fn->kind != SYMBOL_FUNCTION);
+    panic_if(chosen_fn->ast == nullptr);
 
     call->base.is_lvalue = false;
-    call->base.type = symbol->type;
+    call->base.type = chosen_fn->data.function.return_type;
+    call->overload_index = ((ast_fn_def_t*)chosen_fn->ast)->overload_index;
     return call;
 }
 
@@ -1199,7 +1276,7 @@ static void* analyze_member_init(void* self_, ast_member_init_t* init, void* out
     }
 
     // Type of member and Expr must be compatible
-    ast_coercion_kind_t coercion = check_coercion_with_expr(sema, init, init->init_expr, member_decl->base.type);
+    ast_coercion_kind_t coercion = check_coercion_with_expr(sema, init, init->init_expr, member_decl->base.type, true);
     if (coercion == COERCION_ALWAYS || coercion == COERCION_INIT)
         init->init_expr = ast_coercion_expr_create(init->init_expr, member_decl->base.type);
     else if (coercion != COERCION_EQUAL)
@@ -1226,8 +1303,8 @@ static void* analyze_method_call(void* self_, ast_method_call_t* call, void* out
     }
 
     // Make sure class contains the specified name as a method
-    ast_method_def_t* method_def = hash_table_find(&class_symb->data.class.methods, call->method_name);
-    if (method_def == nullptr)
+    vec_t* method_defs = symbol_table_overloads(class_symb->data.class.methods, call->method_name);
+    if (method_defs == nullptr)
     {
         semantic_context_add_error(sema->ctx, call, ssprintf("type '%s' has no method '%s'",
             call->instance->type->data.user.name, call->method_name));
@@ -1235,14 +1312,16 @@ static void* analyze_method_call(void* self_, ast_method_call_t* call, void* out
         return call;
     }
 
-    if (!analyze_call_and_method_shared(sema, call, call->method_name, &method_def->base.params, &call->arguments))
+    symbol_t* chosen_method = analyze_call_and_method_shared(sema, call, method_defs, &call->arguments);
+    if (chosen_method == nullptr)
     {
         call->base.type = ast_type_invalid();
         return call;
     }
 
     call->base.is_lvalue = false;
-    call->base.type = method_def->base.return_type;
+    call->base.type = chosen_method->data.function.return_type;
+    call->overload_index = ((ast_method_def_t*)chosen_method->ast)->overload_index;
     return call;
 }
 static void* analyze_null_lit(void* self_, ast_null_lit_t* lit, void* out_)
@@ -1322,7 +1401,7 @@ static void* analyze_self_expr(void* self_, ast_self_expr_t* self_expr, void* ou
         *symbol_out = symbol;
 
     self_expr->base.is_lvalue = true;
-    self_expr->base.type = ast_type_pointer(ast_type_user(sema->current_class->base.name));
+    self_expr->base.type = ast_type_pointer(ast_type_user(sema->current_class->name));
     return self_expr;
 }
 
@@ -1522,10 +1601,11 @@ static void* analyze_inc_dec_stmt(void* self_, ast_inc_dec_stmt_t* inc_dec, void
 static void* analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void* out_)
 {
     semantic_analyzer_t* sema = self_;
+    panic_if(sema->current_method == nullptr && sema->current_function == nullptr);
 
     // Get return type from either current function or current method
-    ast_type_t* return_type = sema->current_function ? sema->current_function->return_type :
-        sema->current_method->base.return_type;
+    ast_type_t* return_type = sema->current_function ? sema->current_function->data.function.return_type :
+        sema->current_method->data.function.return_type;
 
     if (ret_stmt->value_expr == nullptr)
     {
@@ -1539,7 +1619,7 @@ static void* analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void*
         return ret_stmt;  // avoid propagating error
 
     ast_coercion_kind_t coercion = check_coercion_with_expr(sema, ret_stmt->value_expr, ret_stmt->value_expr,
-        return_type);
+        return_type, true);
     if (coercion == COERCION_INVALID)
         return ret_stmt;
 

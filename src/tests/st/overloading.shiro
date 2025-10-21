@@ -1,0 +1,93 @@
+//! run
+
+// Test overloaded free functions with different arities
+fn add(x: i32) -> i32 {
+    return x;
+}
+
+fn add(x: i32, y: i32) -> i32 {
+    return x + y;
+}
+
+fn add(x: i32, y: i32, z: i32) -> i32 {
+    return x + y + z;
+}
+
+// Test overloaded free functions with same arity but different types
+fn multiply(a: i32, b: i32) -> i32 {
+    return a * b;
+}
+
+fn multiply(a: f32, b: f32) -> f32 {
+    return a * b;
+}
+
+// Test overloaded methods
+class Calculator {
+    var value: i32;
+
+    fn compute(x: i32) -> i32 {
+        return x;
+    }
+
+    fn compute(x: i32, y: i32) -> i32 {
+        return x + y;
+    }
+
+    fn compute(x: i32, y: i32, z: i32) -> i32 {
+        return x + y + z;
+    }
+
+    fn scale(factor: i32) -> i32 {
+        return self.value * factor;
+    }
+
+    fn scale(factor: i32, offset: i32) -> i32 {
+        return self.value * factor + offset;
+    }
+}
+
+fn main() -> i32 {
+    // Test overloaded free functions with different arities
+    var a = add(5);
+    printI32(a);  //! stdout: "5"
+
+    var b = add(3, 4);
+    printI32(b);  //! stdout: "7"
+
+    var c = add(1, 2, 3);
+    printI32(c);  //! stdout: "6"
+
+    // Test overloaded functions with different types
+    var d = multiply(3, 4);
+    printI32(d);  //! stdout: "12"
+
+    var e = multiply(5.0f32, 6.0f32);
+    // FIXME: Need casting implemented for this
+    // printI32(e);  // would print "30"
+
+    // Test overloaded methods
+    var calc = Calculator { value = 10 };
+
+    var f = calc.compute(7);
+    printI32(f);  //! stdout: "7"
+
+    var g = calc.compute(5, 3);
+    printI32(g);  //! stdout: "8"
+
+    var h = calc.compute(2, 3, 4);
+    printI32(h);  //! stdout: "9"
+
+    // Test methods using self
+    var i = calc.scale(2);
+    printI32(i);  //! stdout: "20"
+
+    var j = calc.scale(3, 5);
+    printI32(j);  //! stdout: "35"
+
+    // Test calling overloads in expressions
+    var result = add(add(1, 2), add(3));
+    printI32(result);  //! stdout: "6"
+
+    return 0;
+}

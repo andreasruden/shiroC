@@ -3,9 +3,13 @@
 
 #include "ast/def/fn_def.h"
 
+typedef struct symbol symbol_t;
+
 typedef struct ast_method_def
 {
     ast_fn_def_t base;
+    size_t overload_index;  // set by SEMA
+    symbol_t* symbol;       // only valid during SEMA (we do not own the symbol)
 } ast_method_def_t;
 
 // Ownership of fn_def transferred

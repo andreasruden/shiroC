@@ -16,6 +16,7 @@
 #include "ast/expr/self_expr.h"
 #include "ast/expr/str_lit.h"
 #include "ast/expr/unary_op.h"
+#include "ast/expr/uninit_lit.h"
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
@@ -828,6 +829,57 @@ TEST(ut_sema_classes_fixture_t, self_is_pointer_to_class)
     // After semantic analysis, self should have type *Point
     ast_type_t* expected_type = ast_type_pointer(ast_type_user("Point"));
     ASSERT_EQ(expected_type, self_node->type);
+
+    ast_node_destroy(root);
+}
+
+// Overloaded methods with different arities should work
+TEST(ut_sema_classes_fixture_t, overloaded_methods_different_arity_success)
+{
+    // class Calculator {
+    //     fn compute(x: i32) -> i32 { return x; }
+    //     fn compute(x: i32, y: i32) -> i32 { return x + y; }
+    // }
+    ast_def_t* method1 = ast_method_def_create_va("compute", ast_type_builtin(TYPE_I32),
+        ast_compound_stmt_create_va(
+            ast_return_stmt_create(ast_ref_expr_create("x")),
+            nullptr),
+        ast_param_decl_create("x", ast_type_builtin(TYPE_I32)),
+        nullptr);
+    ast_def_t* method2 = ast_method_def_create_va("compute", ast_type_builtin(TYPE_I32),
+        ast_compound_stmt_create_va(
+            ast_return_stmt_create(
+                ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("x"), ast_ref_expr_create("y"))),
+            nullptr),
+        ast_param_decl_create("x", ast_type_builtin(TYPE_I32)),
+        ast_param_decl_create("y", ast_type_builtin(TYPE_I32)),
+        nullptr);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Calculator",
+            method1,
+            method2,
+            nullptr),
+        ast_fn_def_create_va("main", nullptr,
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(
+                    ast_var_decl_create("c", ast_type_user("Calculator"),
+                        ast_construct_expr_create_va(ast_type_user("Calculator"), nullptr))),
+                ast_expr_stmt_create(
+                    ast_method_call_create_va(ast_ref_expr_create("c"), "compute",
+                        ast_int_lit_val(5), nullptr)),
+                ast_expr_stmt_create(
+                    ast_method_call_create_va(ast_ref_expr_create("c"), "compute",
+                        ast_int_lit_val(3), ast_int_lit_val(4), nullptr)),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    // Check that the second method has overload_index set to 1
+    ast_method_def_t* method_def2 = (ast_method_def_t*)method2;
+    ASSERT_EQ(1, method_def2->overload_index);
 
     ast_node_destroy(root);
 }

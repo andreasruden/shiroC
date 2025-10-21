@@ -1,7 +1,9 @@
 #include "semantic_context.h"
 
 #include "ast/decl/param_decl.h"
+#include "ast/def/fn_def.h"
 #include "ast/node.h"
+#include "ast/stmt/compound_stmt.h"
 #include "ast/type.h"
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
@@ -69,14 +71,17 @@ void semantic_context_add_warning(semantic_context_t* ctx, void* ast_node, const
 
 void semantic_context_register_builtins(semantic_context_t* ctx)
 {
-    // Register printI32(i32) -> void
-    symbol_t* print_i32 = symbol_create("printI32", SYMBOL_FUNCTION, nullptr);
-    print_i32->type = ast_type_builtin(TYPE_VOID);
-
     // Create parameter: value: i32
     ast_param_decl_t* param = (ast_param_decl_t*)ast_param_decl_create("value", ast_type_builtin(TYPE_I32));
-    vec_push(&print_i32->data.function.parameters, param);
     vec_push(&ctx->builtin_ast_gc, param);
+
+    // Register printI32(i32) -> void
+    ast_def_t* fn_def = ast_fn_def_create_va("printI32", ast_type_builtin(TYPE_VOID),
+        ast_compound_stmt_create_empty(), param, nullptr);
+    symbol_t* print_i32 = symbol_create("printI32", SYMBOL_FUNCTION, fn_def);
+    print_i32->type = ast_type_invalid();  // FIXME: should be function signature type
+    print_i32->data.function.return_type = ast_type_builtin(TYPE_VOID);
+    vec_push(&print_i32->data.function.parameters, param);
 
     symbol_table_insert(ctx->global, print_i32);
 }

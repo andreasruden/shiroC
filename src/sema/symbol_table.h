@@ -19,7 +19,7 @@ struct symbol_table
 {
     symbol_table_t* parent;
     scope_kind_t kind;
-    hash_table_t map;
+    hash_table_t map;  // symbol name (char*) -> vec_t<symbol_t*>*
 };
 
 symbol_table_t* symbol_table_create(symbol_table_t* parent, scope_kind_t kind);
@@ -30,8 +30,14 @@ void symbol_table_destroy_void(void* table);
 
 void symbol_table_insert(symbol_table_t* table, symbol_t* symbol);
 
+// find the first symbol matching the name in self or parent table
 symbol_t* symbol_table_lookup(symbol_table_t* table, const char* name);
 
+// find the first symbol matching the name in self
 symbol_t* symbol_table_lookup_local(symbol_table_t* table, const char* name);
+
+// Returns pointer to vector of symbol_t* that share the name, or nullptr if there is no match.
+// NOTE: Only local searche in self, parent matches are not included.
+vec_t* symbol_table_overloads(symbol_table_t* table, const char* name);
 
 #endif

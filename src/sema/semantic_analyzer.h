@@ -17,9 +17,9 @@ typedef struct semantic_analyzer
 {
     ast_transformer_t base;
     semantic_context_t* ctx;  // decl_collector does not own ctx
-    ast_class_def_t* current_class;
-    ast_fn_def_t* current_function;
-    ast_method_def_t* current_method;
+    symbol_t* current_class;
+    symbol_t* current_function;
+    symbol_t* current_method;
     symbol_table_t* current_function_scope;
     init_tracker_t* init_tracker;
     bool is_lvalue_context;

@@ -4,6 +4,7 @@
 #include "ast/def/class_def.h"
 #include "ast/def/fn_def.h"
 #include "ast/def/method_def.h"
+#include "ast/node.h"
 #include "ast/type.h"
 #include "ast/visitor.h"
 #include "common/containers/hash_table.h"
@@ -51,17 +52,50 @@ void collect_class_def(void* self_, ast_class_def_t* class_def, void* out_)
     collector->current_class = nullptr;
 }
 
+static bool is_valid_overload(vec_t* symbols, vec_t* parameters)
+{
+    size_t num_params = vec_size(parameters);
+    for (size_t i = 0; i < vec_size(symbols); ++i)
+    {
+        symbol_t* other_symbol = vec_get(symbols, i);
+        panic_if(other_symbol->kind != SYMBOL_FUNCTION && other_symbol->kind != SYMBOL_METHOD);
+
+        if (vec_size(&other_symbol->data.function.parameters) != num_params)
+            continue;
+
+        bool differs = false;
+        for (size_t j = 0; j < num_params && !differs; ++j)
+        {
+            ast_param_decl_t* param = vec_get(parameters, j);
+            ast_param_decl_t* other_params = vec_get(&other_symbol->data.function.parameters, j);
+            if (param->type != other_params->type)
+                differs = true;
+        }
+
+        if (!differs)
+            return false;
+    }
+
+    return true;
+}
+
 void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 {
     (void)out_;
     decl_collector_t* collector = self_;
 
-    symbol_t* prev_symbol;
-    if ((prev_symbol = symbol_table_lookup(collector->ctx->global, fn_def->base.name)) != nullptr)
+    // Resolve parameter types
+    for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
+        ast_visitor_visit(collector, vec_get(&fn_def->params, i), nullptr);
+
+    // Handle function clashes with overloading rules
+    vec_t* symbols = symbol_table_overloads(collector->ctx->global, fn_def->base.name);
+    size_t num_prev_defs = symbols ? vec_size(symbols) : 0;
+    if (symbols != nullptr && !is_valid_overload(symbols, &fn_def->params))
     {
-        semantic_context_add_error(collector->ctx, fn_def,
-            ssprintf("redeclaration of name '%s', previously from <%s:%d>", fn_def->base.name,
-                prev_symbol->ast->source_begin.filename, prev_symbol->ast->source_begin.line));
+        ast_node_t* prev_def = ((symbol_t*)vec_get(symbols, 0))->ast;
+        semantic_context_add_error(collector->ctx, fn_def, ssprintf("redeclaration of '%s', previously from <%s:%d>",
+            fn_def->base.name, AST_NODE(prev_def)->source_begin.filename, AST_NODE(prev_def)->source_begin.line));
         return;
     }
 
@@ -75,11 +109,15 @@ void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     }
 
     symbol_t* symbol = symbol_create(fn_def->base.name, SYMBOL_FUNCTION, fn_def);
-    symbol->type = fn_def->return_type == nullptr ? ast_type_builtin(TYPE_VOID) : fn_def->return_type;
+    symbol->type = ast_type_invalid();  // TODO: actual function type
+    symbol->data.function.return_type = fn_def->return_type == nullptr ?
+        ast_type_builtin(TYPE_VOID) : fn_def->return_type;
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
         ast_visitor_visit(collector, vec_get(&fn_def->params, i), symbol);
+    fn_def->symbol = symbol;
+    fn_def->overload_index = num_prev_defs;
 
-    symbol_table_insert(collector->ctx->current, symbol);
+    symbol_table_insert(collector->ctx->global, symbol);
 }
 
 void collect_member_decl(void* self_, ast_member_decl_t* member, void* out_)
@@ -102,7 +140,6 @@ void collect_member_decl(void* self_, ast_member_decl_t* member, void* out_)
         return;
 
     // Verify class does not already contain member by given name
-    // TODO: overloading
     ast_member_decl_t* prev_def = hash_table_find(&collector->current_class->data.class.members, member->base.name);
     if (prev_def != nullptr)
     {
@@ -117,18 +154,24 @@ void collect_member_decl(void* self_, ast_member_decl_t* member, void* out_)
 
 void collect_method_def(void* self_, ast_method_def_t* method, void* out_)
 {
+    // TODO: This is very similar to fn_def, try to share implementation
+
     (void)out_;
     decl_collector_t* collector = self_;
     panic_if(collector->current_class == nullptr);
 
-    // Verify class does not already contain method by given name
-    // TODO: overloading
-    ast_method_def_t* prev_def = hash_table_find(&collector->current_class->data.class.methods, method->base.base.name);
-    if (prev_def != nullptr)
+    // Resolve parameter types
+    for (size_t i = 0; i < vec_size(&method->base.params); ++i)
+        ast_visitor_visit(collector, vec_get(&method->base.params, i), nullptr);
+
+    // Handle method clashes with overloading rules
+    vec_t* symbols = symbol_table_overloads(collector->current_class->data.class.methods, method->base.base.name);
+    size_t num_prev_defs = symbols ? vec_size(symbols) : 0;
+    if (symbols != nullptr && !is_valid_overload(symbols, &method->base.params))
     {
-        semantic_context_add_error(collector->ctx, method,
-            ssprintf("redeclaration of '%s', previously from <%s:%d>", method->base.base.name,
-                AST_NODE(prev_def)->source_begin.filename, AST_NODE(prev_def)->source_begin.line));
+        ast_node_t* prev_def = ((symbol_t*)vec_get(symbols, 0))->ast;
+        semantic_context_add_error(collector->ctx, method, ssprintf("redeclaration of '%s', previously from <%s:%d>",
+            method->base.base.name, AST_NODE(prev_def)->source_begin.filename, AST_NODE(prev_def)->source_begin.line));
         return;
     }
 
@@ -142,11 +185,17 @@ void collect_method_def(void* self_, ast_method_def_t* method, void* out_)
             return;
     }
 
-    // Resolve parameter types
+    // Build symbol for method
+    symbol_t* method_symbol = symbol_create(method->base.base.name, SYMBOL_METHOD, method);
+    method_symbol->type = ast_type_invalid();  // TODO: actual function type
+    method_symbol->data.function.return_type = method->base.return_type == nullptr ?
+        ast_type_builtin(TYPE_VOID) : method->base.return_type;
     for (size_t i = 0; i < vec_size(&method->base.params); ++i)
-        ast_visitor_visit(collector, vec_get(&method->base.params, i), nullptr);
+        vec_push(&method_symbol->data.function.parameters, vec_get(&method->base.params, i));
+    method->symbol = method_symbol;
+    method->overload_index = num_prev_defs;
 
-    hash_table_insert(&collector->current_class->data.class.methods, method->base.base.name, method);
+    symbol_table_insert(collector->current_class->data.class.methods, method_symbol);
 
     // TODO: Warning if method & member share name?
 }

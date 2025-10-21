@@ -149,7 +149,7 @@ TEST(ut_sema_fn_fixture_t, return_stmt_type_mismatch_function_return_type_error)
             nullptr
         ), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(foo_fn), error_node, "cannot coerce type");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(foo_fn), error_node, "cannot coerce type");
 
     ast_node_destroy(foo_fn);
 }
@@ -163,7 +163,7 @@ TEST(ut_sema_fn_fixture_t, function_with_return_type_has_path_without_return_err
             nullptr  // No return statement
         ), nullptr);
 
-    ASSERT_SEMA_ERROR(AST_NODE(error_node), error_node, "missing return");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(error_node), error_node, "missing return");
 
     ast_node_destroy(error_node);
 }
@@ -204,13 +204,7 @@ TEST(ut_sema_fn_fixture_t, fn_with_ret_type_no_body)
         nullptr
     );
 
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(error_node));
-    ASSERT_FALSE(res);
-    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
-    ast_node_t* offender = vec_get(&fix->ctx->error_nodes, 0);
-    ASSERT_EQ(error_node, offender);
-    compiler_error_t* error = vec_get(offender->errors, 0);
-    ASSERT_NEQ(nullptr, strstr(error->description, "missing return"));
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(error_node), error_node, "missing return");
 
     ast_node_destroy(error_node);
 }
@@ -285,4 +279,53 @@ TEST(ut_sema_fn_fixture_t, valueless_return_in_implicit_void_function_success)
     ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(foo_fn));
 
     ast_node_destroy(foo_fn);
+}
+
+// Overloaded functions with different arities should work
+TEST(ut_sema_fn_fixture_t, overloaded_functions_different_arity_success)
+{
+    // fn add(x: i32) -> i32 { return x; }
+    ast_def_t* add1 = ast_fn_def_create_va("add", ast_type_builtin(TYPE_I32),
+        ast_compound_stmt_create_va(
+            ast_return_stmt_create(ast_ref_expr_create("x")),
+            nullptr
+        ),
+        ast_param_decl_create("x", ast_type_builtin(TYPE_I32)),
+        nullptr
+    );
+
+    // fn add(x: i32, y: i32) -> i32 { return x + y; }
+    ast_def_t* add2 = ast_fn_def_create_va("add", ast_type_builtin(TYPE_I32),
+        ast_compound_stmt_create_va(
+            ast_return_stmt_create(
+                ast_bin_op_create(TOKEN_PLUS, ast_ref_expr_create("x"), ast_ref_expr_create("y"))
+            ),
+            nullptr
+        ),
+        ast_param_decl_create("x", ast_type_builtin(TYPE_I32)),
+        ast_param_decl_create("y", ast_type_builtin(TYPE_I32)),
+        nullptr
+    );
+
+    // fn main() { add(5); add(3, 4); }
+    ast_def_t* main_fn = ast_fn_def_create_va("main", nullptr,
+        ast_compound_stmt_create_va(
+            ast_expr_stmt_create(ast_call_expr_create_va(ast_ref_expr_create("add"),
+                ast_int_lit_val(5), nullptr)),
+            ast_expr_stmt_create(ast_call_expr_create_va(ast_ref_expr_create("add"),
+                ast_int_lit_val(3), ast_int_lit_val(4), nullptr)),
+            nullptr
+        ),
+        nullptr
+    );
+
+    ast_root_t* root = ast_root_create_va(add1, add2, main_fn, nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    // Check that the second function has overload_index set to 1
+    ast_fn_def_t* fn_def2 = (ast_fn_def_t*)add2;
+    ASSERT_EQ(1, fn_def2->overload_index);
+
+    ast_node_destroy(root);
 }

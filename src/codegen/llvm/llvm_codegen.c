@@ -6,6 +6,7 @@
 #include "ast/expr/coercion_expr.h"
 #include "ast/expr/construct_expr.h"
 #include "ast/expr/member_init.h"
+#include "ast/expr/ref_expr.h"
 #include "ast/expr/self_expr.h"
 #include "ast/expr/uninit_lit.h"
 #include "ast/stmt/for_stmt.h"
@@ -75,6 +76,13 @@ struct class_layout
     vec_t member_names;  // member names (char*) in order they appear in LLVM struct
     vec_t member_types;  // member type (ast_type_t*) in order they appear in LLVM struct
 };
+
+#define MANGLE_FUNCTION_NAME(name, overload_index) (overload_index == 0 ? name :\
+    ssprintf("%s.%zu", name, overload_index))
+
+#define MANGLE_METHOD_NAME(class_name, method_name, overload_index) \
+    (overload_index == 0 ? ssprintf("%s.%s", class_name, method_name) :\
+        ssprintf("%s.%s.%zu", class_name, method_name, overload_index))
 
 // Get or declare llvm.ubsantrap intrinsic
 static LLVMValueRef get_ubsantrap_intrinsic(llvm_codegen_t* llvm)
@@ -256,8 +264,9 @@ static void define_class_body(llvm_codegen_t* llvm, ast_class_def_t* class_def)
     {
         ast_method_def_t* method = vec_get(&class_def->methods, i);
 
-        // Mangle method name: ClassName.methodName
-        char* mangled_name = ssprintf("%s.%s", class_def->base.name, method->base.base.name);
+        // Mangle method name: ClassName.methodName.N
+        const char* mangled_name = MANGLE_METHOD_NAME(class_def->base.name, method->base.base.name,
+            method->overload_index);
 
         LLVMTypeRef class_ptr_type = LLVMPointerTypeInContext(llvm->context, 0);
 
@@ -305,7 +314,7 @@ static void declare_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
     // Declare function signature
     LLVMTypeRef fn_type = LLVMFunctionType(llvm_type(llvm->context, fn_def->return_type), param_types,
         param_count, false);
-    LLVMAddFunction(llvm->module, fn_def->base.name, fn_type);
+    LLVMAddFunction(llvm->module, MANGLE_FUNCTION_NAME(fn_def->base.name, fn_def->overload_index), fn_type);
     free(param_types);
 }
 
@@ -315,7 +324,8 @@ static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
     llvm->symbols = hash_table_create(nullptr);
 
     // Get the declared function
-    LLVMValueRef fn_val = LLVMGetNamedFunction(llvm->module, fn_def->base.name);
+    const char* mangled_name = MANGLE_FUNCTION_NAME(fn_def->base.name, fn_def->overload_index);
+    LLVMValueRef fn_val = LLVMGetNamedFunction(llvm->module, mangled_name);
     panic_if(fn_val == nullptr);
     llvm->current_function = fn_val;
 
@@ -338,7 +348,7 @@ static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
 
         // Set as current scope for nested instructions
         llvm->current_di_scope = di_subprogram;
-        hash_table_insert(llvm->di_scopes, fn_def->base.name, di_subprogram);
+        hash_table_insert(llvm->di_scopes, mangled_name, di_subprogram);
     }
 
     // Add entry block and position builder
@@ -374,8 +384,9 @@ static void emit_method_def(void* self_, ast_method_def_t* method, void* out_)
 
     llvm->symbols = hash_table_create(nullptr);
 
-    // Mangle method name: ClassName.methodName
-    char* mangled_name = ssprintf("%s.%s", llvm->current_class->base.name, method->base.base.name);
+    // Mangle method name: ClassName.methodName.N
+    const char* mangled_name = MANGLE_METHOD_NAME(llvm->current_class->base.name, method->base.base.name,
+        method->overload_index);
 
     // Get the declared function
     LLVMValueRef fn_val = LLVMGetNamedFunction(llvm->module, mangled_name);
@@ -403,7 +414,7 @@ static void emit_method_def(void* self_, ast_method_def_t* method, void* out_)
 
         // Set as current scope for nested instructions
         llvm->current_di_scope = di_subprogram;
-        hash_table_insert(llvm->di_scopes, debug_name, di_subprogram);
+        hash_table_insert(llvm->di_scopes, mangled_name, di_subprogram);
     }
 
     // Add entry block and position builder
@@ -527,8 +538,8 @@ static void emit_method_call(void* self_, ast_method_call_t* call, void* out_)
 
     set_debug_location(llvm, AST_NODE(call));
 
-    // Mangle method name: ClassName.methodName
-    char* mangled_name = ssprintf("%s.%s", class_name, call->method_name);
+    // Mangle method name: ClassName.methodName.N
+    const char* mangled_name = MANGLE_METHOD_NAME(class_name, call->method_name, call->overload_index);
 
     // Get the instance as an lvalue (address of the variable/expression)
     llvm->lvalue = true;
@@ -609,46 +620,69 @@ static void emit_other_bin_op(void* self_, ast_bin_op_t* bin_op, void* out_)
 
     LLVMValueRef result = nullptr;
     token_type_t op = bin_op->op;
+    bool is_float = ast_type_is_real(bin_op->base.type);
 
     switch (op)
     {
         case TOKEN_PLUS_ASSIGN:
         case TOKEN_PLUS:
-            result = LLVMBuildAdd(llvm->builder, lhs_value, rhs_value, "add");
+            result = is_float ?
+                LLVMBuildFAdd(llvm->builder, lhs_value, rhs_value, "add") :
+                LLVMBuildAdd(llvm->builder, lhs_value, rhs_value, "add");
             break;
         case TOKEN_MINUS_ASSIGN:
         case TOKEN_MINUS:
-            result = LLVMBuildSub(llvm->builder, lhs_value, rhs_value, "sub");
+            result = is_float ?
+                LLVMBuildFSub(llvm->builder, lhs_value, rhs_value, "sub") :
+                LLVMBuildSub(llvm->builder, lhs_value, rhs_value, "sub");
             break;
         case TOKEN_MUL_ASSIGN:
         case TOKEN_STAR:
-            result = LLVMBuildMul(llvm->builder, lhs_value, rhs_value, "mul");
+            result = is_float ?
+                LLVMBuildFMul(llvm->builder, lhs_value, rhs_value, "mul") :
+                LLVMBuildMul(llvm->builder, lhs_value, rhs_value, "mul");
             break;
         case TOKEN_DIV_ASSIGN:
         case TOKEN_DIV:
-            result = LLVMBuildSDiv(llvm->builder, lhs_value, rhs_value, "div");
+            result = is_float ?
+                LLVMBuildFDiv(llvm->builder, lhs_value, rhs_value, "div") :
+                LLVMBuildSDiv(llvm->builder, lhs_value, rhs_value, "div");
             break;
         case TOKEN_MODULO_ASSIGN:
         case TOKEN_MODULO:
-            result = LLVMBuildSRem(llvm->builder, lhs_value, rhs_value, "rem");
+            result = is_float ?
+                LLVMBuildFRem(llvm->builder, lhs_value, rhs_value, "rem") :
+                LLVMBuildSRem(llvm->builder, lhs_value, rhs_value, "rem");
             break;
         case TOKEN_LT:
-            result = LLVMBuildICmp(llvm->builder, LLVMIntSLT, lhs_value, rhs_value, "lt");
+            result = is_float ?
+                LLVMBuildFCmp(llvm->builder, LLVMRealOLT, lhs_value, rhs_value, "lt") :
+                LLVMBuildICmp(llvm->builder, LLVMIntSLT, lhs_value, rhs_value, "lt");
             break;
         case TOKEN_LTE:
-            result = LLVMBuildICmp(llvm->builder, LLVMIntSLE, lhs_value, rhs_value, "lte");
+            result = is_float ?
+                LLVMBuildFCmp(llvm->builder, LLVMRealOLE, lhs_value, rhs_value, "lte") :
+                LLVMBuildICmp(llvm->builder, LLVMIntSLE, lhs_value, rhs_value, "lte");
             break;
         case TOKEN_GT:
-            result = LLVMBuildICmp(llvm->builder, LLVMIntSGT, lhs_value, rhs_value, "gt");
+            result = is_float ?
+                LLVMBuildFCmp(llvm->builder, LLVMRealOGT, lhs_value, rhs_value, "gt") :
+                LLVMBuildICmp(llvm->builder, LLVMIntSGT, lhs_value, rhs_value, "gt");
             break;
         case TOKEN_GTE:
-            result = LLVMBuildICmp(llvm->builder, LLVMIntSGE, lhs_value, rhs_value, "gte");
+            result = is_float ?
+                LLVMBuildFCmp(llvm->builder, LLVMRealOGE, lhs_value, rhs_value, "gte") :
+                LLVMBuildICmp(llvm->builder, LLVMIntSGE, lhs_value, rhs_value, "gte");
             break;
         case TOKEN_EQ:
-            result = LLVMBuildICmp(llvm->builder, LLVMIntEQ, lhs_value, rhs_value, "eq");
+            result = is_float ?
+                LLVMBuildFCmp(llvm->builder, LLVMRealOEQ, lhs_value, rhs_value, "eq") :
+                LLVMBuildICmp(llvm->builder, LLVMIntEQ, lhs_value, rhs_value, "eq");
             break;
         case TOKEN_NEQ:
-            result = LLVMBuildICmp(llvm->builder, LLVMIntNE, lhs_value, rhs_value, "ne");
+            result = is_float ?
+                LLVMBuildFCmp(llvm->builder, LLVMRealONE, lhs_value, rhs_value, "ne") :
+                LLVMBuildICmp(llvm->builder, LLVMIntNE, lhs_value, rhs_value, "ne");
             break;
         default:
             panic("Unhandled binary op: %d", op);
@@ -921,10 +955,11 @@ static void emit_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 
     set_debug_location(llvm, AST_NODE(call));
 
-    llvm->function_name = true;
-    LLVMValueRef fn = nullptr;
-    ast_visitor_visit(llvm, call->function, &fn);
-    llvm->function_name = false;
+    // Get function name from the ref_expr and construct mangled name
+    panic_if(AST_KIND(call->function) != AST_EXPR_REF);
+    ast_ref_expr_t* fn_ref = (ast_ref_expr_t*)call->function;
+    const char* fn_name = MANGLE_FUNCTION_NAME(fn_ref->name, call->overload_index);
+    LLVMValueRef fn = LLVMGetNamedFunction(llvm->module, fn_name);
     panic_if(fn == nullptr);
 
     size_t arg_count = vec_size(&call->arguments);

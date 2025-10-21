@@ -6,10 +6,12 @@
 #include "ast/expr/int_lit.h"
 #include "ast/node.h"
 #include "ast/root.h"
+#include "ast/stmt/compound_stmt.h"
 #include "ast/type.h"
 #include "sema/decl_collector.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
+#include "sema/symbol_table.h"
 #include "test_runner.h"
 
 TEST_FIXTURE(decl_collector_fixture_t)
@@ -47,8 +49,11 @@ TEST(decl_collector_fixture_t, collect_function_with_params)
     ASSERT_EQ(SYMBOL_FUNCTION, sym->kind);
     ASSERT_EQ("add", sym->name);
 
-    // Verify function signature
-    ASSERT_EQ(ast_type_builtin(TYPE_I32), sym->type);
+    // Verify function signature (FIXME: actualy function type)
+    ASSERT_EQ(ast_type_invalid(), sym->type);
+
+    // Verify return type
+    ASSERT_EQ(ast_type_builtin(TYPE_I32), sym->data.function.return_type);
 
     // Verify parameters
     ASSERT_EQ(2, vec_size(&sym->data.function.parameters));
@@ -82,7 +87,7 @@ TEST(decl_collector_fixture_t, collect_redeclaration_error)
     ASSERT_EQ(fn2, node);
     ASSERT_NEQ(nullptr, node->errors);
     compiler_error_t* error = vec_get(node->errors, 0);
-    ASSERT_EQ("redeclaration of name 'mul', previously from <test.c:42>", error->description);
+    ASSERT_EQ("redeclaration of 'mul', previously from <test.c:42>", error->description);
 
     ast_node_destroy(root);
 }
@@ -103,7 +108,8 @@ TEST(decl_collector_fixture_t, collect_implicit_void_function)
     ASSERT_EQ("foo", sym->name);
 
     // Verify function signature
-    ASSERT_EQ(ast_type_builtin(TYPE_VOID), sym->type);
+    ASSERT_EQ(ast_type_invalid(), sym->type);  // FIXME: Function type
+    ASSERT_EQ(ast_type_builtin(TYPE_VOID), sym->data.function.return_type);
     ASSERT_EQ(0, vec_size(&sym->data.function.parameters));
 
     ast_node_destroy(root);
@@ -129,7 +135,8 @@ TEST(decl_collector_fixture_t, collect_function_with_array_ptr_and_view)
     ASSERT_EQ("foo", sym->name);
 
     // Verify function signature
-    ASSERT_EQ(ast_type_view(ast_type_builtin(TYPE_I32)), sym->type);
+    ASSERT_EQ(ast_type_invalid(), sym->type);  // FIXME
+    ASSERT_EQ(ast_type_view(ast_type_builtin(TYPE_I32)), sym->data.function.return_type);
     ASSERT_EQ(1, vec_size(&sym->data.function.parameters));
     ASSERT_EQ(ast_type_pointer(ast_type_array(ast_type_builtin(TYPE_I32), 5)),
         ((ast_param_decl_t*)vec_get(&sym->data.function.parameters, 0))->type);
@@ -143,7 +150,7 @@ TEST(decl_collector_fixture_t, collect_class_with_members_and_methods)
     ast_def_t* class = ast_class_def_create_va("Point",
         ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
         ast_member_decl_create("y", ast_type_builtin(TYPE_I32), nullptr),
-        ast_method_def_create_va("getX", ast_type_builtin(TYPE_I32), nullptr, nullptr),
+        ast_method_def_create_va("getX", ast_type_builtin(TYPE_I32), ast_compound_stmt_create_empty(), nullptr),
         nullptr);
     ast_root_t* root = ast_root_create_va(class, nullptr);
 
@@ -168,10 +175,11 @@ TEST(decl_collector_fixture_t, collect_class_with_members_and_methods)
     ASSERT_EQ(ast_type_builtin(TYPE_I32), member_y->base.type);
 
     // Verify methods were collected into the class symbol
-    ast_method_def_t* method_getX = hash_table_find(&sym->data.class.methods, "getX");
+    symbol_t* method_getX = symbol_table_lookup(sym->data.class.methods, "getX");
     ASSERT_NEQ(nullptr, method_getX);
-    ASSERT_EQ("getX", method_getX->base.base.name);
-    ASSERT_EQ(ast_type_builtin(TYPE_I32), method_getX->base.return_type);
+    ASSERT_EQ("getX", method_getX->name);
+    ASSERT_EQ(SYMBOL_METHOD, method_getX->kind);
+    ASSERT_EQ(ast_type_builtin(TYPE_I32), method_getX->data.function.return_type);
 
     ast_node_destroy(root);
 }
@@ -214,6 +222,60 @@ TEST(decl_collector_fixture_t, duplicate_member_names_in_class)
     ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
     ast_node_t* node = vec_get(&fix->ctx->error_nodes, 0);
     ASSERT_EQ(error_node, node);
+
+    ast_node_destroy(root);
+}
+
+TEST(decl_collector_fixture_t, duplicate_function_signature_error)
+{
+    // fn foo(x: i32) -> i32
+    ast_def_t* fn1 = ast_fn_def_create_va("foo", ast_type_builtin(TYPE_I32), nullptr,
+        ast_param_decl_create("x", ast_type_builtin(TYPE_I32)), nullptr);
+
+    // fn foo(x: i32) -> i32  // Duplicate signature - should error
+    ast_def_t* error_node = ast_fn_def_create_va("foo", ast_type_builtin(TYPE_I32), nullptr,
+        ast_param_decl_create("x", ast_type_builtin(TYPE_I32)), nullptr);
+
+    ast_root_t* root = ast_root_create_va(fn1, error_node, nullptr);
+
+    bool result = decl_collector_run(fix->collector, AST_NODE(root));
+    ASSERT_FALSE(result);
+
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* node = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, node);
+    ASSERT_NEQ(nullptr, node->errors);
+    compiler_error_t* error = vec_get(node->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "redeclaration"));
+
+    ast_node_destroy(root);
+}
+
+TEST(decl_collector_fixture_t, duplicate_method_signature_error)
+{
+    // class Calc { fn compute(x: i32) -> i32, fn compute(x: i32) -> i32 }
+    ast_def_t* method1 = ast_method_def_create_va("compute", ast_type_builtin(TYPE_I32),
+        ast_compound_stmt_create_empty(), ast_param_decl_create("x", ast_type_builtin(TYPE_I32)), nullptr);
+
+    ast_def_t* error_node = ast_method_def_create_va("compute", ast_type_builtin(TYPE_I32),
+        ast_compound_stmt_create_empty(), ast_param_decl_create("x", ast_type_builtin(TYPE_I32)), nullptr);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Calc",
+            method1,
+            error_node,
+            nullptr),
+        nullptr);
+
+    bool result = decl_collector_run(fix->collector, AST_NODE(root));
+    ASSERT_FALSE(result);
+
+    ASSERT_EQ(1, vec_size(&fix->ctx->error_nodes));
+    ast_node_t* node = vec_get(&fix->ctx->error_nodes, 0);
+    ASSERT_EQ(error_node, node);
+    ASSERT_NEQ(nullptr, node->errors);
+    compiler_error_t* error = vec_get(node->errors, 0);
+    ASSERT_NEQ(nullptr, strstr(error->description, "redeclaration"));
 
     ast_node_destroy(root);
 }
