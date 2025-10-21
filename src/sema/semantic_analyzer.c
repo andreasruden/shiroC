@@ -80,13 +80,14 @@ static symbol_t* add_variable_to_scope(semantic_analyzer_t* sema, void* node, co
     }
 
     // Error: parameter shadowing
-    if (sema->current_function != nullptr)
+    if (sema->current_function != nullptr || sema->current_method != nullptr)
     {
         collision = symbol_table_lookup_local(sema->current_function_scope, name);
         if (collision != nullptr)
         {
-            semantic_context_add_error(sema->ctx, node, ssprintf("'%s' redeclares function parameter at <%s:%d>", name,
-                collision->ast->source_begin.filename, collision->ast->source_begin.line));
+            semantic_context_add_error(sema->ctx, node, ssprintf("'%s' redeclares %s parameter at <%s:%d>",
+                name, sema->current_function ? "function" : "method", collision->ast->source_begin.filename,
+                collision->ast->source_begin.line));
             return nullptr;
         }
     }

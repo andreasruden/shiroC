@@ -20,7 +20,7 @@ typedef struct semantic_analyzer
     symbol_t* current_class;
     symbol_t* current_function;
     symbol_t* current_method;
-    symbol_table_t* current_function_scope;
+    symbol_table_t* current_function_scope;  // set if current_function != nullptr or current_method != nullptr
     init_tracker_t* init_tracker;
     bool is_lvalue_context;
     int loop_depth;  // Track nesting depth of loops for break/continue validation

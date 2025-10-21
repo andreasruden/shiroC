@@ -883,3 +883,22 @@ TEST(ut_sema_classes_fixture_t, overloaded_methods_different_arity_success)
 
     ast_node_destroy(root);
 }
+
+// Declaring a local variable with the same name as a method parameter should produce an error
+TEST(ut_sema_classes_fixture_t, local_variable_shadows_method_parameter_error)
+{
+    ast_decl_t* error_node = ast_var_decl_create("i", ast_type_builtin(TYPE_I32), nullptr);
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("MyClass",
+            ast_method_def_create_va("foo", nullptr,
+                ast_compound_stmt_create_va(
+                    ast_decl_stmt_create(error_node),  // Redeclares parameter 'i'
+                    nullptr),
+                ast_param_decl_create("i", ast_type_builtin(TYPE_I32)), nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "redeclares method parameter");
+
+    ast_node_destroy(root);
+}
