@@ -279,3 +279,26 @@ TEST(decl_collector_fixture_t, duplicate_method_signature_error)
 
     ast_node_destroy(root);
 }
+
+TEST(decl_collector_fixture_t, forward_reference_to_class_in_method_param)
+{
+    // class First { fn method(second: Second*) }
+    // class Second { var i: i32 = 0; }
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("First",
+            ast_method_def_create_va("method", nullptr,
+                ast_compound_stmt_create_empty(),
+                ast_param_decl_create("second", ast_type_pointer(ast_type_user("Second"))),
+                nullptr),
+            nullptr),
+        ast_class_def_create_va("Second",
+            ast_member_decl_create("i", ast_type_builtin(TYPE_I32), nullptr),
+            nullptr),
+        nullptr);
+
+    bool result = decl_collector_run(fix->collector, AST_NODE(root));
+    ASSERT_TRUE(result);
+    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+
+    ast_node_destroy(root);
+}
