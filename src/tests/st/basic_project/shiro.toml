@@ -1,0 +1,6 @@
+[project]
+name = "Basic test project"
+
+[[bin]]
+name = "Main"
+src = "main/"

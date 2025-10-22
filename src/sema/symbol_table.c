@@ -2,6 +2,7 @@
 
 #include "common/containers/hash_table.h"
 #include "common/containers/vec.h"
+#include "common/debug/panic.h"
 #include "sema/symbol.h"
 
 #include <stdlib.h>
@@ -9,6 +10,7 @@
 symbol_table_t* symbol_table_create(symbol_table_t* parent, scope_kind_t kind)
 {
     symbol_table_t* table = malloc(sizeof(*table));
+    panic_if(table == nullptr);
 
     *table = (symbol_table_t){
         .parent = parent,
@@ -64,4 +66,12 @@ symbol_t* symbol_table_lookup_local(symbol_table_t* table, const char* name)
 vec_t* symbol_table_overloads(symbol_table_t* table, const char* name)
 {
     return hash_table_find(&table->map, name);
+}
+
+void symbol_table_merge(symbol_table_t* dst, symbol_table_t* src)
+{
+    (void)dst;
+    (void)src;
+
+    panic("not implemented");
 }

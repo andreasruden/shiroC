@@ -163,7 +163,7 @@ TEST(hash_table_fixture_t, iter_empty_table)
     hash_table_iter_t iter;
     hash_table_iter_init(&iter, fix->table);
 
-    ASSERT_FALSE(hash_table_iter_has_next(&iter));
+    ASSERT_FALSE(hash_table_iter_has_elem(&iter));
     ASSERT_EQ(nullptr, hash_table_iter_current(&iter));
 }
 
@@ -175,7 +175,7 @@ TEST(hash_table_fixture_t, iter_single_entry)
     hash_table_iter_t iter;
     hash_table_iter_init(&iter, fix->table);
 
-    ASSERT_TRUE(hash_table_iter_has_next(&iter));
+    ASSERT_TRUE(hash_table_iter_has_elem(&iter));
 
     hash_table_entry_t* entry = hash_table_iter_current(&iter);
     ASSERT_NEQ(nullptr, entry);
@@ -184,7 +184,7 @@ TEST(hash_table_fixture_t, iter_single_entry)
 
     hash_table_iter_next(&iter);
 
-    ASSERT_FALSE(hash_table_iter_has_next(&iter));
+    ASSERT_FALSE(hash_table_iter_has_elem(&iter));
 }
 
 TEST(hash_table_fixture_t, iter_multiple_entries)
@@ -202,7 +202,7 @@ TEST(hash_table_fixture_t, iter_multiple_entries)
     hash_table_iter_t iter;
     hash_table_iter_init(&iter, fix->table);
 
-    while (hash_table_iter_has_next(&iter)) {
+    while (hash_table_iter_has_elem(&iter)) {
         hash_table_entry_t* entry = hash_table_iter_current(&iter);
         count++;
 
@@ -245,7 +245,7 @@ TEST(hash_table_fixture_t, iter_after_growth)
     hash_table_iter_t iter;
     hash_table_iter_init(&iter, fix->table);
 
-    while (hash_table_iter_has_next(&iter)) {
+    while (hash_table_iter_has_elem(&iter)) {
         hash_table_entry_t* entry = hash_table_iter_current(&iter);
         ASSERT_NEQ(nullptr, entry);
         count++;

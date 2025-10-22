@@ -6,6 +6,7 @@
 
 typedef struct semantic_context
 {
+    symbol_table_t* export;
     symbol_table_t* global;
     symbol_table_t* current;
     vec_t scope_stack;

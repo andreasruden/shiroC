@@ -1,0 +1,6 @@
+//! compile
+
+// TODO: Fill in a real sample project
+fn main(main: i32) //! warning: "shadows"
+{
+}

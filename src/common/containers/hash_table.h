@@ -75,7 +75,7 @@ typedef struct hash_table_iter
 
 void hash_table_iter_init(hash_table_iter_t* iter, hash_table_t* table);
 
-bool hash_table_iter_has_next(hash_table_iter_t* iter);
+bool hash_table_iter_has_elem(hash_table_iter_t* iter);
 
 hash_table_entry_t* hash_table_iter_current(hash_table_iter_t* iter);
 

@@ -6,6 +6,7 @@
 
 typedef enum scope_kind
 {
+    SCOPE_EXPORT,
     SCOPE_GLOBAL,
     SCOPE_FUNCTION,
     SCOPE_BLOCK,
@@ -39,5 +40,8 @@ symbol_t* symbol_table_lookup_local(symbol_table_t* table, const char* name);
 // Returns pointer to vector of symbol_t* that share the name, or nullptr if there is no match.
 // NOTE: Only local searche in self, parent matches are not included.
 vec_t* symbol_table_overloads(symbol_table_t* table, const char* name);
+
+// Every symbol from src is cloned and added into dst
+void symbol_table_merge(symbol_table_t* dst, symbol_table_t* src);
 
 #endif

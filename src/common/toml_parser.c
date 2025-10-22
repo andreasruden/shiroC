@@ -289,3 +289,32 @@ void toml_destroy(hash_table_t* root)
     if (root)
         hash_table_destroy(root);
 }
+
+bool toml_is_array_section(void* value)
+{
+    if (!value)
+        return false;
+    vec_t* maybe_vec = value;
+    return maybe_vec->delete_fn == hash_table_destroy_nested;
+}
+
+bool toml_is_section(void* value)
+{
+    if (!value)
+        return false;
+    return !toml_is_array_section(value);
+}
+
+hash_table_t* toml_as_section(void* value)
+{
+    if (toml_is_section(value))
+        return (hash_table_t*)value;
+    return nullptr;
+}
+
+vec_t* toml_as_array_section(void* value)
+{
+    if (toml_is_array_section(value))
+        return (vec_t*)value;
+    return nullptr;
+}

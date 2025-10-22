@@ -15,9 +15,11 @@ semantic_context_t* semantic_context_create()
 {
     semantic_context_t* ctx = malloc(sizeof(*ctx));
 
+    symbol_table_t* export_scope = symbol_table_create(nullptr, SCOPE_GLOBAL);
     symbol_table_t* global_scope = symbol_table_create(nullptr, SCOPE_GLOBAL);
 
     *ctx = (semantic_context_t){
+        .export = export_scope,
         .global = global_scope,
         .current = global_scope,
         .scope_stack = VEC_INIT(symbol_table_destroy_void),
@@ -36,6 +38,7 @@ void semantic_context_destroy(semantic_context_t* ctx)
     if (ctx == nullptr)
         return;
 
+    symbol_table_destroy(ctx->export);
     vec_deinit(&ctx->scope_stack);
     vec_deinit(&ctx->error_nodes);
     vec_deinit(&ctx->warning_nodes);

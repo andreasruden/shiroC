@@ -1031,7 +1031,7 @@ static void* analyze_construct_expr(void* self_, ast_construct_expr_t* construct
 
     // Handle default initializations, also make sure no non-default initializable member was left out
     hash_table_iter_t itr;
-    for (hash_table_iter_init(&itr, &class_symbol->data.class.members); hash_table_iter_has_next(&itr);
+    for (hash_table_iter_init(&itr, &class_symbol->data.class.members); hash_table_iter_has_elem(&itr);
         hash_table_iter_next(&itr))
     {
         hash_table_entry_t* entry = hash_table_iter_current(&itr);

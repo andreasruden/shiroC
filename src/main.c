@@ -1,4 +1,5 @@
 #include "ast/node.h"
+#include "builder/builder.h"
 #include "codegen/llvm/llvm_codegen.h"
 #include "common/debug/panic.h"
 #include "compiler_error.h"
@@ -11,7 +12,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 static char* read_file(const char* filepath)
 {
@@ -161,6 +164,16 @@ int main(int argc, char** argv)
 
     if (argc == 4 && strcmp(argv[2], "-o") == 0)
         output_redirect = argv[3];
+
+    // Use builder if target is a directory
+    struct stat path_stat;
+    if (stat(filepath, &path_stat) == 0 && S_ISDIR(path_stat.st_mode))
+    {
+        builder_t* builder = builder_create(filepath);
+        bool success = builder_run(builder);
+        builder_destroy(builder);
+        return success ? 0 : 64;
+    }
 
     // Read source file
     char* source = read_file(filepath);

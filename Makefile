@@ -92,10 +92,13 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/util/cloner.c \
 	$(SRC_DIR)/ast/util/presenter.c \
 	$(SRC_DIR)/ast/util/printer.c \
+	$(SRC_DIR)/builder/builder.c \
+	$(SRC_DIR)/builder/module.c \
+	$(SRC_DIR)/common/toml_parser.c \
 	$(SRC_DIR)/common/containers/hash_table.c \
 	$(SRC_DIR)/common/containers/string.c \
 	$(SRC_DIR)/common/containers/vec.c \
-	$(SRC_DIR)/common/toml_parser.c \
+	$(SRC_DIR)/common/util/path.c \
 	$(SRC_DIR)/parser/lexer.c \
     $(SRC_DIR)/parser/parser.c \
 	$(SRC_DIR)/sema/decl_collector.c \
@@ -129,7 +132,7 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/sema/test_sema_variables.c
 
 # Compiler target
-COMPILER_TARGET = $(BIN_DIR)/shiroc
+COMPILER_TARGET = $(BIN_DIR)/shiro
 COMPILER_SRCS = $(COMMON_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/codegen/llvm/llvm_codegen.c \
 	$(SRC_DIR)/codegen/llvm/llvm_type_utils.c
 COMPILER_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMPILER_SRCS))
@@ -147,7 +150,7 @@ COV_COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(COV_BUILD_DIR)/%.o,$(COMMON_SRCS))
 COV_TEST_RUNNER_OBJ = $(COV_BUILD_DIR)/test-runner.o
 
 # Fuzzer targets
-FUZZER_TARGET = $(BIN_DIR)/shiroc_fuzzer
+FUZZER_TARGET = $(BIN_DIR)/shiro_fuzzer
 FUZZER_SRC = $(SRC_DIR)/common/fuzzer/fuzzer_harness.c
 FUZZER_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/fuzzer/%.o,$(COMMON_SRCS))
 FUZZER_HARNESS_OBJ = $(BUILD_DIR)/fuzzer/common/fuzzer/fuzzer_harness.o
@@ -214,7 +217,7 @@ test-ut: $(UT_TARGETS)
 	done
 
 test-st: $(BIN_DIR)
-	cd build/ && python3 ../scripts/systemtester/tester.py -c ./bin/shiroc ../src/tests/st/
+	cd build/ && python3 ../scripts/systemtester/tester.py -c ./bin/shiro ../src/tests/st/
 
 .PHONY: tests
 tests: test-ut test-st
@@ -236,7 +239,7 @@ valgrind-ut: $(UT_TARGETS)
 	done
 
 valgrind-st:  $(BIN_DIR)
-	cd build/ && python3 ../scripts/systemtester/tester.py --valgrind -c ./bin/shiroc ../src/tests/st/
+	cd build/ && python3 ../scripts/systemtester/tester.py --valgrind -c ./bin/shiro ../src/tests/st/
 
 .PHONY: valgrind-tests
 valgrind-tests: valgrind-ut valgrind-st

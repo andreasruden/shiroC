@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Set
 
 # Global configuration
-COMPILER = "shiroc"       # can be overriden by args
+COMPILER = "shiro"        # can be overriden by args
 COMPILE_TIMEOUT = 10      # in seconds
 RUN_TIMEOUT = 0.5         # in seconds
 USE_VALGRIND = False
@@ -62,7 +62,6 @@ class ErrorInstruction(TestInstruction):
     """Expect a compiler error matching the regex at the instruction's line"""
     def execute(self, context: 'TestContext') -> bool:
         pattern = self.args.strip().strip('"')
-        filename = context.filepath.name
 
         # Find all error messages at this line number
         matching_errors = []
@@ -87,7 +86,6 @@ class WarningInstruction(TestInstruction):
     """Expect a compiler warning matching the regex at the instruction's line"""
     def execute(self, context: 'TestContext') -> bool:
         pattern = self.args.strip().strip('"')
-        filename = context.filepath.name
 
         # Find all warning messages at this line number
         matching_warnings = []
@@ -151,8 +149,10 @@ REQUIRED_ARGS_INSTRUCTIONS = {'options', 'error', 'warning', 'stdout'}
 
 class TestContext:
     """Context for executing a test"""
-    def __init__(self, filepath: Path):
-        self.filepath = filepath
+    def __init__(self, test_target: Path):
+        self.test_target = test_target
+        self.is_directory = test_target.is_dir()
+        self.directory_path = test_target if self.is_directory else test_target.parent
         self.compiler_options = ""
         self.compile_output = ""
         self.compile_returncode = None
@@ -176,28 +176,44 @@ class TestContext:
 
     def parse_compiler_messages(self):
         """Parse compiler output for errors and warnings"""
-        filename = self.filepath.name
-
         # Remove color from compiler output
         ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
         clean_output = ansi_escape.sub('', self.compile_output)
 
         # Pattern: path/to/filename:line:col error: message
         # or: path/to/filename:line:col warning: message
-        # Match paths that end with the filename
-        error_pattern = re.compile(
-            rf'(?:^|[/\\]){re.escape(filename)}:(\d+):\d+:\s+error:\s*(.*)$',
-            re.MULTILINE
-        )
-        warning_pattern = re.compile(
-            rf'(?:^|[/\\]){re.escape(filename)}:(\d+):\d+:\s+warning:\s*(.*)$',
-            re.MULTILINE
-        )
+        if self.is_directory:
+            # Match any .shiro file in the directory
+            error_pattern = re.compile(
+                r'([^/\\]+\.shiro):(\d+):\d+:\s+error:\s*(.*)$',
+                re.MULTILINE
+            )
+            warning_pattern = re.compile(
+                r'([^/\\]+\.shiro):(\d+):\d+:\s+warning:\s*(.*)$',
+                re.MULTILINE
+            )
+        else:
+            # Match specific filename
+            filename = self.test_target.name
+            error_pattern = re.compile(
+                rf'(?:^|[/\\]){re.escape(filename)}:(\d+):\d+:\s+error:\s*(.*)$',
+                re.MULTILINE
+            )
+            warning_pattern = re.compile(
+                rf'(?:^|[/\\]){re.escape(filename)}:(\d+):\d+:\s+warning:\s*(.*)$',
+                re.MULTILINE
+            )
 
         # Find all errors
         for match in error_pattern.finditer(clean_output):
-            line_num = int(match.group(1))
-            message = match.group(2).strip()
+            if self.is_directory:
+                # Groups: (filename, line_num, message)
+                line_num = int(match.group(2))
+                message = match.group(3).strip()
+            else:
+                # Groups: (line_num, message)
+                line_num = int(match.group(1))
+                message = match.group(2).strip()
             self.all_errors.append((line_num, message))
             if line_num not in self.errors_by_line:
                 self.errors_by_line[line_num] = []
@@ -205,19 +221,25 @@ class TestContext:
 
         # Find all warnings
         for match in warning_pattern.finditer(clean_output):
-            line_num = int(match.group(1))
-            message = match.group(2).strip()
+            if self.is_directory:
+                # Groups: (filename, line_num, message)
+                line_num = int(match.group(2))
+                message = match.group(3).strip()
+            else:
+                # Groups: (line_num, message)
+                line_num = int(match.group(1))
+                message = match.group(2).strip()
             self.all_warnings.append((line_num, message))
             if line_num not in self.warnings_by_line:
                 self.warnings_by_line[line_num] = []
             self.warnings_by_line[line_num].append((line_num, message))
 
     def compile(self) -> bool:
-        """Compile the file. Returns True if compilation succeeded as expected."""
+        """Compile the file or directory. Returns True if compilation succeeded as expected."""
         with tempfile.NamedTemporaryFile(suffix='', delete=False) as tmp:
             self.executable = tmp.name
 
-        cmd = [COMPILER, str(self.filepath), "-o", self.executable]
+        cmd = [COMPILER, str(self.test_target), "-o", self.executable]
         if self.compiler_options:
             cmd.extend(self.compiler_options.split())
         if USE_VALGRIND:
@@ -341,8 +363,8 @@ class TestContext:
                 pass
 
 
-def parse_instructions(filepath: Path) -> List[Tuple[str, str, int]]:
-    """Parse test instructions from a file. Returns list of (instruction_name, args, line_number) tuples."""
+def parse_instructions_from_file(filepath: Path) -> List[Tuple[str, str, int]]:
+    """Parse test instructions from a single file. Returns list of (instruction_name, args, line_number) tuples."""
     instructions = []
 
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -381,12 +403,31 @@ def parse_instructions(filepath: Path) -> List[Tuple[str, str, int]]:
     return instructions
 
 
-def run_test(filepath: Path) -> bool:
-    """Run a single test file. Returns True if test passed."""
-    instructions = parse_instructions(filepath)
+def parse_instructions(test_target: Path) -> List[Tuple[str, str, int]]:
+    """Parse test instructions from a file or directory. Returns list of (instruction_name, args, line_number) tuples."""
+    if test_target.is_file():
+        # Single file: parse it directly
+        return parse_instructions_from_file(test_target)
+    elif test_target.is_dir():
+        # Directory: recursively find all .shiro files and collect instructions
+        instructions = []
+        for shiro_file in sorted(test_target.rglob("*.shiro")):
+            instructions.extend(parse_instructions_from_file(shiro_file))
+        return instructions
+    else:
+        return []
+
+
+def run_test(test_target: Path) -> bool:
+    """Run a single test (file or directory). Returns True if test passed."""
+    instructions = parse_instructions(test_target)
+
+    # Format display name based on type
+    target_type = "project" if test_target.is_dir() else "file"
+    display_name = f"{test_target} ({target_type})"
 
     if not instructions:
-        print(f"  SKIP: {filepath} (no instructions)")
+        print(f"  SKIP: {display_name} (no instructions)")
         return True
 
     # Group instructions by type
@@ -401,7 +442,7 @@ def run_test(filepath: Path) -> bool:
 
     for inst_name, args, line_num in instructions:
         if inst_name not in INSTRUCTION_REGISTRY:
-            print(f"  ERROR: {filepath} - Unknown instruction: {inst_name}")
+            print(f"  ERROR: {display_name} - Unknown instruction: {inst_name}")
             return False
 
         inst_class = INSTRUCTION_REGISTRY[inst_name]
@@ -411,32 +452,32 @@ def run_test(filepath: Path) -> bool:
     # Validate single-instance instructions
     for inst_type in ['compile', 'run', 'options']:
         if len(instruction_objects[inst_type]) > 1:
-            print(f"  ERROR: {filepath} - Multiple '{inst_type}' instructions not allowed")
+            print(f"  ERROR: {display_name} - Multiple '{inst_type}' instructions not allowed")
             return False
 
     # Create test context
-    context = TestContext(filepath)
+    context = TestContext(test_target)
     context.has_error_instruction = len(instruction_objects['error']) > 0
 
     try:
         # Execute options first (if present)
         if instruction_objects['options']:
             if not instruction_objects['options'][0].execute(context):
-                print(f"  FAIL: {filepath}")
+                print(f"  FAIL: {display_name}")
                 print(f"    {context.error_message}")
                 return False
 
         # Execute compile or run (run implies compile)
         if instruction_objects['run']:
             if not instruction_objects['run'][0].execute(context):
-                print(f"  FAIL: {filepath}")
+                print(f"  FAIL: {display_name}")
                 print(f"    {context.error_message}")
                 print(f"    Compile output:\n{context.compile_output}")
                 print(f"    Run output:\n{context.run_output}")
                 return False
         elif instruction_objects['compile']:
             if not instruction_objects['compile'][0].execute(context):
-                print(f"  FAIL: {filepath}")
+                print(f"  FAIL: {display_name}")
                 print(f"    {context.error_message}")
                 print(f"    Compile output:\n{context.compile_output}")
                 return False
@@ -444,7 +485,7 @@ def run_test(filepath: Path) -> bool:
         # Validate error expectations
         for error_inst in instruction_objects['error']:
             if not error_inst.execute(context):
-                print(f"  FAIL: {filepath}")
+                print(f"  FAIL: {display_name}")
                 print(f"    {context.error_message}")
                 print(f"    Compile output:\n{context.compile_output}")
                 return False
@@ -452,14 +493,14 @@ def run_test(filepath: Path) -> bool:
         # Validate warning expectations
         for warning_inst in instruction_objects['warning']:
             if not warning_inst.execute(context):
-                print(f"  FAIL: {filepath}")
+                print(f"  FAIL: {display_name}")
                 print(f"    {context.error_message}")
                 print(f"    Compile output:\n{context.compile_output}")
                 return False
 
         # Check for uncovered errors/warnings
         if not context.check_uncovered_messages():
-            print(f"  FAIL: {filepath}")
+            print(f"  FAIL: {display_name}")
             print(f"    {context.error_message}")
             print(f"    Compile output:\n{context.compile_output}")
             return False
@@ -467,31 +508,80 @@ def run_test(filepath: Path) -> bool:
         # Validate stdout expectations
         for stdout_inst in instruction_objects['stdout']:
             if not stdout_inst.execute(context):
-                print(f"  FAIL: {filepath}")
+                print(f"  FAIL: {display_name}")
                 print(f"    {context.error_message}")
                 print(f"    Program output:\n{context.run_output}")
                 return False
 
         # Check for uncovered stdout
         if not context.check_uncovered_stdout():
-            print(f"  FAIL: {filepath}")
+            print(f"  FAIL: {display_name}")
             print(f"    {context.error_message}")
             print(f"    Program output:\n{context.run_output}")
             return False
 
-        print(f"  PASS: {filepath}")
+        print(f"  PASS: {display_name}")
         return True
 
     finally:
         context.cleanup()
 
 
-def find_test_files(directory: Path, recursive: bool) -> List[Path]:
-    """Find all .shiro files in the directory."""
+def find_project_directories(directory: Path, recursive: bool) -> Set[Path]:
+    """Find all directories containing shiro.toml, excluding nested projects."""
+    if not recursive:
+        # Only check immediate subdirectories
+        projects = set()
+        for item in directory.iterdir():
+            if item.is_dir() and (item / "shiro.toml").exists():
+                projects.add(item)
+        return projects
+
+    # Find all directories with shiro.toml
+    all_projects = set()
+    for toml_file in directory.rglob("shiro.toml"):
+        all_projects.add(toml_file.parent)
+
+    # Filter out nested projects (keep only top-level ones)
+    top_level_projects = set()
+    for project in all_projects:
+        # Check if any other project is a parent of this one
+        is_nested = False
+        for other_project in all_projects:
+            if other_project != project and project.is_relative_to(other_project):
+                is_nested = True
+                break
+        if not is_nested:
+            top_level_projects.add(project)
+
+    return top_level_projects
+
+
+def find_test_targets(directory: Path, recursive: bool) -> List[Path]:
+    """Find all test targets: individual .shiro files and project directories with shiro.toml."""
+    # Find project directories first
+    project_dirs = find_project_directories(directory, recursive)
+
+    # Find all .shiro files
     if recursive:
-        return sorted(directory.rglob("*.shiro"))
+        shiro_files = set(directory.rglob("*.shiro"))
     else:
-        return sorted(directory.glob("*.shiro"))
+        shiro_files = set(directory.glob("*.shiro"))
+
+    # Exclude .shiro files that are inside project directories
+    standalone_files = []
+    for shiro_file in shiro_files:
+        is_in_project = False
+        for project_dir in project_dirs:
+            if shiro_file.is_relative_to(project_dir):
+                is_in_project = True
+                break
+        if not is_in_project:
+            standalone_files.append(shiro_file)
+
+    # Combine and sort: project directories first, then standalone files
+    test_targets = sorted(project_dirs) + sorted(standalone_files)
+    return test_targets
 
 
 def main():
@@ -511,7 +601,7 @@ def main():
     parser.add_argument(
         "-c", "--compiler",
         type=Path,
-        help="Path to compiler, default assumes `shiroc` findable via $PATH"
+        help="Path to compiler, default assumes `shiro` findable via $PATH"
     )
     parser.add_argument(
         "--valgrind",
@@ -535,27 +625,27 @@ def main():
         print(f"Error: {args.directory} is not a directory")
         sys.exit(1)
 
-    # Find all test files
-    test_files = find_test_files(args.directory, args.recursive)
+    # Find all test targets (files and project directories)
+    test_targets = find_test_targets(args.directory, args.recursive)
 
-    if not test_files:
-        print(f"No .shiro files found in {args.directory}")
+    if not test_targets:
+        print(f"No test targets found in {args.directory}")
         sys.exit(0)
 
-    print(f"Running {len(test_files)} test(s)...\n")
+    print(f"Running {len(test_targets)} test(s)...\n")
 
     # Run tests
     passed = 0
-    for test_file in test_files:
-        if run_test(test_file):
+    for test_target in test_targets:
+        if run_test(test_target):
             passed += 1
         else:
             # Stop on first failure
             print(f"\nStopping after first failure.")
-            print(f"Results: {passed}/{len(test_files)} passed")
+            print(f"Results: {passed}/{len(test_targets)} passed")
             sys.exit(1)
 
-    print(f"\nAll tests passed! ({passed}/{len(test_files)})")
+    print(f"\nAll tests passed! ({passed}/{len(test_targets)})")
     sys.exit(0)
 
 
