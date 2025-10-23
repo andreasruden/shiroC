@@ -26,6 +26,7 @@ static keyword_t lexer_keywords[] =
     {"class", TOKEN_CLASS},
     {"continue", TOKEN_CONTINUE},
     {"else", TOKEN_ELSE},
+    {"export", TOKEN_EXPORT},
     {"f32", TOKEN_F32},
     {"f64", TOKEN_F64},
     {"false", TOKEN_FALSE},
@@ -91,6 +92,7 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_EXPORT: return "export";
         case TOKEN_IMPORT: return "import";
         case TOKEN_PLUSPLUS: return "++";
         case TOKEN_MINUSMINUS: return "--";

@@ -76,11 +76,12 @@ void semantic_context_register_builtins(semantic_context_t* ctx)
 {
     // Create parameter: value: i32
     ast_param_decl_t* param = (ast_param_decl_t*)ast_param_decl_create("value", ast_type_builtin(TYPE_I32));
-    vec_push(&ctx->builtin_ast_gc, param);
 
     // Register printI32(i32) -> void
     ast_def_t* fn_def = ast_fn_def_create_va("printI32", ast_type_builtin(TYPE_VOID),
         ast_compound_stmt_create_empty(), param, nullptr);
+    vec_push(&ctx->builtin_ast_gc, fn_def);
+
     symbol_t* print_i32 = symbol_create("printI32", SYMBOL_FUNCTION, fn_def);
     print_i32->type = ast_type_invalid();  // FIXME: should be function signature type
     print_i32->data.function.return_type = ast_type_builtin(TYPE_VOID);

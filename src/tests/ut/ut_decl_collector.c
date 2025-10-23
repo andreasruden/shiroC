@@ -302,3 +302,51 @@ TEST(decl_collector_fixture_t, forward_reference_to_class_in_method_param)
 
     ast_node_destroy(root);
 }
+
+TEST(decl_collector_fixture_t, exported_function_in_export_table)
+{
+    vec_t params = VEC_INIT(ast_node_destroy);
+    ast_def_t* fn = ast_fn_def_create("foo", &params, ast_type_builtin(TYPE_I32), nullptr, true);
+    ast_root_t* root = ast_root_create_va(fn, nullptr);
+
+    bool result = decl_collector_run(fix->collector, AST_NODE(root));
+    ASSERT_TRUE(result);
+
+    symbol_t* global_sym = symbol_table_lookup(fix->ctx->global, "foo");
+    ASSERT_NEQ(nullptr, global_sym);
+    ASSERT_EQ(SYMBOL_FUNCTION, global_sym->kind);
+
+    symbol_t* export_sym = symbol_table_lookup(fix->ctx->export, "foo");
+    ASSERT_NEQ(nullptr, export_sym);
+    ASSERT_EQ(SYMBOL_FUNCTION, export_sym->kind);
+
+    ast_node_destroy(root);
+}
+
+TEST(decl_collector_fixture_t, exported_class_in_export_table)
+{
+    vec_t members = VEC_INIT(ast_node_destroy);
+    vec_push(&members, ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr));
+    vec_t methods = VEC_INIT(ast_node_destroy);
+    vec_push(&methods, ast_method_def_create_va("method", nullptr, ast_compound_stmt_create_empty(), nullptr));
+    ast_def_t* cls = ast_class_def_create("Point", &members, &methods, true);
+    ast_root_t* root = ast_root_create_va(cls, nullptr);
+
+    bool result = decl_collector_run(fix->collector, AST_NODE(root));
+    ASSERT_TRUE(result);
+
+    symbol_t* global_sym = symbol_table_lookup(fix->ctx->global, "Point");
+    ASSERT_NEQ(nullptr, global_sym);
+    ASSERT_EQ(SYMBOL_CLASS, global_sym->kind);
+
+    symbol_t* export_sym = symbol_table_lookup(fix->ctx->export, "Point");
+    ASSERT_NEQ(nullptr, export_sym);
+    ASSERT_EQ(SYMBOL_CLASS, export_sym->kind);
+    ASSERT_EQ(1, export_sym->data.class.members.size);
+    ASSERT_EQ(1, export_sym->data.class.methods->map.size);
+    symbol_t* method_sym = symbol_table_lookup(export_sym->data.class.methods, "method");
+    ASSERT_NEQ(nullptr, method_sym);
+    ASSERT_EQ(SYMBOL_METHOD, method_sym->kind);
+
+    ast_node_destroy(root);
+}

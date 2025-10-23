@@ -44,4 +44,6 @@ vec_t* symbol_table_overloads(symbol_table_t* table, const char* name);
 // Every symbol from src is cloned and added into dst
 void symbol_table_merge(symbol_table_t* dst, symbol_table_t* src);
 
+void symbol_table_clone(symbol_table_t* dst, symbol_table_t* src);
+
 #endif

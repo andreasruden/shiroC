@@ -58,7 +58,7 @@ bool hash_table_contains(hash_table_t* table, const char* key);
 
 void hash_table_remove(hash_table_t* table, const char* key);
 
-// Make a deep-copy of src into dst
+// Make a deep-copy of src into dst. It is the callers responsibility to ensure dst has been deinit'd first.
 void hash_table_clone(hash_table_t* dst, hash_table_t* src, hash_table_clone_value_fn clone_value_fn);
 
 /* Iterator interface for traversing all entries (unordered) in the hash table.

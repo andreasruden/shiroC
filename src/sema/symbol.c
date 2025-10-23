@@ -36,6 +36,11 @@ symbol_t* symbol_create(const char* name, symbol_kind_t kind, void* ast)
     return symbol;
 }
 
+static void* member_copy_fn(void* member)
+{
+    return member;  // hash table does not own its value
+}
+
 symbol_t* symbol_clone(symbol_t* source)
 {
     symbol_t* new_symb = symbol_create(source->name, source->kind, source->ast);
@@ -52,7 +57,9 @@ symbol_t* symbol_clone(symbol_t* source)
             new_symb->data.function.return_type = source->data.function.return_type;
             break;
         case SYMBOL_CLASS:
-            panic("Cloning class symbols is not implemented");
+            hash_table_deinit(&new_symb->data.class.members);
+            hash_table_clone(&new_symb->data.class.members, &source->data.class.members, member_copy_fn);
+            symbol_table_clone(new_symb->data.class.methods, source->data.class.methods);
             break;
         default:
             break;

@@ -496,3 +496,36 @@ TEST(parser_classes_fixture_t, parse_self_member_access)
     ast_node_destroy(expr);
     ast_node_destroy(expected);
 }
+
+// Parse source code with exported class containing a method
+TEST(parser_classes_fixture_t, parse_exported_class_with_method)
+{
+    parser_set_source(fix->parser, "test",
+        "export class Calculator {\n"
+        "    fn multiply(a: i32, b: i32) -> i32 { return a * b; }\n"
+        "}");
+    ast_root_t* root = parser_parse(fix->parser);
+    ASSERT_NEQ(nullptr, root);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    vec_t members = VEC_INIT(ast_node_destroy);
+    vec_t methods = VEC_INIT(ast_node_destroy);
+    vec_push(&methods, ast_method_def_create_va("multiply", ast_type_builtin(TYPE_I32),
+        ast_compound_stmt_create_va(
+            ast_return_stmt_create(
+                ast_bin_op_create(TOKEN_STAR,
+                    ast_ref_expr_create("a"),
+                    ast_ref_expr_create("b"))),
+            nullptr),
+        ast_param_decl_create("a", ast_type_builtin(TYPE_I32)),
+        ast_param_decl_create("b", ast_type_builtin(TYPE_I32)),
+        nullptr));
+
+    ast_root_t* expected = ast_root_create_va(
+        ast_class_def_create("Calculator", &members, &methods, true),
+        nullptr);
+
+    ASSERT_TREES_EQUAL(expected, root);
+    ast_node_destroy(root);
+    ast_node_destroy(expected);
+}

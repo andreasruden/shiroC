@@ -1033,7 +1033,7 @@ static ast_decl_t* parse_param_decl(parser_t* parser)
     return decl;
 }
 
-static ast_def_t* parse_fn_def(parser_t* parser)
+static ast_def_t* parse_fn_def(parser_t* parser, bool exported)
 {
     token_t* id = nullptr;
     vec_t params = VEC_INIT(ast_node_destroy);
@@ -1080,7 +1080,7 @@ static ast_def_t* parse_fn_def(parser_t* parser)
     if (body == nullptr)
         goto cleanup;
 
-    fn_def = ast_fn_def_create(id->value, &params, ret_type, body);
+    fn_def = ast_fn_def_create(id->value, &params, ret_type, body, exported);
     parser_set_source_tok_to_current(parser, fn_def, tok_fn);
 
     if (ret_type != nullptr && ret_type->kind == AST_TYPE_INVALID)
@@ -1107,7 +1107,7 @@ static ast_decl_t* parse_member_decl(parser_t* parser)
 static ast_def_t* parse_method_def(parser_t* parser)
 {
     token_t* tok_start = lexer_peek_token(parser->lexer);
-    ast_fn_def_t* fn_def = (ast_fn_def_t*)parse_fn_def(parser);
+    ast_fn_def_t* fn_def = (ast_fn_def_t*)parse_fn_def(parser, false);
     if (fn_def == nullptr)
         return nullptr;
     ast_def_t* method = ast_method_def_create_from(fn_def);
@@ -1115,7 +1115,7 @@ static ast_def_t* parse_method_def(parser_t* parser)
     return method;
 }
 
-static ast_def_t* parse_class_def(parser_t* parser)
+static ast_def_t* parse_class_def(parser_t* parser, bool exported)
 {
     vec_t members = VEC_INIT(ast_node_destroy);
     vec_t methods = VEC_INIT(ast_node_destroy);
@@ -1160,7 +1160,7 @@ static ast_def_t* parse_class_def(parser_t* parser)
     if (!lexer_next_token_iff(parser->lexer, TOKEN_RBRACE))
         goto cleanup;
 
-    ast_def_t* class_def = ast_class_def_create(tok_id->value, &members, &methods);
+    ast_def_t* class_def = ast_class_def_create(tok_id->value, &members, &methods, exported);
     parser_set_source_tok_to_current(parser, class_def, tok_class);
     return class_def;
 
@@ -1201,19 +1201,31 @@ static ast_def_t* parse_import_def(parser_t* parser)
 
 static ast_def_t* parse_top_level_definition(parser_t* parser)
 {
+    bool export = false;
+
+parse:
     switch (lexer_peek_token(parser->lexer)->type)
     {
         case TOKEN_FN:
             parser->state = PARSER_STATE_REST;
-            return parse_fn_def(parser);
+            return parse_fn_def(parser, export);
         case TOKEN_CLASS:
             parser->state = PARSER_STATE_REST;
-            return parse_class_def(parser);
+            return parse_class_def(parser, export);
         case TOKEN_IMPORT:
+            if (export)
+                lexer_emit_token_malformed(parser->lexer, lexer_peek_token(parser->lexer), "Expected fn or class");
             return parse_import_def(parser);
+        case TOKEN_EXPORT:
+            if (export)
+                lexer_emit_token_malformed(parser->lexer, lexer_peek_token(parser->lexer), "Expected fn or class");
+            export = true;
+            lexer_next_token(parser->lexer);
+            goto parse;
         default:
             break;
     }
+
     return nullptr;
 }
 

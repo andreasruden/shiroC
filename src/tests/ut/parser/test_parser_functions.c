@@ -171,3 +171,24 @@ TEST(parser_functions_fixture_t, parse_complex_type_annotation_in_return_type)
     ast_node_destroy(root);
     ast_node_destroy(expected);
 }
+
+// Parse source code with exported function
+TEST(parser_functions_fixture_t, parse_exported_function)
+{
+    parser_set_source(fix->parser, "test", "export fn foo() -> i32 { return 42; }");
+    ast_root_t* root = parser_parse(fix->parser);
+    ASSERT_NEQ(nullptr, root);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    vec_t empty_params = VEC_INIT(ast_node_destroy);
+    ast_root_t* expected = ast_root_create_va(
+        ast_fn_def_create("foo", &empty_params, ast_type_builtin(TYPE_I32),
+            ast_compound_stmt_create_va(
+                ast_return_stmt_create(ast_int_lit_val(42)),
+                nullptr), true),
+        nullptr);
+
+    ASSERT_TREES_EQUAL(expected, root);
+    ast_node_destroy(root);
+    ast_node_destroy(expected);
+}

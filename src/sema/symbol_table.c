@@ -75,3 +75,28 @@ void symbol_table_merge(symbol_table_t* dst, symbol_table_t* src)
 
     panic("not implemented");
 }
+
+static void* symbol_vec_clone_wrapper(void* symbols_vec)
+{
+    vec_t* src_vec = symbols_vec;
+    vec_t* dst_vec = vec_create(symbol_destroy_void);
+
+    for (size_t i = 0; i < vec_size(src_vec); ++i)
+    {
+        symbol_t* original_symbol = vec_get(src_vec, i);
+        symbol_t* cloned_symbol = symbol_clone(original_symbol);
+        vec_push(dst_vec, cloned_symbol);
+    }
+
+    return dst_vec;
+}
+
+void symbol_table_clone(symbol_table_t* dst, symbol_table_t* src)
+{
+    panic_if(dst->map.size != 0);
+
+    dst->kind = src->kind;
+    dst->parent = src->parent;
+    hash_table_deinit(&dst->map);
+    hash_table_clone(&dst->map, &src->map, symbol_vec_clone_wrapper);
+}

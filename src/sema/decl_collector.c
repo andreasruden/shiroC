@@ -39,15 +39,17 @@ void collect_class_def(void* self_, ast_class_def_t* class_def, void* out_)
         return;
     }
 
-    symbol_t* class_symb = symbol_create(class_def->base.name, SYMBOL_CLASS, class_def);
-    symbol_table_insert(collector->ctx->global, class_symb);
-    collector->current_class = class_symb;
+    collector->current_class = symbol_create(class_def->base.name, SYMBOL_CLASS, class_def);
 
     for (size_t i = 0; i < vec_size(&class_def->members); ++i)
         ast_visitor_visit(collector, vec_get(&class_def->members, i), nullptr);
 
     for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
         ast_visitor_visit(collector, vec_get(&class_def->methods, i), nullptr);
+
+    symbol_table_insert(collector->ctx->global, collector->current_class);
+    if (class_def->exported)
+        symbol_table_insert(collector->ctx->export, symbol_clone(collector->current_class));
 
     collector->current_class = nullptr;
 }
@@ -118,6 +120,8 @@ void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     fn_def->overload_index = num_prev_defs;
 
     symbol_table_insert(collector->ctx->global, symbol);
+    if (fn_def->exported)
+        symbol_table_insert(collector->ctx->export, symbol_clone(symbol));
 }
 
 void collect_member_decl(void* self_, ast_member_decl_t* member, void* out_)

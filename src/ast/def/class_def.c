@@ -21,12 +21,13 @@ static ast_node_vtable_t ast_class_def_vtable =
     .destroy = ast_class_def_destroy
 };
 
-ast_def_t* ast_class_def_create(const char* name, vec_t* members, vec_t* methods)
+ast_def_t* ast_class_def_create(const char* name, vec_t* members, vec_t* methods, bool exported)
 {
     ast_class_def_t* class_def = malloc(sizeof(*class_def));
 
     *class_def = (ast_class_def_t){
         .base.name = strdup(name),
+        .exported = exported,
     };
     vec_move(&class_def->members, members);
     vec_move(&class_def->methods, methods);
@@ -54,7 +55,7 @@ ast_def_t* ast_class_def_create_va(const char* name, ...)
     }
     va_end(args);
 
-    return ast_class_def_create(name, &members, &methods);
+    return ast_class_def_create(name, &members, &methods, false);
 }
 
 static void ast_class_def_accept(void* self_, ast_visitor_t* visitor, void* out)

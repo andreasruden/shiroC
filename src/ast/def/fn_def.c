@@ -21,7 +21,7 @@ static ast_node_vtable_t ast_fn_def_vtable =
     .destroy = ast_fn_def_destroy
 };
 
-ast_def_t* ast_fn_def_create(const char* name, vec_t* params, ast_type_t* ret_type, ast_stmt_t* body)
+ast_def_t* ast_fn_def_create(const char* name, vec_t* params, ast_type_t* ret_type, ast_stmt_t* body, bool exported)
 {
     ast_fn_def_t* fn_def = malloc(sizeof(*fn_def));
 
@@ -29,6 +29,7 @@ ast_def_t* ast_fn_def_create(const char* name, vec_t* params, ast_type_t* ret_ty
         .base.name = strdup(name),
         .return_type = ret_type,
         .body = body,
+        .exported = exported,
     };
     vec_move(&fn_def->params, params);
     AST_NODE(fn_def)->vtable = &ast_fn_def_vtable;
@@ -48,7 +49,7 @@ ast_def_t* ast_fn_def_create_va(const char* name, ast_type_t* ret_type, ast_stmt
     }
     va_end(args);
 
-    return ast_fn_def_create(name, &params, ret_type, body);
+    return ast_fn_def_create(name, &params, ret_type, body, false);
 }
 
 static void ast_fn_def_accept(void* self_, ast_visitor_t* visitor, void* out)

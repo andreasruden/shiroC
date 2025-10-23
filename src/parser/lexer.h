@@ -14,6 +14,7 @@ typedef enum
     TOKEN_CLASS,
     TOKEN_CONTINUE,
     TOKEN_ELSE,
+    TOKEN_EXPORT,
     TOKEN_F32,
     TOKEN_F64,
     TOKEN_FALSE,

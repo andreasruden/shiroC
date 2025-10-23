@@ -99,6 +99,8 @@ static void print_class_def(void* self_, ast_class_def_t* class_def, void* out_)
     ast_printer_t* self = self_;
 
     string_append_cstr(out, ssprintf("%*sClassDef '%s'", self->indentation, "", class_def->base.name));
+    if (class_def->exported)
+        string_append_cstr(out, " exported");
     print_source_location(self, class_def, out);
     string_append_cstr(out, "\n");
 
@@ -118,6 +120,8 @@ static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     string_append_cstr(out, ssprintf("%*sFnDef '%s'", self->indentation, "", fn_def->base.name));
     if (fn_def->return_type != nullptr)
         string_append_cstr(out, ssprintf(" %s", ast_type_string(fn_def->return_type)));
+    if (fn_def->exported)
+        string_append_cstr(out, " exported");
     print_source_location(self, fn_def, out);
     string_append_cstr(out, "\n");
 
