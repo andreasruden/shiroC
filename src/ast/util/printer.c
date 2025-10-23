@@ -4,6 +4,7 @@
 #include "ast/def/class_def.h"
 #include "ast/def/fn_def.h"
 #include "ast/def/method_def.h"
+#include "ast/def/import_def.h"
 #include "ast/type.h"
 #include "ast/visitor.h"
 #include "common/containers/string.h"
@@ -143,6 +144,17 @@ static void print_method_def(void* self_, ast_method_def_t* method_def, void* ou
         ast_visitor_visit(self, vec_get(&method_def->base.params, i), out);
     ast_visitor_visit(self, method_def->base.body, out);
     self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
+static void print_import_def(void* self_, ast_import_def_t* import_def, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sUseDef '%s.%s'", self->indentation, "", import_def->project_name,
+        import_def->module_name));
+    print_source_location(self, import_def, out);
+    string_append_cstr(out, "\n");
 }
 
 static void print_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
@@ -581,6 +593,7 @@ ast_printer_t* ast_printer_create()
             .visit_class_def = print_class_def,
             .visit_fn_def = print_fn_def,
             .visit_method_def = print_method_def,
+            .visit_import_def = print_import_def,
             // Expressions
             .visit_array_lit = print_array_lit,
             .visit_array_slice = print_array_slice,

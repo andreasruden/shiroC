@@ -4,6 +4,7 @@
 #include "ast/def/class_def.h"
 #include "ast/def/fn_def.h"
 #include "ast/def/method_def.h"
+#include "ast/def/import_def.h"
 #include "ast/type.h"
 #include "ast/visitor.h"
 #include "common/containers/string.h"
@@ -87,6 +88,13 @@ static void present_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     string_append_cstr(out, ")");
     if (fn_def->return_type)
         string_append_cstr(out, ssprintf(" -> %s", ast_type_string(fn_def->return_type)));
+}
+
+static void present_import_def(void* self_, ast_import_def_t* import_def, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("use %s.%s", import_def->project_name, import_def->module_name));
 }
 
 static void present_method_def(void* self_, ast_method_def_t* method_def, void* out_)
@@ -408,6 +416,7 @@ ast_presenter_t* ast_presenter_create()
             .visit_class_def = present_class_def,
             .visit_fn_def = present_fn_def,
             .visit_method_def = present_method_def,
+            .visit_import_def = present_import_def,
             // Expressions
             .visit_array_lit = present_array_lit,
             .visit_array_slice = present_array_slice,

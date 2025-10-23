@@ -56,6 +56,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/def/def.c \
 	$(SRC_DIR)/ast/def/class_def.c \
 	$(SRC_DIR)/ast/def/fn_def.c \
+	$(SRC_DIR)/ast/def/import_def.c \
 	$(SRC_DIR)/ast/def/method_def.c \
 	$(SRC_DIR)/ast/expr/array_lit.c \
 	$(SRC_DIR)/ast/expr/array_slice.c \
@@ -121,6 +122,7 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/parser/test_parser_expressions.c \
 	$(UT_SRC_DIR)/parser/test_parser_functions.c \
 	$(UT_SRC_DIR)/parser/test_parser_literals.c \
+	$(UT_SRC_DIR)/parser/test_parser_misc.c \
 	$(UT_SRC_DIR)/parser/test_parser_pointers.c \
 	$(UT_SRC_DIR)/parser/test_parser_statements.c \
 	$(UT_SRC_DIR)/sema/test_sema_arrays.c \

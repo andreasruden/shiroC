@@ -7,6 +7,7 @@
 #include "ast/def/def.h"
 #include "ast/def/fn_def.h"
 #include "ast/def/method_def.h"
+#include "ast/def/import_def.h"
 #include "ast/expr/array_lit.h"
 #include "ast/expr/array_slice.h"
 #include "ast/expr/array_subscript.h"
@@ -58,6 +59,7 @@ parser_t* parser_create()
     parser_t* parser = malloc(sizeof(*parser));
 
     *parser = (parser_t){
+        .state = PARSER_STATE_IMPORT_DEF,
         .lex_errors = VEC_INIT(compiler_error_destroy_void),
         .errors = VEC_INIT(nullptr),  // mix of lex errors and AST node errors
     };
@@ -1168,14 +1170,47 @@ cleanup:
     return nullptr;
 }
 
+static ast_def_t* parse_import_def(parser_t* parser)
+{
+    token_t* tok_import = lexer_next_token_iff(parser->lexer, TOKEN_IMPORT);
+    if (tok_import == nullptr)
+        return nullptr;
+
+    if (parser->state != PARSER_STATE_IMPORT_DEF)
+    {
+        lexer_emit_token_malformed(parser->lexer, tok_import,
+            "Module includes via 'import' must be at the top of the source file");
+    }
+
+    token_t* tok_project = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
+    if (tok_project == nullptr)
+        return nullptr;
+
+    lexer_next_token_iff(parser->lexer, TOKEN_DOT);
+
+    token_t* tok_module = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
+    if (tok_module == nullptr)
+        return nullptr;
+
+    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON);
+
+    ast_def_t* import_def = ast_import_def_create(tok_project->value, tok_module->value);
+    parser_set_source_tok_to_current(parser, import_def, tok_import);
+    return import_def;
+}
+
 static ast_def_t* parse_top_level_definition(parser_t* parser)
 {
     switch (lexer_peek_token(parser->lexer)->type)
     {
         case TOKEN_FN:
+            parser->state = PARSER_STATE_REST;
             return parse_fn_def(parser);
         case TOKEN_CLASS:
+            parser->state = PARSER_STATE_REST;
             return parse_class_def(parser);
+        case TOKEN_IMPORT:
+            return parse_import_def(parser);
         default:
             break;
     }

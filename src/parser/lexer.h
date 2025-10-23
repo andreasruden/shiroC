@@ -20,6 +20,7 @@ typedef enum
     TOKEN_FN,
     TOKEN_FOR,
     TOKEN_IF,
+    TOKEN_IMPORT,
     TOKEN_I8,
     TOKEN_I16,
     TOKEN_I32,

@@ -2,6 +2,7 @@
 
 #include "ast/decl/param_decl.h"
 #include "ast/def/class_def.h"
+#include "ast/def/import_def.h"
 #include "ast/def/method_def.h"
 #include "ast/expr/coercion_expr.h"
 #include "ast/expr/construct_expr.h"
@@ -373,6 +374,13 @@ static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
 
     hash_table_destroy(llvm->symbols);
     llvm->symbols = nullptr;
+}
+
+static void emit_import_def(void* self_, ast_import_def_t* import, void* out_)
+{
+    (void)self_;
+    (void)import;
+    (void)out_;
 }
 
 // Pass 3: Define method body (signature already declared in pass 2)
@@ -1502,6 +1510,7 @@ llvm_codegen_t* llvm_codegen_create()
             .visit_var_decl = emit_var_decl,
             // Definitions
             // Note: class_def and fn_def are handled directly in emit_root (three-pass approach)
+            .visit_import_def = emit_import_def,
             .visit_method_def = emit_method_def,
             // Expressions
             .visit_array_lit = emit_array_lit,

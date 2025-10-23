@@ -32,6 +32,7 @@ static keyword_t lexer_keywords[] =
     {"fn", TOKEN_FN},
     {"for", TOKEN_FOR},
     {"if", TOKEN_IF},
+    {"import", TOKEN_IMPORT},
     {"i8", TOKEN_I8},
     {"i16", TOKEN_I16},
     {"i32", TOKEN_I32},
@@ -90,6 +91,7 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_IMPORT: return "import";
         case TOKEN_PLUSPLUS: return "++";
         case TOKEN_MINUSMINUS: return "--";
         case TOKEN_SELF: return "self";

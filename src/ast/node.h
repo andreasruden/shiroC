@@ -21,6 +21,7 @@ typedef enum ast_node_kind
     AST_DEF_CLASS,
     AST_DEF_FN,
     AST_DEF_METHOD,
+    AST_DEF_USE,
     AST_DEF_END, // Sentinel
 
     // Expressions

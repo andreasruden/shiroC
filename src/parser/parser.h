@@ -1,17 +1,23 @@
 #ifndef PARSER__H
 #define PARSER__H
 
-#include "ast/decl/decl.h"
 #include "ast/expr/expr.h"
 #include "ast/stmt/stmt.h"
 #include "ast/root.h"
 #include "lexer.h"
+
+typedef enum parser_state
+{
+    PARSER_STATE_IMPORT_DEF,  // parsing imports
+    PARSER_STATE_REST,        // parsing functions & classes
+} parser_state_t;
 
 typedef struct parser
 {
     lexer_t* lexer;
     vec_t lex_errors;   // only lex errors: we own those
     vec_t errors;       // lex + AST errors
+    parser_state_t state;
 } parser_t;
 
 parser_t* parser_create();

@@ -51,6 +51,13 @@ static void* ast_transformer_transform_fn_def(void* self_, ast_fn_def_t* fn_def,
     return fn_def;
 }
 
+static void* ast_transformer_transform_import_def(void* self_, ast_import_def_t* import_def, void* out_)
+{
+    (void)self_;
+    (void)out_;
+    return import_def;
+}
+
 static void* ast_transformer_transform_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
 {
     for (size_t i = 0; i < vec_size(&lit->exprs); ++i)
@@ -291,6 +298,7 @@ void ast_transformer_init(ast_transformer_t* transformer)
         .transform_class_def = ast_transformer_transform_class_def,
         .transform_fn_def = ast_transformer_transform_fn_def,
         .transform_method_def = ast_transformer_transform_method_def,
+        .transform_import_def = ast_transformer_transform_import_def,
         // Expressions
         .transform_array_lit = ast_transformer_transform_array_lit,
         .transform_array_slice = ast_transformer_transform_array_slice,

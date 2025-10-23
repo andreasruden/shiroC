@@ -3,6 +3,7 @@
 #include "ast/decl/member_decl.h"
 #include "ast/decl/param_decl.h"
 #include "ast/def/fn_def.h"
+#include "ast/def/import_def.h"
 #include "ast/def/method_def.h"
 #include "ast/expr/coercion_expr.h"
 #include "ast/expr/int_lit.h"
@@ -389,6 +390,13 @@ static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     sema->current_function = nullptr;
     sema->current_function_scope = nullptr;
     return fn;
+}
+
+static void* analyze_import_def(void* self_, ast_import_def_t* import, void* out_)
+{
+    (void)self_;
+    (void)out_;
+    return import;
 }
 
 static void* analyze_method_def(void* self_, ast_method_def_t* method, void* out_)
@@ -1698,6 +1706,7 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             // Definitions
             .transform_class_def = analyze_class_def,
             .transform_fn_def = analyze_fn_def,
+            .transform_import_def = analyze_import_def,
             .transform_method_def = analyze_method_def,
             // Expressions
             .transform_array_lit = analyze_array_lit,

@@ -7,6 +7,7 @@
 #include "ast/def/class_def.h"
 #include "ast/def/fn_def.h"
 #include "ast/def/method_def.h"
+#include "ast/def/import_def.h"
 #include "ast/expr/array_lit.h"
 #include "ast/expr/array_slice.h"
 #include "ast/expr/array_subscript.h"
@@ -63,6 +64,7 @@ struct ast_visitor
     void (*visit_class_def)(void* self_, ast_class_def_t* class_def, void *out_);
     void (*visit_fn_def)(void* self_, ast_fn_def_t* fn_def, void *out_);
     void (*visit_method_def)(void* self_, ast_method_def_t* method_def, void *out_);
+    void (*visit_import_def)(void* self_, ast_import_def_t* import_def, void *out_);
 
     // Expressions
     void (*visit_array_lit)(void* self_, ast_array_lit_t* lit, void *out_);
