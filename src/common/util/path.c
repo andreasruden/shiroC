@@ -29,6 +29,22 @@ char* join_path(const char* path_a, const char* path_b)
     return string_release(&result);
 }
 
+const char* filename(const char* path)
+{
+    if (path == nullptr)
+        return nullptr;
+
+    const char* last_sep = strrchr(path, PATH_SEPARATOR);
+
+    if (last_sep == nullptr) {
+        // No separator found, entire path is the filename
+        return path;
+    }
+
+    // Return everything after the last separator
+    return last_sep + 1;
+}
+
 bool path_is_subpath_of(const char* base_path, const char* subpath)
 {
     if (base_path == nullptr || subpath == nullptr)

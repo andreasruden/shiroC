@@ -12,7 +12,7 @@
 
 #define panic_if(cond) do { \
     if (cond) { \
-        fprintf(stderr, "PANIC at %s:%d in %s(): assertion failed: %s\n", \
+        fprintf(stderr, "PANIC at %s:%d in %s(): assertion failed because %s\n", \
                 __FILE__, __LINE__, __func__, #cond); \
         fflush(stderr); \
         __builtin_trap(); \

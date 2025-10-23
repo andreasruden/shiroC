@@ -93,8 +93,6 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/util/cloner.c \
 	$(SRC_DIR)/ast/util/presenter.c \
 	$(SRC_DIR)/ast/util/printer.c \
-	$(SRC_DIR)/builder/builder.c \
-	$(SRC_DIR)/builder/module.c \
 	$(SRC_DIR)/common/toml_parser.c \
 	$(SRC_DIR)/common/containers/hash_table.c \
 	$(SRC_DIR)/common/containers/string.c \
@@ -136,7 +134,8 @@ UT_SRCS = \
 # Compiler target
 COMPILER_TARGET = $(BIN_DIR)/shiro
 COMPILER_SRCS = $(COMMON_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/codegen/llvm/llvm_codegen.c \
-	$(SRC_DIR)/codegen/llvm/llvm_type_utils.c
+	$(SRC_DIR)/codegen/llvm/llvm_type_utils.c $(SRC_DIR)/builder/builder.c \
+	$(SRC_DIR)/builder/module.c
 COMPILER_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMPILER_SRCS))
 
 # Unit-tests target
@@ -219,7 +218,7 @@ test-ut: $(UT_TARGETS)
 	done
 
 test-st: $(BIN_DIR)
-	cd build/ && python3 ../scripts/systemtester/tester.py -c ./bin/shiro ../src/tests/st/
+	python3 scripts/systemtester/tester.py -c ./build/bin/shiro src/tests/st/
 
 .PHONY: tests
 tests: test-ut test-st
@@ -241,7 +240,7 @@ valgrind-ut: $(UT_TARGETS)
 	done
 
 valgrind-st:  $(BIN_DIR)
-	cd build/ && python3 ../scripts/systemtester/tester.py --valgrind -c ./bin/shiro ../src/tests/st/
+	python3 ./scripts/systemtester/tester.py --valgrind -c ./build/bin/shiro src/tests/st/
 
 .PHONY: valgrind-tests
 valgrind-tests: valgrind-ut valgrind-st

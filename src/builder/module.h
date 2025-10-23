@@ -1,6 +1,7 @@
 #ifndef BUILDER_MODULE__H
 #define BUILDER_MODULE__H
 
+#include "ast/root.h"
 #include "common/containers/vec.h"
 #include "sema/semantic_context.h"
 
@@ -12,13 +13,19 @@ typedef enum module_kind
     MODULE_LIBRARY,
 } module_kind_t;
 
+typedef struct module_src
+{
+    char* filepath;
+    ast_root_t* ast;
+} module_src_t;
+
 typedef struct module
 {
     builder_t* builder;
     module_kind_t kind;
     char* name;
     char* src_dir;
-    vec_t ast;  // AST of each source file (ast_root_t*)
+    vec_t sources;  // module_src_t*
     vec_t dependencies;  // name of module (char*)
     semantic_context_t* sema_context;
 } module_t;

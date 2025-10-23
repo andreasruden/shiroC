@@ -1575,7 +1575,7 @@ void llvm_codegen_destroy(llvm_codegen_t* llvm)
     free(llvm);
 }
 
-void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, const char* source_filename, FILE* out)
+void llvm_codegen_init(llvm_codegen_t* llvm, const char* module_name)
 {
     // Register builtin functions
     register_builtins(llvm);
@@ -1583,6 +1583,19 @@ void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, const char* s
     // Initialize debug info
     llvm->di_builder = LLVMCreateDIBuilder(llvm->module);
 
+    // Create a synthetic file for the module compile unit
+    LLVMMetadataRef module_file = LLVMDIBuilderCreateFile(llvm->di_builder, module_name, strlen(module_name), ".", 1);
+
+    // Create compile unit for the whole module
+    llvm->di_compile_unit = LLVMDIBuilderCreateCompileUnit(llvm->di_builder, LLVMDWARFSourceLanguageC, module_file,
+        "ShiroC Compiler", 16, 0, "", 0, 0, "", 0, LLVMDWARFEmissionFull, 0, 0, 0, "", 0, "", 0);
+
+    llvm->di_scopes = hash_table_create(nullptr);
+    llvm->current_di_scope = nullptr;
+}
+
+void llvm_codegen_add_ast(llvm_codegen_t* llvm, ast_node_t* root, const char* source_filename)
+{
     // Extract filename from path (get part after last '/')
     const char* filename = strrchr(source_filename, '/');
     filename = filename ? filename + 1 : source_filename;
@@ -1592,19 +1605,17 @@ void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, const char* s
     size_t dir_len = last_slash ? (size_t)(last_slash - source_filename) : 0;
     char* directory = dir_len > 0 ? strndup(source_filename, dir_len) : strdup(".");
 
-    // Create debug info file
+    // Create debug info file for this specific source
     llvm->di_file = LLVMDIBuilderCreateFile(llvm->di_builder, filename, strlen(filename), directory, strlen(directory));
 
-    // Create compile unit
-    llvm->di_compile_unit = LLVMDIBuilderCreateCompileUnit(llvm->di_builder, LLVMDWARFSourceLanguageC,
-        llvm->di_file, "ShiroC Compiler", 16, 0, "", 0, 0, "", 0, LLVMDWARFEmissionFull, 0, 0, 0, "", 0, "", 0);
-
-    llvm->di_scopes = hash_table_create(nullptr);
-    llvm->current_di_scope = nullptr;
-
-    // Generate the LLVM IR into the module
+    // Generate the LLVM IR into the module (accumulates with previous ASTs)
     ast_visitor_visit(llvm, root, nullptr);
 
+    free(directory);
+}
+
+void llvm_codegen_finalize(llvm_codegen_t* llvm, FILE* out)
+{
     // Finalize debug info
     LLVMDIBuilderFinalize(llvm->di_builder);
 
@@ -1620,6 +1631,16 @@ void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, const char* s
     char* ir_string = LLVMPrintModuleToString(llvm->module);
     fprintf(out, "%s", ir_string);
     LLVMDisposeMessage(ir_string);
+}
 
-    free(directory);
+void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, const char* source_filename, FILE* out)
+{
+    // Convenience wrapper: init -> add_ast -> finalize
+    // Extract filename for module name
+    const char* filename = strrchr(source_filename, '/');
+    filename = filename ? filename + 1 : source_filename;
+
+    llvm_codegen_init(llvm, filename);
+    llvm_codegen_add_ast(llvm, root, source_filename);
+    llvm_codegen_finalize(llvm, out);
 }

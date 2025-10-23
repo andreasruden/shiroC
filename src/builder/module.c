@@ -7,6 +7,7 @@
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
 #include "common/util/path.h"
+#include "common/util/ssprintf.h"
 #include "compiler_error.h"
 #include "parser/parser.h"
 #include "sema/decl_collector.h"
@@ -71,6 +72,17 @@ static bool ends_with(const char* str, const char* suffix)
     return strcmp(str + str_len - suffix_len, suffix) == 0;
 }
 
+static void module_src_destroy(void* src_)
+{
+    module_src_t* src = src_;
+    if (src == nullptr)
+        return;
+
+    free(src->filepath);
+    ast_node_destroy(src->ast);
+    free(src);
+}
+
 module_t* module_create(builder_t* builder, const char* name, const char* src_dir, module_kind_t kind)
 {
     module_t* module = malloc(sizeof(*module));
@@ -81,7 +93,7 @@ module_t* module_create(builder_t* builder, const char* name, const char* src_di
         .kind = kind,
         .name = strdup(name),
         .src_dir = strdup(src_dir),
-        .ast = VEC_INIT(ast_node_destroy),
+        .sources = VEC_INIT(module_src_destroy),
         .dependencies = VEC_INIT(free),
         .sema_context = semantic_context_create(),
     };
@@ -96,7 +108,7 @@ void module_destroy(module_t* module)
 
     free(module->name);
     free(module->src_dir);
-    vec_deinit(&module->ast);
+    vec_deinit(&module->sources);
     vec_deinit(&module->dependencies);
     semantic_context_destroy(module->sema_context);
     free(module);
@@ -180,17 +192,23 @@ static bool parse_directory_recursive(module_t* module, parser_t* parser, const 
             print_compiler_errors(&parser->errors);
 
         free(source);
-        free(entry_path);
 
         if (!ast || failed_parse)
         {
             ast_node_destroy(ast);
+            free(entry_path);
             success = false;
             continue;
         }
 
         // Add AST to module
-        vec_push(&module->ast, ast);
+        module_src_t* src = malloc(sizeof(*src));
+        *src = (module_src_t){
+            .filepath = strdup(entry_path),
+            .ast = ast,
+        };
+        vec_push(&module->sources, src);
+        free(entry_path);
     }
 
     closedir(dir);
@@ -218,10 +236,10 @@ bool module_decl_collect(module_t* module)
 
     // Run declaration collection on all AST nodes
     bool success = true;
-    for (size_t i = 0; i < vec_size(&module->ast); ++i)
+    for (size_t i = 0; i < vec_size(&module->sources); ++i)
     {
-        ast_node_t* ast = vec_get(&module->ast, i);
-        if (!decl_collector_run(decl_collector, ast))
+        module_src_t* src = vec_get(&module->sources, i);
+        if (!decl_collector_run(decl_collector, AST_NODE(src->ast)))
             success = false;
     }
 
@@ -251,10 +269,10 @@ bool module_compile(module_t* module)
 
     // Run semantic analysis on all AST nodes
     bool success = true;
-    for (size_t i = 0; i < vec_size(&module->ast); ++i)
+    for (size_t i = 0; i < vec_size(&module->sources); ++i)
     {
-        ast_node_t* ast = vec_get(&module->ast, i);
-        if (!semantic_analyzer_run(sema, ast))
+        module_src_t* src = vec_get(&module->sources, i);
+        if (!semantic_analyzer_run(sema, AST_NODE(src->ast)))
             success = false;
     }
 
@@ -270,7 +288,25 @@ bool module_compile(module_t* module)
     if (vec_size(&module->sema_context->warning_nodes) > 0)
         print_ast_errors(&module->sema_context->warning_nodes);
 
-    // FIXME: Generate LLVM IR for each AST (currently we have to output to .ll files; fix that first)
+    // Generate LLVM IR for all sources into one module
+    mkdir(module->builder->build_dir, 0755);
+    llvm_codegen_t* llvm = llvm_codegen_create();
+    llvm_codegen_init(llvm, module->name);
+
+    for (size_t i = 0; i < vec_size(&module->sources); ++i)
+    {
+        module_src_t* src = vec_get(&module->sources, i);
+        llvm_codegen_add_ast(llvm, AST_NODE(src->ast), src->filepath);
+    }
+
+    char* ll_path = join_path(module->builder->build_dir, ssprintf("%s.ll", module->name));
+    FILE* ll_file = fopen(ll_path, "w");
+    panic_if(ll_file == nullptr);
+    llvm_codegen_finalize(llvm, ll_file);
+    fclose(ll_file);
+    free(ll_path);
+
+    llvm_codegen_destroy(llvm);
 
     return true;
 }
@@ -280,5 +316,48 @@ bool module_link(module_t* module)
     panic_if(module->kind != MODULE_BINARY);
 
     printf("Linking module %s\n", module->name);
+
+    // Compile the combined .ll file to an object file (stays in build_dir)
+    char* ll_path = join_path(module->builder->build_dir, ssprintf("%s.ll", module->name));
+    char* obj_path = join_path(module->builder->build_dir, ssprintf("%s.o", module->name));
+    const char* llc_cmd = ssprintf("llc -filetype=obj \"%s\" -o \"%s\"", ll_path, obj_path);
+
+    printf("  Running: %s\n", llc_cmd);
+    int ret = system(llc_cmd);
+
+    free(ll_path);
+
+    if (ret != 0)
+    {
+        fprintf(stderr, "Error: llc failed\n");
+        free(obj_path);
+        return false;
+    }
+
+    // Create bin directory and link final executable there
+    mkdir(module->builder->bin_dir, 0755);
+
+    // Copy builtins.c to bin directory if not already present (TODO: very fragile, assumes locations)
+    char* builtins_dest = join_path(module->builder->bin_dir, "builtins.c");
+    const char* builtins_src = "src/runtime/builtins.c";
+    const char* cp_cmd = ssprintf("cp \"%s\" \"%s\"", builtins_src, builtins_dest);
+    system(cp_cmd);
+
+    char* exe_path = join_path(module->builder->bin_dir, module->name);
+    const char* link_cmd = ssprintf("clang \"%s\" \"%s\" -o \"%s\"", obj_path, builtins_dest, exe_path);
+
+    printf("  Running: %s\n", link_cmd);
+    ret = system(link_cmd);
+
+    free(obj_path);
+    free(exe_path);
+    free(builtins_dest);
+
+    if (ret != 0)
+    {
+        fprintf(stderr, "Error: linking failed\n");
+        return false;
+    }
+
     return true;
 }

@@ -22,6 +22,8 @@ builder_t* builder_create(const char* root_dir)
 
     *builder = (builder_t){
         .root_dir = strdup(root_dir),
+        .build_dir = nullptr,  // Set later once we know the project name
+        .bin_dir = nullptr,    // Set later once we know the project name
         .modules = HASH_TABLE_INIT(module_destroy_void),
     };
 
@@ -34,6 +36,8 @@ void builder_destroy(builder_t* builder)
         return;
 
     free(builder->root_dir);
+    free(builder->build_dir);
+    free(builder->bin_dir);
     hash_table_deinit(&builder->modules);
     free(builder);
 }
@@ -134,7 +138,17 @@ static bool extract_build_instructions(builder_t* builder)
         goto cleanup;
     }
     const char* name = hash_table_find(project_section, "name");
-    printf("Building project %s\n", name ? name : "UNNAMED");
+    if (name == nullptr)
+    {
+        fprintf(stderr, "Error: Missing mandatory field `name` in `project` section");
+        error = true;
+        goto cleanup;
+    }
+    printf("Building project %s\n", name);
+
+    // Set build directory: ./build/<project_name>/
+    builder->build_dir = join_path("build", name);
+    builder->bin_dir = join_path(builder->build_dir, "bin");
 
     // Construct modules from "bin" array
     vec_t* bins = toml_as_array_section(hash_table_find(toml_file, "bin"));
