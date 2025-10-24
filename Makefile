@@ -101,6 +101,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/parser/lexer.c \
     $(SRC_DIR)/parser/parser.c \
 	$(SRC_DIR)/sema/decl_collector.c \
+	$(SRC_DIR)/sema/expr_evaluator.c \
 	$(SRC_DIR)/sema/init_tracker.c \
 	$(SRC_DIR)/sema/semantic_analyzer.c \
 	$(SRC_DIR)/sema/semantic_context.c \

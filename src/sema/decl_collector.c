@@ -12,6 +12,7 @@
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
 #include "common/util/ssprintf.h"
+#include "sema/expr_evaluator.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
 #include "sema/symbol_table.h"
@@ -25,6 +26,7 @@ struct decl_collector
     ast_visitor_t base;
     semantic_context_t* ctx;  // decl_collector does not own ctx
     symbol_t* current_class;
+    expr_evaluator_t* expr_eval;
 };
 
 // Pass 1: Register all user types
@@ -201,8 +203,23 @@ static void collect_member_decl(void* self_, ast_member_decl_t* member, void* ou
         return;
     }
 
-    // TODO: The information from init-expr needs to be in the symbol
+    // Evaluate the init-expression (returned node is a copy that symbol will own)
+    ast_expr_t* default_expr = nullptr;
+    if (member->base.init_expr != nullptr)
+    {
+        default_expr = expr_evaluator_eval(collector->expr_eval, member->base.init_expr);
+        if (default_expr == nullptr)
+        {
+            semantic_context_add_error(collector->ctx, member->base.init_expr, collector->expr_eval->last_error);
+            return;
+        }
+
+        // NOTE: semantic_analyzer verifies type of init_expr, here we do not
+        default_expr->type = member->base.type;
+    }
+
     symbol_t* member_symb = symbol_create(member->base.name, SYMBOL_MEMBER, member, nullptr, nullptr, nullptr);
+    member_symb->data.member.default_value = default_expr;
     member_symb->type = member->base.type;
     hash_table_insert(&collector->current_class->data.class.members, member->base.name, member_symb);
 }
@@ -289,6 +306,7 @@ decl_collector_t* decl_collector_create(semantic_context_t* ctx)
 
     *collector = (decl_collector_t){
         .ctx = ctx,
+        .expr_eval = expr_evaluator_create(),
     };
 
     ast_visitor_init(&collector->base);
@@ -307,6 +325,7 @@ void decl_collector_destroy(decl_collector_t* collector)
     if (collector == nullptr)
         return;
 
+    expr_evaluator_destroy(collector->expr_eval);
     free(collector);
 }
 

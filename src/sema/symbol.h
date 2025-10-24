@@ -45,6 +45,11 @@ typedef struct symbol
             hash_table_t members;     // symbol_t*
             symbol_table_t* methods;
         } class;
+
+        struct
+        {
+            ast_expr_t* default_value;  // memory owned by us
+        } member;
     } data;
 } symbol_t;
 

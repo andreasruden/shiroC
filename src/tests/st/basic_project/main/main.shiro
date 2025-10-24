@@ -10,8 +10,7 @@ fn add(a: i32, b: i32) -> i32
 
 fn main() -> i32
 {
-    // TODO: setting adder's value should not be needed
-    var adder = Adder { last_result = 0 };  // Calculator's exported class (same as Calculator.Adder)
+    var adder = Adder{};  // Calculator's exported class (same as Calculator.Adder)
     printI32(adder.add(10, 20));  //! stdout: "30"
     printI32(adder.last_result);  //! stdout: "30"
 

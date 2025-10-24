@@ -1,4 +1,6 @@
 #include "symbol.h"
+#include "ast/node.h"
+#include "ast/util/cloner.h"
 #include "common/containers/string.h"
 #include "common/debug/panic.h"
 #include "symbol_table.h"
@@ -79,6 +81,10 @@ symbol_t* symbol_clone(symbol_t* source, bool include_ast)
                 include_ast ? member_clone_with_ast : member_clone_without_ast);
             symbol_table_clone(new_symb->data.class.methods, source->data.class.methods, include_ast);
             break;
+        case SYMBOL_MEMBER:
+            if (new_symb->data.member.default_value != nullptr)
+                new_symb->data.member.default_value = ast_expr_clone(new_symb->data.member.default_value);
+            break;
         default:
             break;
     }
@@ -101,6 +107,9 @@ void symbol_destroy(symbol_t* symbol)
         case SYMBOL_CLASS:
             hash_table_deinit(&symbol->data.class.members);
             symbol_table_destroy(symbol->data.class.methods);
+            break;
+        case SYMBOL_MEMBER:
+            ast_node_destroy(symbol->data.member.default_value);
             break;
         default:
             break;

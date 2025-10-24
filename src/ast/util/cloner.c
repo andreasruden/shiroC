@@ -236,5 +236,6 @@ ast_expr_t* ast_expr_clone(ast_expr_t* expr)
     ast_visitor_visit(&cloner.base, AST_NODE(expr), nullptr);
 
     panic_if(cloner.result == nullptr);
+    cloner.result->type = expr->type;
     return cloner.result;
 }

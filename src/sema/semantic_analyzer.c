@@ -1012,8 +1012,8 @@ static void* analyze_construct_expr(void* self_, ast_construct_expr_t* construct
         if (hash_table_contains(&initialized_members, entry->key))
             continue;
 
-        // TODO: Should not have to inspect AST directly to support imported symbols
-        ast_expr_t* init_expr = member_symb->ast ? ((ast_member_decl_t*)member_symb->ast)->base.init_expr : nullptr;
+        // The default value has been evaluated by expr_evaluator by decl_collector
+        ast_expr_t* init_expr = member_symb->data.member.default_value;
         if (init_expr == nullptr)
         {
             semantic_context_add_error(sema->ctx, construct, ssprintf("missing initialization for '%s'",

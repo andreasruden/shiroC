@@ -5,6 +5,7 @@
 #include "ast/def/fn_def.h"
 #include "ast/def/method_def.h"
 #include "ast/expr/bin_op.h"
+#include "ast/expr/bool_lit.h"
 #include "ast/expr/call_expr.h"
 #include "ast/expr/construct_expr.h"
 #include "ast/expr/int_lit.h"
@@ -89,7 +90,7 @@ TEST(ut_sema_classes_fixture_t, valid_member_types)
 TEST(ut_sema_classes_fixture_t, member_default_value_type_mismatch)
 {
     ast_decl_t* error_node = ast_member_decl_create("x", ast_type_builtin(TYPE_I32),
-        ast_str_lit_create("hello"));
+        ast_bool_lit_create(true));
 
     ast_root_t* root = ast_root_create_va(
         ast_class_def_create_va("Point",
