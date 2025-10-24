@@ -8,6 +8,7 @@
 #include "common/util/path.h"
 #include "sema/symbol_table.h"
 
+#include <ctype.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,6 +79,32 @@ static bool verify_module_path(builder_t* builder, const char* module_name, char
     return true;
 }
 
+static bool verify_name(const char* name)
+{
+    const char* ptr = name;
+
+    // Must start with letter
+    if (!name || *ptr == '\0' || !isalpha(*ptr))
+    {
+        fprintf(stderr, "Error: name '%s' does not start with an ASCII letter\n", name);
+        return false;
+    }
+
+    // Must only contain letters, digits, '_' and '-'
+    while (*ptr != '\0')
+    {
+        if (!isalnum(*ptr) && *ptr != '_' && *ptr != '-')
+        {
+            fprintf(stderr, "Error: name '%s' contains unallowed characters\n", name);
+            return false;
+        }
+
+        ++ptr;
+    }
+
+    return true;
+}
+
 static bool extract_module(builder_t* builder, hash_table_t* section, bool lib)
 {
     if (section == nullptr)
@@ -94,6 +121,9 @@ static bool extract_module(builder_t* builder, hash_table_t* section, bool lib)
         fprintf(stderr, "Error: missing mandatory section `name` in `%s` array", lib ? "lib" : "bin");
         return false;
     }
+
+    if (!verify_name(module_name))
+        return false;
 
     if (module_src == nullptr)
     {
@@ -143,6 +173,11 @@ static bool extract_build_instructions(builder_t* builder)
     if (name == nullptr)
     {
         fprintf(stderr, "Error: Missing mandatory field `name` in `project` section");
+        error = true;
+        goto cleanup;
+    }
+    if (!verify_name(name))
+    {
         error = true;
         goto cleanup;
     }
