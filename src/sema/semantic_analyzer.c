@@ -838,12 +838,25 @@ static symbol_t* function_overload_resolution(semantic_analyzer_t* sema, void* n
         // Verify we find only one candidate method
         if (valid)
         {
-            if (match != nullptr)
+            if (match == nullptr)
+            {
+                match = candidate;
+                continue;
+            }
+
+            // Unless we are shadowing an imported function with our self-defined function
+            bool is_candidate_ours = candidate->source_module == nullptr ||
+                strcmp(candidate->source_module, sema->ctx->module_name) == 0;
+            bool is_match_ours = match->source_module == nullptr ||
+                strcmp(match->source_module, sema->ctx->module_name) == 0;
+            if (is_match_ours == is_candidate_ours)
             {
                 semantic_context_add_error(sema->ctx, node, "ambiguous resolution, multiple signatures match");
                 break;
             }
-            match = candidate;
+
+            if (!is_match_ours)
+                match = candidate;
         }
     }
 

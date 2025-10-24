@@ -14,9 +14,8 @@ fn main() -> i32
     printI32(adder.add(10, 20));  //! stdout: "30"
     printI32(adder.last_result);  //! stdout: "30"
 
-    // TODO: need priority for Self
-    // var i = add(100, 200);  // "buggy" add
-    // printI32(i);  //(missing !) stdout: "20000"
+    var i = add(100, 200);  // "buggy" add
+    printI32(i);  //! stdout: "20000"
 
     // TODO: (need qualified names)
     // access Calculator's exported add function
