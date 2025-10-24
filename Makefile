@@ -106,7 +106,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/sema/semantic_context.c \
 	$(SRC_DIR)/sema/symbol_table.c \
 	$(SRC_DIR)/sema/symbol.c \
-	$(SRC_DIR)/sema/type_expr_solver.c
+	$(SRC_DIR)/sema/type_resolver.c
 COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMMON_SRCS))
 
 # Unit-tests source files

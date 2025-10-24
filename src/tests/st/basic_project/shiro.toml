@@ -1,6 +1,10 @@
 [project]
-name = "Basic test project"
+name = "basic_project"
 
 [[bin]]
 name = "Main"
 src = "main/"
+
+[[lib]]
+name = "Calculator"
+src = "calculator/"

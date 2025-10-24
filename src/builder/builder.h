@@ -8,6 +8,7 @@
  */
 typedef struct builder
 {
+    char* project;
     char* root_dir;
     char* build_dir;  // Intermediate build artifacts (.ll, .o files)
     char* bin_dir;    // Final executables

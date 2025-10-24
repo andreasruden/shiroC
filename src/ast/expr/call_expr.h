@@ -4,12 +4,15 @@
 #include "ast/expr/expr.h"
 #include "common/containers/vec.h"
 
+typedef struct symbol symbol_t;
+
 typedef struct ast_call_expr
 {
     ast_expr_t base;
     ast_expr_t* function;
-    vec_t arguments;        // vec<ast_expr_t*>
-    size_t overload_index;  // set by SEMA during overload resolution
+    symbol_t* function_symbol;  // set by SEMA, valid while semantic_context is valid
+    vec_t arguments;            // vec<ast_expr_t*>
+    size_t overload_index;      // set by SEMA during overload resolution
 } ast_call_expr_t;
 
 ast_expr_t* ast_call_expr_create(ast_expr_t* function, vec_t* arguments);

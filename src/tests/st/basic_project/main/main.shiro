@@ -1,6 +1,28 @@
-//! compile
+//! run: "build/basic_project/bin/Main"
 
-// TODO: Fill in a real sample project
-fn main(main: i32) //! warning: "shadows"
+import Self.Calculator;
+
+// This collides with an export from Self.Calculator
+fn add(a: i32, b: i32) -> i32
 {
+    return a * b;
+}
+
+fn main() -> i32
+{
+    // TODO: setting adder's value should not be needed
+    var adder = Adder { last_result = 0 };  // Calculator's exported class (same as Calculator.Adder)
+    printI32(adder.add(10, 20));  //! stdout: "30"
+    printI32(adder.last_result);  //! stdout: "30"
+
+    // TODO: need priority for Self
+    // var i = add(100, 200);  // "buggy" add
+    // printI32(i);  //(missing !) stdout: "20000"
+
+    // TODO: (need qualified names)
+    // access Calculator's exported add function
+    // i = Calculator.add(100, 200);
+    // printI32(i);  //(missing !) stdout: "300"
+
+    return 0;
 }

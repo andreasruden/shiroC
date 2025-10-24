@@ -22,6 +22,9 @@
 #include "common/util/ssprintf.h"
 #include "parser/lexer.h"
 #include "llvm_type_utils.h"
+#include "sema/semantic_context.h"
+#include "sema/symbol.h"
+#include "sema/symbol_table.h"
 
 #include <llvm-c/Types.h>
 #include <llvm-c/Core.h>
@@ -50,9 +53,10 @@ struct llvm_codegen
 
     ast_presenter_t* presenter;
     hash_table_t* symbols;  // name (char*) -> LLVMValueRef (alloca)
+    semantic_context_t* sema_ctx;  // for looking up symbol source_module
 
     // Classes
-    hash_table_t class_layouts;    // class name (char*) -> class_layout_t*
+    hash_table_t class_layouts;     // fully-qualified class name (char*) -> class_layout_t*
     ast_class_def_t* current_class; // set during method generation
 
     // Debug info
@@ -78,12 +82,9 @@ struct class_layout
     vec_t member_types;  // member type (ast_type_t*) in order they appear in LLVM struct
 };
 
-#define MANGLE_FUNCTION_NAME(name, overload_index) (overload_index == 0 ? name :\
-    ssprintf("%s.%zu", name, overload_index))
-
-#define MANGLE_METHOD_NAME(class_name, method_name, overload_index) \
-    (overload_index == 0 ? ssprintf("%s.%s", class_name, method_name) :\
-        ssprintf("%s.%s.%zu", class_name, method_name, overload_index))
+#define MANGLE_FUNCTION_NAME(symbol) \
+    (symbol->data.function.overload_index == 0) ? symbol->fully_qualified_name : ssprintf("%s.%zu", \
+        symbol->fully_qualified_name, symbol->data.function.overload_index)
 
 // Get or declare llvm.ubsantrap intrinsic
 static LLVMValueRef get_ubsantrap_intrinsic(llvm_codegen_t* llvm)
@@ -140,10 +141,12 @@ static void set_debug_location(llvm_codegen_t* llvm, ast_node_t* node)
 }
 
 // Forward declarations for three-pass approach
-static void declare_class_type(llvm_codegen_t* llvm, ast_class_def_t* class_def);
-static void define_class_body(llvm_codegen_t* llvm, ast_class_def_t* class_def);
+static void declare_class_type(llvm_codegen_t* llvm, symbol_t* class_symb);
+static void create_class_layout(llvm_codegen_t* llvm, symbol_t* class_symb);
+static void declare_class_methods(llvm_codegen_t* llvm, symbol_t* class_symb);
+static void declare_class_members(llvm_codegen_t* llvm, symbol_t* class_symb);
 static void emit_method_bodies(llvm_codegen_t* llvm, ast_class_def_t* class_def);
-static void declare_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def);
+static void declare_function(llvm_codegen_t* llvm, symbol_t* fn_symb);
 static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def);
 
 static void emit_root(void* self_, ast_root_t* root, void* out_)
@@ -151,25 +154,51 @@ static void emit_root(void* self_, ast_root_t* root, void* out_)
     llvm_codegen_t* llvm = self_;
     (void)out_;
 
-    // Pass 1: Declare all class types (opaque structs)
-    for (size_t i = 0; i < vec_size(&root->tl_defs); ++i)
+    panic_if(llvm->sema_ctx == nullptr || llvm->sema_ctx->global == nullptr);
+
+    // Pass 1: Declare all class types (opaque structs) from symbol table (includes imports)
+    hash_table_iter_t iter;
+    for (hash_table_iter_init(&iter, &llvm->sema_ctx->global->map);
+        hash_table_iter_has_elem(&iter); hash_table_iter_next(&iter))
     {
-        ast_node_t* node = vec_get(&root->tl_defs, i);
-        if (AST_KIND(node) == AST_DEF_CLASS)
-            declare_class_type(llvm, (ast_class_def_t*)node);
+        hash_table_entry_t* entry = hash_table_iter_current(&iter);
+        vec_t* symbols = entry->value;
+
+        for (size_t i = 0; i < vec_size(symbols); ++i)
+        {
+            symbol_t* symbol = vec_get(symbols, i);
+            if (symbol->kind == SYMBOL_CLASS)
+                declare_class_type(llvm, symbol);
+        }
     }
 
-    // Pass 2: Declare all function signatures and define class bodies (which declares methods)
-    for (size_t i = 0; i < vec_size(&root->tl_defs); ++i)
+    // Pass 2: Declare all function signatures and define class bodies from symbol table (includes imports)
+    for (hash_table_iter_init(&iter, &llvm->sema_ctx->global->map);
+        hash_table_iter_has_elem(&iter); hash_table_iter_next(&iter))
     {
-        ast_node_t* node = vec_get(&root->tl_defs, i);
-        if (AST_KIND(node) == AST_DEF_FN)
-            declare_function(llvm, (ast_fn_def_t*)node);
-        else if (AST_KIND(node) == AST_DEF_CLASS)
-            define_class_body(llvm, (ast_class_def_t*)node);
+        hash_table_entry_t* entry = hash_table_iter_current(&iter);
+        vec_t* symbols = entry->value;
+
+        for (size_t i = 0; i < vec_size(symbols); ++i)
+        {
+            symbol_t* symbol = vec_get(symbols, i);
+            if (symbol->kind == SYMBOL_FUNCTION)
+            {
+                declare_function(llvm, symbol);
+            }
+            else if (symbol->kind == SYMBOL_CLASS)
+            {
+                if (!hash_table_contains(&llvm->class_layouts, symbol->fully_qualified_name))
+                {
+                    create_class_layout(llvm, symbol);
+                    declare_class_methods(llvm, symbol);
+                    declare_class_members(llvm, symbol);
+                }
+            }
+        }
     }
 
-    // Pass 3: Define all function and method bodies
+    // Pass 3: Define all function and method bodies (only for local definitions in this AST)
     for (size_t i = 0; i < vec_size(&root->tl_defs); ++i)
     {
         ast_node_t* node = vec_get(&root->tl_defs, i);
@@ -214,81 +243,103 @@ static void emit_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     *out_ref = alloc_ref;
 }
 
-// Pass 1: Declare class type (opaque struct)
-static void declare_class_type(llvm_codegen_t* llvm, ast_class_def_t* class_def)
+// Pass 1: Declare class type (opaque struct, expanded in declare_class_members)
+static void declare_class_type(llvm_codegen_t* llvm, symbol_t* class_symb)
 {
     // Register class by name (opaque struct - body set in pass 3)
-    LLVMStructCreateNamed(llvm->context, class_def->base.name);
+    LLVMStructCreateNamed(llvm->context, class_symb->fully_qualified_name);
 }
 
-// Pass 2: Define class body and declare methods
-static void define_class_body(llvm_codegen_t* llvm, ast_class_def_t* class_def)
+// Pass 2: Create class layout (for all classes: local and imported)
+static void create_class_layout(llvm_codegen_t* llvm, symbol_t* class_symb)
 {
-    LLVMTypeRef class_type = LLVMGetTypeByName2(llvm->context, class_def->base.name);
-    panic_if(class_type == nullptr);
-
-    // Register the fields of the class
-    unsigned int member_count = vec_size(&class_def->members);
-    LLVMTypeRef* member_types = malloc(sizeof(LLVMTypeRef) * member_count);
-    for (unsigned int i = 0; i < member_count; ++i)
-    {
-        ast_member_decl_t* member = vec_get(&class_def->members, i);
-        LLVMTypeRef member_type = llvm_type(llvm->context, member->base.type);
-        member_types[i] = member_type;
-    }
-    LLVMStructSetBody(class_type, member_types, member_count, false);
-    free(member_types);
-
-    // Create class layout
+    // Create class layout for member access and construction
     class_layout_t* layout = malloc(sizeof(*layout));
     *layout = (class_layout_t){
-        .class_name = strdup(class_def->base.name),
+        .class_name = strdup(class_symb->name),
         .member_names = VEC_INIT(free),
         .member_types = VEC_INIT(nullptr),
         .member_indices = HASH_TABLE_INIT(nullptr),
     };
 
-    // Populate class layout
-    for (size_t i = 0; i < member_count; ++i)
+    // Populate class layout with members
+    int i = 0;
+    hash_table_iter_t itr;
+    for (hash_table_iter_init(&itr, &class_symb->data.class.members); hash_table_iter_has_elem(&itr);
+        hash_table_iter_next(&itr))
     {
-        ast_member_decl_t* decl = vec_get(&class_def->members, i);
-        hash_table_insert(&layout->member_indices, decl->base.name, (void*)(intptr_t)i);
-        vec_push(&layout->member_names, strdup(decl->base.name));
-        vec_push(&layout->member_types, decl->base.type);
+        symbol_t* member_symb = hash_table_iter_current(&itr)->value;
+        panic_if(member_symb->kind != SYMBOL_MEMBER);
+        hash_table_insert(&layout->member_indices, member_symb->name, (void*)(intptr_t)i);
+        vec_push(&layout->member_names, strdup(member_symb->name));
+        vec_push(&layout->member_types, member_symb->type);
+        ++i;
     }
 
-    hash_table_insert(&llvm->class_layouts, class_def->base.name, layout);
+    hash_table_insert(&llvm->class_layouts, class_symb->fully_qualified_name, layout);
+}
 
-    // Declare all methods (signatures only)
-    llvm->current_class = class_def;
-    for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
+// Pass 2: Declare class methods (both local and imported classes)
+static void declare_class_methods(llvm_codegen_t* llvm, symbol_t* class_symb)
+{
+    panic_if(class_symb->kind != SYMBOL_CLASS);
+
+    hash_table_iter_t itr;
+    for (hash_table_iter_init(&itr, &class_symb->data.class.methods->map); hash_table_iter_has_elem(&itr);
+        hash_table_iter_next(&itr))
     {
-        ast_method_def_t* method = vec_get(&class_def->methods, i);
+        vec_t* overloads = hash_table_iter_current(&itr)->value;
+        panic_if(vec_size(overloads) == 0);
 
-        // Mangle method name: ClassName.methodName.N
-        const char* mangled_name = MANGLE_METHOD_NAME(class_def->base.name, method->base.base.name,
-            method->overload_index);
-
-        LLVMTypeRef class_ptr_type = LLVMPointerTypeInContext(llvm->context, 0);
-
-        // Build list of params: [*ClassName, ...user_params]
-        size_t user_param_count = vec_size(&method->base.params);
-        size_t total_param_count = 1 + user_param_count;
-        LLVMTypeRef* param_types = malloc(total_param_count * sizeof(LLVMTypeRef));
-        param_types[0] = class_ptr_type;  // implicit self parameter
-        for (size_t j = 0; j < user_param_count; ++j)
+        for (size_t i = 0; i < vec_size(overloads); ++i)
         {
-            ast_param_decl_t* param = vec_get(&method->base.params, j);
-            param_types[j + 1] = llvm_type(llvm->context, param->type);
-        }
+            symbol_t* method_symb = vec_get(overloads, i);
 
-        // Declare function signature
-        LLVMTypeRef fn_type = LLVMFunctionType(llvm_type(llvm->context, method->base.return_type), param_types,
-            total_param_count, false);
-        LLVMAddFunction(llvm->module, mangled_name, fn_type);
-        free(param_types);
+            const char* mangled_name = MANGLE_FUNCTION_NAME(method_symb);
+
+            LLVMTypeRef class_ptr_type = LLVMPointerTypeInContext(llvm->context, 0);
+
+            // Build list of params: [*ClassName, ...user_params]
+            size_t user_param_count = vec_size(&method_symb->data.function.parameters);
+            size_t total_param_count = 1 + user_param_count;
+            LLVMTypeRef* param_types = malloc(total_param_count * sizeof(LLVMTypeRef));
+            param_types[0] = class_ptr_type;  // implicit self parameter
+            for (size_t j = 0; j < user_param_count; ++j)
+            {
+                symbol_t* param = vec_get(&method_symb->data.function.parameters, j);
+                param_types[j + 1] = llvm_type(llvm->context, param->type);
+            }
+
+            // Declare function signature
+            LLVMTypeRef fn_type = LLVMFunctionType(llvm_type(llvm->context, method_symb->data.function.return_type),
+                param_types, total_param_count, false);
+            LLVMAddFunction(llvm->module, mangled_name, fn_type);
+            free(param_types);
+        }
     }
-    llvm->current_class = nullptr;
+}
+
+// Pass 2: Define class body (local & imported structs)
+static void declare_class_members(llvm_codegen_t* llvm, symbol_t* class_symb)
+{
+    LLVMTypeRef class_type = LLVMGetTypeByName2(llvm->context, class_symb->fully_qualified_name);
+    panic_if(class_type == nullptr);
+
+    // Register the fields of the class in LLVM
+    unsigned int member_count = class_symb->data.class.members.size;
+    LLVMTypeRef* member_types = malloc(sizeof(LLVMTypeRef) * member_count);
+    hash_table_iter_t itr;
+    int i = 0;
+    for (hash_table_iter_init(&itr, &class_symb->data.class.members); hash_table_iter_has_elem(&itr);
+        hash_table_iter_next(&itr))
+    {
+        symbol_t* member_symb = hash_table_iter_current(&itr)->value;
+        LLVMTypeRef member_type = llvm_type(llvm->context, member_symb->type);
+        member_types[i] = member_type;
+        ++i;
+    }
+    LLVMStructSetBody(class_type, member_types, member_count, false);
+    free(member_types);
 }
 
 // Pass 3: Emit method bodies
@@ -301,21 +352,26 @@ static void emit_method_bodies(llvm_codegen_t* llvm, ast_class_def_t* class_def)
 }
 
 // Pass 2: Declare function signature
-static void declare_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
+static void declare_function(llvm_codegen_t* llvm, symbol_t* fn_symb)
 {
+    const char* mangled_fn_name = MANGLE_FUNCTION_NAME(fn_symb);
+
+    if (LLVMGetNamedFunction(llvm->module, mangled_fn_name) != nullptr)
+        return;  // already declared by previous AST in this module
+
     // Build list of params
-    size_t param_count = vec_size(&fn_def->params);
+    size_t param_count = vec_size(&fn_symb->data.function.parameters);
     LLVMTypeRef* param_types = malloc(param_count * sizeof(LLVMTypeRef));
     for (size_t i = 0; i < param_count; ++i)
     {
-        ast_param_decl_t* param = vec_get(&fn_def->params, i);
+        symbol_t* param = vec_get(&fn_symb->data.function.parameters, i);
         param_types[i] = llvm_type(llvm->context, param->type);
     }
 
     // Declare function signature
-    LLVMTypeRef fn_type = LLVMFunctionType(llvm_type(llvm->context, fn_def->return_type), param_types,
+    LLVMTypeRef fn_type = LLVMFunctionType(llvm_type(llvm->context, fn_symb->data.function.return_type), param_types,
         param_count, false);
-    LLVMAddFunction(llvm->module, MANGLE_FUNCTION_NAME(fn_def->base.name, fn_def->overload_index), fn_type);
+    LLVMAddFunction(llvm->module, mangled_fn_name, fn_type);
     free(param_types);
 }
 
@@ -325,7 +381,7 @@ static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
     llvm->symbols = hash_table_create(nullptr);
 
     // Get the declared function
-    const char* mangled_name = MANGLE_FUNCTION_NAME(fn_def->base.name, fn_def->overload_index);
+    const char* mangled_name = MANGLE_FUNCTION_NAME(fn_def->symbol);
     LLVMValueRef fn_val = LLVMGetNamedFunction(llvm->module, mangled_name);
     panic_if(fn_val == nullptr);
     llvm->current_function = fn_val;
@@ -354,6 +410,9 @@ static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
 
     // Add entry block and position builder
     LLVMBasicBlockRef entry_block = LLVMAppendBasicBlock(fn_val, "entry");
+    // FIXME: The compiler should export the function it wants to be entry point
+    if (!fn_def->exported && strcmp(fn_def->base.name, "main") != 0)
+        LLVMSetLinkage(fn_val, LLVMInternalLinkage);
     LLVMPositionBuilderAtEnd(llvm->builder, entry_block);
 
     // Set debug location for function entry
@@ -393,8 +452,7 @@ static void emit_method_def(void* self_, ast_method_def_t* method, void* out_)
     llvm->symbols = hash_table_create(nullptr);
 
     // Mangle method name: ClassName.methodName.N
-    const char* mangled_name = MANGLE_METHOD_NAME(llvm->current_class->base.name, method->base.base.name,
-        method->overload_index);
+    const char* mangled_name = MANGLE_FUNCTION_NAME(method->symbol);
 
     // Get the declared function
     LLVMValueRef fn_val = LLVMGetNamedFunction(llvm->module, mangled_name);
@@ -492,7 +550,7 @@ static void emit_member_access(void* self_, ast_member_access_t* access, void* o
         class_type = instance_type->data.pointer.pointee;
 
     panic_if(class_type->kind != AST_TYPE_USER);
-    const char* class_name = class_type->data.user.name;
+    const char* fq_class_name = class_type->data.user.class_symbol->fully_qualified_name;
 
     // Get the instance as an lvalue (address of the variable/expression)
     llvm->lvalue = true;
@@ -506,13 +564,13 @@ static void emit_member_access(void* self_, ast_member_access_t* access, void* o
     if (instance_type->kind == AST_TYPE_POINTER)
         instance_ptr = LLVMBuildLoad2(llvm->builder, LLVMPointerTypeInContext(llvm->context, 0), instance_addr, "");
 
-    class_layout_t* layout = hash_table_find(&llvm->class_layouts, class_name);
+    class_layout_t* layout = hash_table_find(&llvm->class_layouts, fq_class_name);
     panic_if(layout == nullptr);
     panic_if(!hash_table_contains(&layout->member_indices, access->member_name));
     intptr_t index = (intptr_t)hash_table_find(&layout->member_indices, access->member_name);
 
     LLVMValueRef ptr_to_member = LLVMBuildStructGEP2(llvm->builder, llvm_type(llvm->context, class_type),
-        instance_ptr, index, class_name);
+        instance_ptr, index, fq_class_name);
 
     if (ret_lvalue)
         *out_val = ptr_to_member;
@@ -542,12 +600,11 @@ static void emit_method_call(void* self_, ast_method_call_t* call, void* out_)
         class_type = instance_type->data.pointer.pointee;
 
     panic_if(class_type->kind != AST_TYPE_USER);
-    const char* class_name = class_type->data.user.name;
 
     set_debug_location(llvm, AST_NODE(call));
 
-    // Mangle method name: ClassName.methodName.N
-    const char* mangled_name = MANGLE_METHOD_NAME(class_name, call->method_name, call->overload_index);
+    symbol_t* method_symb = call->method_symbol;
+    const char* mangled_name = MANGLE_FUNCTION_NAME(method_symb);
 
     // Get the instance as an lvalue (address of the variable/expression)
     llvm->lvalue = true;
@@ -577,6 +634,7 @@ static void emit_method_call(void* self_, ast_method_call_t* call, void* out_)
 
     // Emit call
     LLVMValueRef fn = LLVMGetNamedFunction(llvm->module, mangled_name);
+    panic_if(fn == nullptr);
     LLVMTypeRef fn_type = LLVMGlobalGetValueType(fn);
     LLVMValueRef call_result = LLVMBuildCall2(llvm->builder, fn_type, fn, args, (unsigned int)total_arg_count,
         call->base.type == ast_type_builtin(TYPE_VOID) ? "" : "method_call");
@@ -963,10 +1021,9 @@ static void emit_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 
     set_debug_location(llvm, AST_NODE(call));
 
-    // Get function name from the ref_expr and construct mangled name
-    panic_if(AST_KIND(call->function) != AST_EXPR_REF);
-    ast_ref_expr_t* fn_ref = (ast_ref_expr_t*)call->function;
-    const char* fn_name = MANGLE_FUNCTION_NAME(fn_ref->name, call->overload_index);
+    // Get function name from symbol and construct mangled name
+    panic_if(call->function_symbol == nullptr || call->function_symbol->kind != SYMBOL_FUNCTION);
+    const char* fn_name = MANGLE_FUNCTION_NAME(call->function_symbol);
     LLVMValueRef fn = LLVMGetNamedFunction(llvm->module, fn_name);
     panic_if(fn == nullptr);
 
@@ -1099,8 +1156,8 @@ static void emit_construct_expr(void* self_, ast_construct_expr_t* construct, vo
     bool ret_lvalue = llvm->lvalue;
     panic_if(out == nullptr);
 
-    const char* class_name = construct->class_type->data.user.name;
-    class_layout_t* layout = hash_table_find(&llvm->class_layouts, class_name);
+    const char* fq_class_name = construct->class_type->data.user.class_symbol->fully_qualified_name;
+    class_layout_t* layout = hash_table_find(&llvm->class_layouts, fq_class_name);
     panic_if(layout == nullptr);
 
     LLVMTypeRef class_type = llvm_type(llvm->context, construct->class_type);
@@ -1486,13 +1543,13 @@ static void class_layout_destroy(void* layout_)
     free(layout);
 }
 
-llvm_codegen_t* llvm_codegen_create()
+llvm_codegen_t* llvm_codegen_create(const char* project_name, const char* module_name)
 {
     llvm_codegen_t* llvm = malloc(sizeof(*llvm));
 
     // Initialize LLVM C API objects
     llvm->context = LLVMContextCreate();
-    llvm->module = LLVMModuleCreateWithNameInContext("shiro_module", llvm->context);
+    llvm->module = LLVMModuleCreateWithNameInContext(ssprintf("%s.%s", project_name, module_name), llvm->context);
     llvm->builder = LLVMCreateBuilderInContext(llvm->context);
     llvm->current_function = nullptr;
 
@@ -1575,8 +1632,10 @@ void llvm_codegen_destroy(llvm_codegen_t* llvm)
     free(llvm);
 }
 
-void llvm_codegen_init(llvm_codegen_t* llvm, const char* module_name)
+void llvm_codegen_init(llvm_codegen_t* llvm, const char* module_name, semantic_context_t* sema_ctx)
 {
+    llvm->sema_ctx = sema_ctx;
+
     // Register builtin functions
     register_builtins(llvm);
 
@@ -1631,16 +1690,4 @@ void llvm_codegen_finalize(llvm_codegen_t* llvm, FILE* out)
     char* ir_string = LLVMPrintModuleToString(llvm->module);
     fprintf(out, "%s", ir_string);
     LLVMDisposeMessage(ir_string);
-}
-
-void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, const char* source_filename, FILE* out)
-{
-    // Convenience wrapper: init -> add_ast -> finalize
-    // Extract filename for module name
-    const char* filename = strrchr(source_filename, '/');
-    filename = filename ? filename + 1 : source_filename;
-
-    llvm_codegen_init(llvm, filename);
-    llvm_codegen_add_ast(llvm, root, source_filename);
-    llvm_codegen_finalize(llvm, out);
 }

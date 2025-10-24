@@ -21,6 +21,7 @@ TEST_SETUP(parser_literals_fixture_t)
 TEST_TEARDOWN(parser_literals_fixture_t)
 {
     parser_destroy(fix->parser);
+    ast_type_cache_reset();
 }
 
 TEST(parser_literals_fixture_t, parse_int_literal)

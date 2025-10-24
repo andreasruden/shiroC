@@ -28,6 +28,7 @@ TEST_SETUP(parser_functions_fixture_t)
 TEST_TEARDOWN(parser_functions_fixture_t)
 {
     parser_destroy(fix->parser);
+    ast_type_cache_reset();
 }
 
 TEST(parser_functions_fixture_t, parse_basic_main_function)

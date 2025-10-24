@@ -2,7 +2,6 @@
 #include "ast/decl/param_decl.h"
 #include "ast/decl/var_decl.h"
 #include "ast/def/fn_def.h"
-#include "ast/expr/array_lit.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/call_expr.h"
 #include "ast/expr/int_lit.h"
@@ -30,7 +29,7 @@ TEST_FIXTURE(ut_sema_fn_fixture_t)
 
 TEST_SETUP(ut_sema_fn_fixture_t)
 {
-    fix->ctx = semantic_context_create();
+    fix->ctx = semantic_context_create("test", "sema_fn");
     ASSERT_NEQ(nullptr, fix->ctx);
 
     fix->collector = decl_collector_create(fix->ctx);
@@ -45,6 +44,7 @@ TEST_TEARDOWN(ut_sema_fn_fixture_t)
     semantic_analyzer_destroy(fix->sema);
     decl_collector_destroy(fix->collector);
     semantic_context_destroy(fix->ctx);
+    ast_type_cache_reset();
 }
 
 // Function parameters should not emit uninitialized errors
@@ -88,10 +88,14 @@ TEST(ut_sema_fn_fixture_t, call_expr_arg_count_mismatch_error)
     );
 
     // Register bar function in global symbol table
-    symbol_t* bar_symbol = symbol_create("bar", SYMBOL_FUNCTION, bar_fn);
+    symbol_t* bar_symbol = symbol_create("bar", SYMBOL_FUNCTION, bar_fn, nullptr, nullptr, nullptr);
     bar_symbol->type = ast_type_builtin(TYPE_VOID);
-    vec_push(&bar_symbol->data.function.parameters, param_x);
-    vec_push(&bar_symbol->data.function.parameters, param_y);
+    symbol_t* param_x_symb = symbol_create("x", SYMBOL_PARAMETER, param_x, nullptr, nullptr, nullptr);
+    param_x_symb->type = ast_type_builtin(TYPE_I32);
+    vec_push(&bar_symbol->data.function.parameters, param_x_symb);
+    symbol_t* param_y_symb = symbol_create("y", SYMBOL_PARAMETER, param_y, nullptr, nullptr, nullptr);
+    param_y_symb->type = ast_type_builtin(TYPE_I32);
+    vec_push(&bar_symbol->data.function.parameters, param_y_symb);
     symbol_table_insert(fix->ctx->global, bar_symbol);
 
     // Call with only 1 arg, but bar expects 2
@@ -120,9 +124,11 @@ TEST(ut_sema_fn_fixture_t, call_expr_arg_type_mismatch_error)
     );
 
     // Register bar function in global symbol table
-    symbol_t* bar_symbol = symbol_create("bar", SYMBOL_FUNCTION, bar_fn);
+    symbol_t* bar_symbol = symbol_create("bar", SYMBOL_FUNCTION, bar_fn, nullptr, nullptr, nullptr);
     bar_symbol->type = ast_type_builtin(TYPE_VOID);
-    vec_push(&bar_symbol->data.function.parameters, param_x);
+    symbol_t* param_x_symb = symbol_create("x", SYMBOL_PARAMETER, param_x, nullptr, nullptr, nullptr);
+    param_x_symb->type = ast_type_builtin(TYPE_BOOL);
+    vec_push(&bar_symbol->data.function.parameters, param_x_symb);
     symbol_table_insert(fix->ctx->global, bar_symbol);
 
     ast_expr_t* error_node = ast_int_lit_val(42);

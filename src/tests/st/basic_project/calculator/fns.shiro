@@ -1,0 +1,10 @@
+// Exports top level functions
+
+export fn add(first: i32, second: i32) -> i32 {
+    return add_helper(first, second);
+}
+
+// not exported function
+fn add_helper(first: i32, second: i32) -> i32 {
+    return first + second;
+}

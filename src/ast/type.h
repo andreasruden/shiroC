@@ -30,9 +30,9 @@ typedef enum ast_type_kind
 {
     AST_TYPE_INVALID,
     AST_TYPE_BUILTIN,
-    AST_TYPE_USER,      // unresolved until Semantic Analysis
+    AST_TYPE_USER,        // unresolved until Semantic Analysis
     AST_TYPE_POINTER,
-    AST_TYPE_ARRAY,
+    AST_TYPE_ARRAY,       // unresolved until Semantic Analysis
     AST_TYPE_HEAP_ARRAY,  // TODO: Dyn Array would probably be a better name (or flexible, ...?), heap gives wrong idea
     AST_TYPE_VIEW,
 } ast_type_kind_t;
@@ -49,6 +49,7 @@ typedef enum ast_coercion_kind
 
 typedef struct ast_type ast_type_t;
 typedef struct ast_expr ast_expr_t;
+typedef struct symbol symbol_t;
 typedef struct token token_t;
 
 // Instances of ast_type_t should always be assumed const and not edited.
@@ -66,7 +67,8 @@ struct ast_type
 
         struct
         {
-            char* name;
+            char* name;              // nullptr if type is resolved
+            symbol_t* class_symbol;  // nullptr until decl_collector (symbol owned by semantic_context)
         } user;
 
         struct
@@ -105,7 +107,10 @@ struct ast_type
 ast_type_t* ast_type_builtin(type_t type);
 
 // Returned instance should not be edited.
-ast_type_t* ast_type_user(const char* type_name);
+ast_type_t* ast_type_user(symbol_t* class_symbol);
+
+// Returned instance should not be edited.
+ast_type_t* ast_type_user_unresolved(const char* type_name);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_pointer(ast_type_t* pointee);
@@ -147,5 +152,10 @@ ast_coercion_kind_t ast_type_can_coerce(ast_type_t* from, ast_type_t* to);
 const char* ast_type_string(ast_type_t* type);
 
 const char* type_to_str(type_t type);
+
+// Resets all non-builtin type caches to default state.
+// Use to prevent dangling symbol pointers in e.g. unit tests or separate compilations.
+// TODO: This seems to imply we would want some compilation context perhaps.
+void ast_type_cache_reset();
 
 #endif

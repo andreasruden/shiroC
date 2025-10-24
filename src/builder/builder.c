@@ -22,6 +22,7 @@ builder_t* builder_create(const char* root_dir)
 
     *builder = (builder_t){
         .root_dir = strdup(root_dir),
+        .project = nullptr,    // Set when parsing BUILD_INSTRUCTIONS_FILENAME
         .build_dir = nullptr,  // Set later once we know the project name
         .bin_dir = nullptr,    // Set later once we know the project name
         .modules = HASH_TABLE_INIT(module_destroy_void),
@@ -35,6 +36,7 @@ void builder_destroy(builder_t* builder)
     if (builder == nullptr)
         return;
 
+    free(builder->project);
     free(builder->root_dir);
     free(builder->build_dir);
     free(builder->bin_dir);
@@ -144,6 +146,7 @@ static bool extract_build_instructions(builder_t* builder)
         error = true;
         goto cleanup;
     }
+    builder->project = strdup(name);
     printf("Building project %s\n", name);
 
     // Set build directory: ./build/<project_name>/
@@ -208,9 +211,11 @@ static bool inject_exports_into_module(module_t* module)
 {
     for (size_t i = 0; i < vec_size(&module->dependencies); ++i)
     {
-        module_t* dep_mod = hash_table_find(&module->builder->modules, vec_get(&module->dependencies, i));
+        const char* dep_name = vec_get(&module->dependencies, i);
+        module_t* dep_mod = hash_table_find(&module->builder->modules, dep_name);
         panic_if(dep_mod == nullptr);
-        symbol_table_merge(module->sema_context->global, dep_mod->sema_context->export);
+        symbol_table_import(module->sema_context->global, dep_mod->sema_context->exports, module->builder->project,
+            dep_name);
     }
     return true;
 }
@@ -232,11 +237,9 @@ bool builder_run(builder_t* builder)
     if (!for_each_module(builder, module_populate_dependencies))
         return false;
 
-    // TODO: Dependency graph needs to reorder builder->modules or emit error
+    // TODO: Verify dependencies are not circular
 
     // Inject exported symbols from all dependencies into module's global symbols
-    // TODO: Collision should be accepted until ambiguity ensues, at which
-    // point compiler should emit error and force more explicit naming
     if (!for_each_module(builder, inject_exports_into_module))
         return false;
 

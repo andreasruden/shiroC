@@ -5,18 +5,17 @@
 #include <stdio.h>
 
 typedef struct ast_node ast_node_t;
+typedef struct semantic_context semantic_context_t;
 typedef struct llvm_codegen llvm_codegen_t;
 
-llvm_codegen_t* llvm_codegen_create();
+llvm_codegen_t* llvm_codegen_create(const char* project_name, const char* module_name);
 
 void llvm_codegen_destroy(llvm_codegen_t* llvm);
 
-// Multi-file module generation (preferred API)
-void llvm_codegen_init(llvm_codegen_t* llvm, const char* module_name);
-void llvm_codegen_add_ast(llvm_codegen_t* llvm, ast_node_t* root, const char* source_filename);
-void llvm_codegen_finalize(llvm_codegen_t* llvm, FILE* out);
+void llvm_codegen_init(llvm_codegen_t* llvm, const char* module_name, semantic_context_t* sema_ctx);
 
-// Single-file generation (convenience wrapper)
-void llvm_codegen_generate(llvm_codegen_t* llvm, ast_node_t* root, const char* source_filename, FILE* out);
+void llvm_codegen_add_ast(llvm_codegen_t* llvm, ast_node_t* root, const char* source_filename);
+
+void llvm_codegen_finalize(llvm_codegen_t* llvm, FILE* out);
 
 #endif

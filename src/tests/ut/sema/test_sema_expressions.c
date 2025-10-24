@@ -24,7 +24,7 @@ TEST_FIXTURE(ut_sema_expr_fixture_t)
 
 TEST_SETUP(ut_sema_expr_fixture_t)
 {
-    fix->ctx = semantic_context_create();
+    fix->ctx = semantic_context_create("test", "sema_expr");
     ASSERT_NEQ(nullptr, fix->ctx);
 
     fix->sema = semantic_analyzer_create(fix->ctx);
@@ -35,6 +35,7 @@ TEST_TEARDOWN(ut_sema_expr_fixture_t)
 {
     semantic_analyzer_destroy(fix->sema);
     semantic_context_destroy(fix->ctx);
+    ast_type_cache_reset();
 }
 
 // Emit error when we try to assign to a function
@@ -43,7 +44,7 @@ TEST(ut_sema_expr_fixture_t, assignment_to_function_error)
     // Register a function in global scope
     ast_def_t* foo_fn = ast_fn_def_create_va("foo", ast_type_builtin(TYPE_VOID), ast_compound_stmt_create_empty(),
         nullptr);
-    symbol_t* foo_symbol = symbol_create("foo", SYMBOL_FUNCTION, foo_fn);
+    symbol_t* foo_symbol = symbol_create("foo", SYMBOL_FUNCTION, foo_fn, nullptr, nullptr, nullptr);
     foo_symbol->type = ast_type_builtin(TYPE_VOID);
     symbol_table_insert(fix->ctx->global, foo_symbol);
 

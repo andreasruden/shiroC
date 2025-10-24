@@ -197,7 +197,7 @@ int main(int argc, char** argv)
     }
 
     // Create semantic context
-    semantic_context_t* ctx = semantic_context_create();
+    semantic_context_t* ctx = semantic_context_create("None", "Main");
     panic_if(ctx == nullptr);
 
     // Register builtin functions
@@ -241,8 +241,10 @@ int main(int argc, char** argv)
     // Code Generation:
     char* ir_path;
     FILE* fout = open_output_file_for(filepath, &ir_path);
-    llvm_codegen_t* llvm = llvm_codegen_create();
-    llvm_codegen_generate(llvm, AST_NODE(ast), filepath, fout);
+    llvm_codegen_t* llvm = llvm_codegen_create("unknown", "unnamed");
+    llvm_codegen_init(llvm, "unnamed", ctx);
+    llvm_codegen_add_ast(llvm, AST_NODE(ast), filepath);
+    llvm_codegen_finalize(llvm, fout);
     fflush(fout);
     fclose(fout);
     llvm_codegen_destroy(llvm);

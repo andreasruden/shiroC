@@ -25,6 +25,7 @@ TEST_SETUP(parser_errors_fixture_t)
 TEST_TEARDOWN(parser_errors_fixture_t)
 {
     parser_destroy(fix->parser);
+    ast_type_cache_reset();
 }
 
 TEST(parser_errors_fixture_t, partial_parse_with_structural_error)

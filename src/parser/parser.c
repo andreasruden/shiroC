@@ -370,7 +370,7 @@ static ast_expr_t* parse_construct_expr(parser_t* parser)
 
     lexer_next_token_iff(parser->lexer, TOKEN_RBRACE);
 
-    ast_expr_t* construct = ast_construct_expr_create(ast_type_user(type_name->value), &inits);
+    ast_expr_t* construct = ast_construct_expr_create(ast_type_user_unresolved(type_name->value), &inits);
     parser_set_source_tok_to_current(parser, construct, type_name);
     return construct;
 

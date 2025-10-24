@@ -9,6 +9,7 @@ typedef struct ast_member_init
     ast_node_t base;
     char* member_name;
     ast_expr_t* init_expr;
+    ast_type_t* class_type;  // nullptr until resolved by SEMA
 } ast_member_init_t;
 
 ast_member_init_t* ast_member_init_create(const char* member_name, ast_expr_t* init_expr);

@@ -16,7 +16,6 @@
 #include "ast/expr/self_expr.h"
 #include "ast/expr/str_lit.h"
 #include "ast/expr/unary_op.h"
-#include "ast/expr/uninit_lit.h"
 #include "ast/node.h"
 #include "ast/root.h"
 #include "ast/stmt/compound_stmt.h"
@@ -26,6 +25,8 @@
 #include "ast/type.h"
 #include "sema/decl_collector.h"
 #include "sema/semantic_analyzer.h"
+#include "sema/symbol.h"
+#include "sema/symbol_table.h"
 #include "test_runner.h"
 #include "sema_shared.h"
 
@@ -38,7 +39,7 @@ TEST_FIXTURE(ut_sema_classes_fixture_t)
 
 TEST_SETUP(ut_sema_classes_fixture_t)
 {
-    fix->ctx = semantic_context_create();
+    fix->ctx = semantic_context_create("test", "sema_class");
     ASSERT_NEQ(nullptr, fix->ctx);
 
     fix->collector = decl_collector_create(fix->ctx);
@@ -53,6 +54,7 @@ TEST_TEARDOWN(ut_sema_classes_fixture_t)
     semantic_analyzer_destroy(fix->sema);
     decl_collector_destroy(fix->collector);
     semantic_context_destroy(fix->ctx);
+    ast_type_cache_reset();
 }
 
 TEST(ut_sema_classes_fixture_t, empty_class_is_valid)
@@ -79,25 +81,7 @@ TEST(ut_sema_classes_fixture_t, valid_member_types)
             nullptr),
         nullptr);
 
-    decl_collector_run(fix->collector, AST_NODE(root));
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(root));
-    ASSERT_TRUE(res);
-    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
-
-    ast_node_destroy(root);
-}
-
-TEST(ut_sema_classes_fixture_t, invalid_member_type_undefined_class)
-{
-    ast_decl_t* error_node = ast_member_decl_create("next", ast_type_user("UndefinedClass"), nullptr);
-
-    ast_root_t* root = ast_root_create_va(
-        ast_class_def_create_va("Node",
-            error_node,
-            nullptr),
-        nullptr);
-
-    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "undefined type");
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
 
     ast_node_destroy(root);
 }
@@ -124,7 +108,7 @@ TEST(ut_sema_classes_fixture_t, member_default_value_null_for_pointer_type)
     ast_root_t* root = ast_root_create_va(
         ast_class_def_create_va("Node",
             ast_member_decl_create("value", ast_type_builtin(TYPE_I32), nullptr),
-            ast_member_decl_create("next", ast_type_pointer(ast_type_user("Node")), ast_null_lit_create()),
+            ast_member_decl_create("next", ast_type_pointer(ast_type_user_unresolved("Node")), ast_null_lit_create()),
             nullptr),
         nullptr);
 
@@ -211,7 +195,7 @@ TEST(ut_sema_classes_fixture_t, valid_class_construction)
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
                     ast_var_decl_create("p", nullptr,
-                        ast_construct_expr_create_va(ast_type_user("Point"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                             ast_member_init_create("x", ast_int_lit_val(10)),
                             ast_member_init_create("y", ast_int_lit_val(20)),
                             nullptr))),
@@ -219,17 +203,14 @@ TEST(ut_sema_classes_fixture_t, valid_class_construction)
             nullptr),
         nullptr);
 
-    decl_collector_run(fix->collector, AST_NODE(root));
-    bool res = semantic_analyzer_run(fix->sema, AST_NODE(root));
-    ASSERT_TRUE(res);
-    ASSERT_EQ(0, vec_size(&fix->ctx->error_nodes));
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
 
     ast_node_destroy(root);
 }
 
 TEST(ut_sema_classes_fixture_t, construction_missing_required_field)
 {
-    ast_expr_t* error_node = ast_construct_expr_create_va(ast_type_user("Point"),
+    ast_expr_t* error_node = ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
         ast_member_init_create("x", ast_int_lit_val(10)),
         nullptr);
 
@@ -262,7 +243,7 @@ TEST(ut_sema_classes_fixture_t, construction_unknown_field)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(ast_var_decl_create("p", nullptr,
-                    ast_construct_expr_create_va(ast_type_user("Point"),
+                    ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                         ast_member_init_create("x", ast_int_lit_val(10)),
                         error_node,
                         nullptr))),
@@ -287,7 +268,7 @@ TEST(ut_sema_classes_fixture_t, construction_field_type_mismatch)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(ast_var_decl_create("p", nullptr,
-                    ast_construct_expr_create_va(ast_type_user("Point"),
+                    ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                         error_node,
                         ast_member_init_create("y", ast_int_lit_val(20)),
                         nullptr))),
@@ -302,7 +283,7 @@ TEST(ut_sema_classes_fixture_t, construction_field_type_mismatch)
 
 TEST(ut_sema_classes_fixture_t, construction_duplicate_field_init)
 {
-    ast_expr_t* error_node = ast_construct_expr_create_va(ast_type_user("Point"),
+    ast_expr_t* error_node = ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
         ast_member_init_create("x", ast_int_lit_val(10)),
         ast_member_init_create("x", ast_int_lit_val(20)),
         nullptr);
@@ -325,7 +306,7 @@ TEST(ut_sema_classes_fixture_t, construction_duplicate_field_init)
 
 TEST(ut_sema_classes_fixture_t, construction_undefined_class)
 {
-    ast_expr_t* error_node = ast_construct_expr_create_va(ast_type_user("UndefinedClass"),
+    ast_expr_t* error_node = ast_construct_expr_create_va(ast_type_user_unresolved("UndefinedClass"),
         ast_member_init_create("x", ast_int_lit_val(10)),
         nullptr);
 
@@ -351,8 +332,8 @@ TEST(ut_sema_classes_fixture_t, valid_member_access)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
-                    ast_var_decl_create("p", ast_type_user("Point"),
-                        ast_construct_expr_create_va(ast_type_user("Point"),
+                    ast_var_decl_create("p", ast_type_user_unresolved("Point"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                             ast_member_init_create("x", ast_int_lit_val(10)),
                             nullptr))),
                 ast_expr_stmt_create(
@@ -380,8 +361,8 @@ TEST(ut_sema_classes_fixture_t, member_access_nonexistent_field)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
-                    ast_var_decl_create("p", ast_type_user("Point"),
-                        ast_construct_expr_create_va(ast_type_user("Point"),
+                    ast_var_decl_create("p", ast_type_user_unresolved("Point"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                             ast_member_init_create("x", ast_int_lit_val(10)),
                             nullptr))),
                 ast_expr_stmt_create(error_node),
@@ -401,18 +382,18 @@ TEST(ut_sema_classes_fixture_t, chained_member_access)
             ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
             nullptr),
         ast_class_def_create_va("Line",
-            ast_member_decl_create("start", ast_type_user("Point"), nullptr),
+            ast_member_decl_create("start", ast_type_user_unresolved("Point"), nullptr),
             nullptr),
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
-                    ast_var_decl_create("p", ast_type_user("Point"),
-                        ast_construct_expr_create_va(ast_type_user("Point"),
+                    ast_var_decl_create("p", ast_type_user_unresolved("Point"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                             ast_member_init_create("x", ast_int_lit_val(0)),
                             nullptr))),
                 ast_decl_stmt_create(
-                    ast_var_decl_create("line", ast_type_user("Line"),
-                        ast_construct_expr_create_va(ast_type_user("Line"),
+                    ast_var_decl_create("line", ast_type_user_unresolved("Line"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Line"),
                             ast_member_init_create("start", ast_ref_expr_create("p")),
                             nullptr))),
                 ast_expr_stmt_create(
@@ -467,8 +448,8 @@ TEST(ut_sema_classes_fixture_t, valid_method_call)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
-                    ast_var_decl_create("calc", ast_type_user("Calculator"),
-                        ast_construct_expr_create_va(ast_type_user("Calculator"), nullptr))),
+                    ast_var_decl_create("calc", ast_type_user_unresolved("Calculator"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Calculator"), nullptr))),
                 ast_expr_stmt_create(
                     ast_method_call_create_va(ast_ref_expr_create("calc"), "add",
                         ast_int_lit_val(1), ast_int_lit_val(2), nullptr)),
@@ -495,8 +476,8 @@ TEST(ut_sema_classes_fixture_t, method_call_undefined_method)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
-                    ast_var_decl_create("p", ast_type_user("Point"),
-                        ast_construct_expr_create_va(ast_type_user("Point"),
+                    ast_var_decl_create("p", ast_type_user_unresolved("Point"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                             ast_member_init_create("x", ast_int_lit_val(10)),
                             nullptr))),
                 ast_expr_stmt_create(error_node),
@@ -530,8 +511,8 @@ TEST(ut_sema_classes_fixture_t, method_call_argument_count_mismatch)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
-                    ast_var_decl_create("calc", ast_type_user("Calculator"),
-                        ast_construct_expr_create_va(ast_type_user("Calculator"), nullptr))),
+                    ast_var_decl_create("calc", ast_type_user_unresolved("Calculator"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Calculator"), nullptr))),
                 ast_expr_stmt_create(error_node),
                 nullptr),
             nullptr),
@@ -562,8 +543,8 @@ TEST(ut_sema_classes_fixture_t, method_call_argument_type_mismatch)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
-                    ast_var_decl_create("calc", ast_type_user("Calculator"),
-                        ast_construct_expr_create_va(ast_type_user("Calculator"), nullptr))),
+                    ast_var_decl_create("calc", ast_type_user_unresolved("Calculator"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Calculator"), nullptr))),
                 ast_expr_stmt_create(
                     ast_method_call_create_va(ast_ref_expr_create("calc"), "add",
                         error_node, ast_int_lit_val(2), nullptr)),
@@ -665,7 +646,7 @@ TEST(ut_sema_classes_fixture_t, implicit_self_method_call)
 TEST(ut_sema_classes_fixture_t, construction_with_defaults_injected)
 {
     // Test that members with default values are automatically injected into member_inits
-    ast_expr_t* construct_expr = ast_construct_expr_create_va(ast_type_user("Point"),
+    ast_expr_t* construct_expr = ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
         ast_member_init_create("x", ast_int_lit_val(10)),
         nullptr);
 
@@ -710,7 +691,7 @@ TEST(ut_sema_classes_fixture_t, self_reference_via_pointer_is_valid)
     ast_root_t* root = ast_root_create_va(
         ast_class_def_create_va("Node",
             ast_member_decl_create("value", ast_type_builtin(TYPE_I32), nullptr),
-            ast_member_decl_create("next", ast_type_pointer(ast_type_user("Node")), nullptr),
+            ast_member_decl_create("next", ast_type_pointer(ast_type_user_unresolved("Node")), nullptr),
             nullptr),
         nullptr);
 
@@ -722,7 +703,7 @@ TEST(ut_sema_classes_fixture_t, self_reference_via_pointer_is_valid)
 TEST(ut_sema_classes_fixture_t, self_reference_without_indirection_is_invalid)
 {
     // Test that a class cannot directly contain itself (infinite size)
-    ast_decl_t* error_node = ast_member_decl_create("a", ast_type_user("A"), nullptr);
+    ast_decl_t* error_node = ast_member_decl_create("a", ast_type_user_unresolved("A"), nullptr);
 
     ast_root_t* root = ast_root_create_va(
         ast_class_def_create_va("A",
@@ -750,13 +731,13 @@ TEST(ut_sema_classes_fixture_t, pointer_member_access_auto_deref)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
-                    ast_var_decl_create("point", ast_type_user("Point"),
-                        ast_construct_expr_create_va(ast_type_user("Point"),
+                    ast_var_decl_create("point", ast_type_user_unresolved("Point"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                             ast_member_init_create("x", ast_int_lit_val(10)),
                             ast_member_init_create("y", ast_int_lit_val(20)),
                             nullptr))),
                 ast_decl_stmt_create(
-                    ast_var_decl_create("p", ast_type_pointer(ast_type_user("Point")),
+                    ast_var_decl_create("p", ast_type_pointer(ast_type_user_unresolved("Point")),
                         ast_unary_op_create(TOKEN_AMPERSAND, ast_ref_expr_create("point")))),
                 ast_expr_stmt_create(member_access_node),
                 nullptr),
@@ -787,15 +768,15 @@ TEST(ut_sema_classes_fixture_t, double_pointer_member_access_fails)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
-                    ast_var_decl_create("point", ast_type_user("Point"),
-                        ast_construct_expr_create_va(ast_type_user("Point"),
+                    ast_var_decl_create("point", ast_type_user_unresolved("Point"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                             ast_member_init_create("x", ast_int_lit_val(10)),
                             nullptr))),
                 ast_decl_stmt_create(
-                    ast_var_decl_create("p", ast_type_pointer(ast_type_user("Point")),
+                    ast_var_decl_create("p", ast_type_pointer(ast_type_user_unresolved("Point")),
                         ast_unary_op_create(TOKEN_AMPERSAND, ast_ref_expr_create("point")))),
                 ast_decl_stmt_create(
-                    ast_var_decl_create("pp", ast_type_pointer(ast_type_pointer(ast_type_user("Point"))),
+                    ast_var_decl_create("pp", ast_type_pointer(ast_type_pointer(ast_type_user_unresolved("Point"))),
                         ast_unary_op_create(TOKEN_AMPERSAND, ast_ref_expr_create("p")))),
                 ast_expr_stmt_create(
                     ast_member_access_create(error_node, "x")),
@@ -826,8 +807,11 @@ TEST(ut_sema_classes_fixture_t, self_is_pointer_to_class)
 
     ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
 
-    // After semantic analysis, self should have type *Point
-    ast_type_t* expected_type = ast_type_pointer(ast_type_user("Point"));
+    // After semantic analysis, self should have a fully resolved type Point*
+    symbol_t* class_symbol = symbol_table_lookup(fix->ctx->global, "Point");
+    ASSERT_NEQ(nullptr, class_symbol);
+    ASSERT_EQ(SYMBOL_CLASS, class_symbol->kind);
+    ast_type_t* expected_type = ast_type_pointer(ast_type_user(class_symbol));
     ASSERT_EQ(expected_type, self_node->type);
 
     ast_node_destroy(root);
@@ -863,8 +847,8 @@ TEST(ut_sema_classes_fixture_t, overloaded_methods_different_arity_success)
         ast_fn_def_create_va("main", nullptr,
             ast_compound_stmt_create_va(
                 ast_decl_stmt_create(
-                    ast_var_decl_create("c", ast_type_user("Calculator"),
-                        ast_construct_expr_create_va(ast_type_user("Calculator"), nullptr))),
+                    ast_var_decl_create("c", ast_type_user_unresolved("Calculator"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Calculator"), nullptr))),
                 ast_expr_stmt_create(
                     ast_method_call_create_va(ast_ref_expr_create("c"), "compute",
                         ast_int_lit_val(5), nullptr)),

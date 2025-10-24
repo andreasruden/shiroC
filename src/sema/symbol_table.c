@@ -6,6 +6,7 @@
 #include "sema/symbol.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 symbol_table_t* symbol_table_create(symbol_table_t* parent, scope_kind_t kind)
 {
@@ -68,15 +69,28 @@ vec_t* symbol_table_overloads(symbol_table_t* table, const char* name)
     return hash_table_find(&table->map, name);
 }
 
-void symbol_table_merge(symbol_table_t* dst, symbol_table_t* src)
+void symbol_table_import(symbol_table_t* dst, symbol_table_t* src, const char* source_project,
+    const char* source_module)
 {
-    (void)dst;
-    (void)src;
+    hash_table_iter_t itr;
+    for (hash_table_iter_init(&itr, &src->map); hash_table_iter_has_elem(&itr); hash_table_iter_next(&itr))
+    {
+        hash_table_entry_t* entry = hash_table_iter_current(&itr);
+        vec_t* symbols = entry->value;
 
-    panic("not implemented");
+        for (size_t i = 0; i < vec_size(symbols); ++i)
+        {
+            symbol_t* symbol = vec_get(symbols, i);
+            symbol_t* cloned_symbol = symbol_clone(symbol, false);
+            // NOTE: Could remove arguments of function, they should not be needed
+            panic_if(strcmp(cloned_symbol->source_project, source_project) != 0);
+            panic_if(strcmp(cloned_symbol->source_module, source_module) != 0);
+            symbol_table_insert(dst, cloned_symbol);
+        }
+    }
 }
 
-static void* symbol_vec_clone_wrapper(void* symbols_vec)
+static void* symbol_vec_clone_wrapper_with_ast(void* symbols_vec)
 {
     vec_t* src_vec = symbols_vec;
     vec_t* dst_vec = vec_create(symbol_destroy_void);
@@ -84,19 +98,35 @@ static void* symbol_vec_clone_wrapper(void* symbols_vec)
     for (size_t i = 0; i < vec_size(src_vec); ++i)
     {
         symbol_t* original_symbol = vec_get(src_vec, i);
-        symbol_t* cloned_symbol = symbol_clone(original_symbol);
+        symbol_t* cloned_symbol = symbol_clone(original_symbol, true);
         vec_push(dst_vec, cloned_symbol);
     }
 
     return dst_vec;
 }
 
-void symbol_table_clone(symbol_table_t* dst, symbol_table_t* src)
+static void* symbol_vec_clone_wrapper_without_ast(void* symbols_vec)
+{
+    vec_t* src_vec = symbols_vec;
+    vec_t* dst_vec = vec_create(symbol_destroy_void);
+
+    for (size_t i = 0; i < vec_size(src_vec); ++i)
+    {
+        symbol_t* original_symbol = vec_get(src_vec, i);
+        symbol_t* cloned_symbol = symbol_clone(original_symbol, false);
+        vec_push(dst_vec, cloned_symbol);
+    }
+
+    return dst_vec;
+}
+
+void symbol_table_clone(symbol_table_t* dst, symbol_table_t* src, bool include_ast)
 {
     panic_if(dst->map.size != 0);
 
     dst->kind = src->kind;
     dst->parent = src->parent;
     hash_table_deinit(&dst->map);
-    hash_table_clone(&dst->map, &src->map, symbol_vec_clone_wrapper);
+    hash_table_clone(&dst->map, &src->map, include_ast ? symbol_vec_clone_wrapper_with_ast :
+        symbol_vec_clone_wrapper_without_ast);
 }

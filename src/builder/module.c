@@ -95,7 +95,7 @@ module_t* module_create(builder_t* builder, const char* name, const char* src_di
         .src_dir = strdup(src_dir),
         .sources = VEC_INIT(module_src_destroy),
         .dependencies = VEC_INIT(free),
-        .sema_context = semantic_context_create(),
+        .sema_context = semantic_context_create(builder->project, name),
     };
 
     return module;
@@ -253,12 +253,62 @@ bool module_decl_collect(module_t* module)
 
 bool module_populate_dependencies(module_t* module)
 {
-    // TODO: Add deps
+    size_t initial_error_count = vec_size(&module->sema_context->error_nodes);
+
+    // Iterate through all imports and extract dependencies
+    for (size_t i = 0; i < vec_size(&module->sema_context->imports); ++i)
+    {
+        ast_import_def_t* import = vec_get(&module->sema_context->imports, i);
+
+        // NOTE: We only support "Self" imports currently
+        if (strcmp(import->project_name, "Self") != 0)
+        {
+            semantic_context_add_error(module->sema_context, import,
+                ssprintf("External project imports are not yet supported"));
+            continue;
+        }
+
+        // Module cannot import itself
+        if (strcmp(import->module_name, module->name) == 0)
+        {
+            semantic_context_add_error(module->sema_context, import,
+                ssprintf("Module cannot import itself"));
+            continue;
+        }
+
+        // Check if imported module exists
+        if (hash_table_find(&module->builder->modules, import->module_name) == nullptr)
+        {
+            semantic_context_add_error(module->sema_context, import,
+                ssprintf("Module '%s' not found", import->module_name));
+            continue;
+        }
+
+        bool already_added = false;
+        for (size_t j = 0; j < vec_size(&module->dependencies); ++j)
+        {
+            const char* dep_name = vec_get(&module->dependencies, j);
+            if (strcmp(dep_name, import->module_name) == 0)
+            {
+                already_added = true;
+                break;
+            }
+        }
+
+        if (!already_added)
+            vec_push(&module->dependencies, strdup(import->module_name));
+    }
 
     printf("Module %s depends on:\n", module->name);
     for (size_t i = 0; i < vec_size(&module->dependencies); ++i)
         printf("  - %s\n", (const char*)vec_get(&module->dependencies, i));
-    return true;
+
+    // Print and return false if any errors were added
+    bool has_errors = vec_size(&module->sema_context->error_nodes) > initial_error_count;
+    if (has_errors)
+        print_ast_errors(&module->sema_context->error_nodes);
+
+    return !has_errors;
 }
 
 bool module_compile(module_t* module)
@@ -290,8 +340,8 @@ bool module_compile(module_t* module)
 
     // Generate LLVM IR for all sources into one module
     mkdir(module->builder->build_dir, 0755);
-    llvm_codegen_t* llvm = llvm_codegen_create();
-    llvm_codegen_init(llvm, module->name);
+    llvm_codegen_t* llvm = llvm_codegen_create(module->builder->project, module->name);
+    llvm_codegen_init(llvm, module->name, module->sema_context);
 
     for (size_t i = 0; i < vec_size(&module->sources); ++i)
     {
@@ -304,9 +354,26 @@ bool module_compile(module_t* module)
     panic_if(ll_file == nullptr);
     llvm_codegen_finalize(llvm, ll_file);
     fclose(ll_file);
-    free(ll_path);
 
     llvm_codegen_destroy(llvm);
+
+    ast_type_cache_reset();
+
+    // Compile .ll to .o
+    char* obj_path = join_path(module->builder->build_dir, ssprintf("%s.o", module->name));
+    const char* llc_cmd = ssprintf("llc -filetype=obj \"%s\" -o \"%s\"", ll_path, obj_path);
+
+    printf("  Running: %s\n", llc_cmd);
+    int ret = system(llc_cmd);
+
+    free(ll_path);
+    free(obj_path);
+
+    if (ret != 0)
+    {
+        fprintf(stderr, "Error: llc failed\n");
+        return false;
+    }
 
     return true;
 }
@@ -317,23 +384,6 @@ bool module_link(module_t* module)
 
     printf("Linking module %s\n", module->name);
 
-    // Compile the combined .ll file to an object file (stays in build_dir)
-    char* ll_path = join_path(module->builder->build_dir, ssprintf("%s.ll", module->name));
-    char* obj_path = join_path(module->builder->build_dir, ssprintf("%s.o", module->name));
-    const char* llc_cmd = ssprintf("llc -filetype=obj \"%s\" -o \"%s\"", ll_path, obj_path);
-
-    printf("  Running: %s\n", llc_cmd);
-    int ret = system(llc_cmd);
-
-    free(ll_path);
-
-    if (ret != 0)
-    {
-        fprintf(stderr, "Error: llc failed\n");
-        free(obj_path);
-        return false;
-    }
-
     // Create bin directory and link final executable there
     mkdir(module->builder->bin_dir, 0755);
 
@@ -343,13 +393,43 @@ bool module_link(module_t* module)
     const char* cp_cmd = ssprintf("cp \"%s\" \"%s\"", builtins_src, builtins_dest);
     system(cp_cmd);
 
-    char* exe_path = join_path(module->builder->bin_dir, module->name);
-    const char* link_cmd = ssprintf("clang \"%s\" \"%s\" -o \"%s\"", obj_path, builtins_dest, exe_path);
+    // Build link command with main module's .o and all dependency .o files
+    string_t link_cmd_str = STRING_INIT;
+    string_append_cstr(&link_cmd_str, "clang");
 
-    printf("  Running: %s\n", link_cmd);
-    ret = system(link_cmd);
-
+    // Add main module's object file
+    char* obj_path = join_path(module->builder->build_dir, ssprintf("%s.o", module->name));
+    string_append_cstr(&link_cmd_str, " \"");
+    string_append_cstr(&link_cmd_str, obj_path);
+    string_append_cstr(&link_cmd_str, "\"");
     free(obj_path);
+
+    // Add all dependency object files
+    for (size_t i = 0; i < vec_size(&module->dependencies); ++i)
+    {
+        const char* dep_name = vec_get(&module->dependencies, i);
+        char* dep_obj_path = join_path(module->builder->build_dir, ssprintf("%s.o", dep_name));
+        string_append_cstr(&link_cmd_str, " \"");
+        string_append_cstr(&link_cmd_str, dep_obj_path);
+        string_append_cstr(&link_cmd_str, "\"");
+        free(dep_obj_path);
+    }
+
+    // Add builtins.c
+    string_append_cstr(&link_cmd_str, " \"");
+    string_append_cstr(&link_cmd_str, builtins_dest);
+    string_append_cstr(&link_cmd_str, "\"");
+
+    // Add output path
+    char* exe_path = join_path(module->builder->bin_dir, module->name);
+    string_append_cstr(&link_cmd_str, " -o \"");
+    string_append_cstr(&link_cmd_str, exe_path);
+    string_append_cstr(&link_cmd_str, "\"");
+
+    printf("  Running: %s\n", string_cstr(&link_cmd_str));
+    int ret = system(string_cstr(&link_cmd_str));
+
+    string_deinit(&link_cmd_str);
     free(exe_path);
     free(builtins_dest);
 

@@ -46,9 +46,12 @@ class CompileInstruction(TestInstruction):
 class RunInstruction(TestInstruction):
     """Compile and run the file"""
     def execute(self, context: 'TestContext') -> bool:
-        if not context.compile():
+        # Extract custom executable path if provided
+        custom_path = self.args.strip().strip('"').strip("'") if self.args else None
+
+        if not context.compile(custom_path):
             return False
-        return context.run()
+        return context.run(custom_path)
 
 
 class OptionsInstruction(TestInstruction):
@@ -159,7 +162,8 @@ class TestContext:
         self.run_output = ""
         self.run_returncode = None
         self.error_message = ""
-        self.executable = None
+        self.executable = None  # Temp file path when no custom path is specified
+        self.custom_executable_path = None  # User-specified executable path from !run
         self.has_error_instruction = False
 
         # Track errors and warnings by line number
@@ -234,12 +238,17 @@ class TestContext:
                 self.warnings_by_line[line_num] = []
             self.warnings_by_line[line_num].append((line_num, message))
 
-    def compile(self) -> bool:
+    def compile(self, custom_path: Optional[str] = None) -> bool:
         """Compile the file or directory. Returns True if compilation succeeded as expected."""
-        with tempfile.NamedTemporaryFile(suffix='', delete=False) as tmp:
-            self.executable = tmp.name
-
-        cmd = [COMPILER, str(self.test_target), "-o", self.executable]
+        if custom_path:
+            # User specified where executable will be
+            self.custom_executable_path = custom_path
+            cmd = [COMPILER, str(self.test_target)]
+        else:
+            # Create temp file for executable
+            with tempfile.NamedTemporaryFile(suffix='', delete=False) as tmp:
+                self.executable = tmp.name
+            cmd = [COMPILER, str(self.test_target), "-o", self.executable]
         if self.compiler_options:
             cmd.extend(self.compiler_options.split())
         if USE_VALGRIND:
@@ -312,14 +321,17 @@ class TestContext:
 
         return True
 
-    def run(self) -> bool:
+    def run(self, custom_path: Optional[str] = None) -> bool:
         """Run the compiled executable. Returns True if run succeeded as expected."""
-        if not self.executable or not os.path.exists(self.executable):
-            self.error_message = "No executable to run"
+        # Determine which executable to run
+        executable_path = custom_path if custom_path else self.executable
+
+        if not executable_path or not os.path.exists(executable_path):
+            self.error_message = f"No executable to run (looking for: {executable_path})"
             return False
 
         try:
-            cmd = [self.executable]
+            cmd = [executable_path]
             if USE_VALGRIND:
                 cmd = VALGRIND_CMD + cmd
 
@@ -347,8 +359,8 @@ class TestContext:
             self.error_message = f"Execution error: {e}"
             return False
         finally:
-            # Clean up executable
-            if self.executable and os.path.exists(self.executable):
+            # Clean up temp executable (not custom paths)
+            if self.executable and not custom_path and os.path.exists(self.executable):
                 try:
                     os.remove(self.executable)
                 except:
@@ -356,6 +368,7 @@ class TestContext:
 
     def cleanup(self):
         """Clean up any temporary files"""
+        # Only delete temp files (self.executable), not custom paths
         if self.executable and os.path.exists(self.executable):
             try:
                 os.remove(self.executable)

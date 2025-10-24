@@ -41,9 +41,11 @@ symbol_t* symbol_table_lookup_local(symbol_table_t* table, const char* name);
 // NOTE: Only local searche in self, parent matches are not included.
 vec_t* symbol_table_overloads(symbol_table_t* table, const char* name);
 
-// Every symbol from src is cloned and added into dst
-void symbol_table_merge(symbol_table_t* dst, symbol_table_t* src);
+// Import symbol table from another project/module; every symbol in src is cloned and given the
+// source_project & source_module. The AST, if defined, is not included in the dst.
+void symbol_table_import(symbol_table_t* dst, symbol_table_t* src, const char* source_project,
+    const char* source_module);
 
-void symbol_table_clone(symbol_table_t* dst, symbol_table_t* src);
+void symbol_table_clone(symbol_table_t* dst, symbol_table_t* src, bool include_ast);
 
 #endif

@@ -38,6 +38,7 @@ TEST_SETUP(parser_classes_fixture_t)
 TEST_TEARDOWN(parser_classes_fixture_t)
 {
     parser_destroy(fix->parser);
+    ast_type_cache_reset();
 }
 
 TEST(parser_classes_fixture_t, parse_empty_class)
@@ -218,7 +219,7 @@ TEST(parser_classes_fixture_t, parse_simple_class_construction)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
-    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user("Point"),
+    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
         ast_member_init_create("x", ast_int_lit_val(10)),
         ast_member_init_create("y", ast_int_lit_val(20)),
         nullptr);
@@ -237,7 +238,7 @@ TEST(parser_classes_fixture_t, parse_empty_class_construction)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
-    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user("Point"), nullptr);
+    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user_unresolved("Point"), nullptr);
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expr);
@@ -253,7 +254,7 @@ TEST(parser_classes_fixture_t, parse_construction_with_binary_ops)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
-    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user("Point"),
+    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
         ast_member_init_create("x",
             ast_bin_op_create(TOKEN_PLUS, ast_int_lit_val(1), ast_int_lit_val(2))),
         ast_member_init_create("y",
@@ -274,7 +275,7 @@ TEST(parser_classes_fixture_t, parse_construction_with_function_calls)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
-    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user("Point"),
+    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
         ast_member_init_create("x",
             ast_call_expr_create_va(ast_ref_expr_create("getX"), nullptr)),
         ast_member_init_create("y",
@@ -296,14 +297,14 @@ TEST(parser_classes_fixture_t, parse_nested_class_construction)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
-    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user("Line"),
+    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user_unresolved("Line"),
         ast_member_init_create("start",
-            ast_construct_expr_create_va(ast_type_user("Point"),
+            ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                 ast_member_init_create("x", ast_int_lit_val(0)),
                 ast_member_init_create("y", ast_int_lit_val(0)),
                 nullptr)),
         ast_member_init_create("end",
-            ast_construct_expr_create_va(ast_type_user("Point"),
+            ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
                 ast_member_init_create("x", ast_int_lit_val(10)),
                 ast_member_init_create("y", ast_int_lit_val(10)),
                 nullptr)),
@@ -326,7 +327,7 @@ TEST(parser_classes_fixture_t, parse_construction_missing_closing_brace)
     ASSERT_TRUE(vec_size(errors) > 0);
 
     // Construct the expected tree - should recover and include the field we parsed
-    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user("Point"),
+    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
         ast_member_init_create("x", ast_int_lit_val(10)),
         nullptr);
 
@@ -347,7 +348,7 @@ TEST(parser_classes_fixture_t, parse_construction_invalid_field_syntax)
     ASSERT_TRUE(vec_size(errors) > 0);
 
     // Construct the expected tree - parser recovers and treats 'x' as field name, 10 as value
-    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user("Point"),
+    ast_expr_t* expected = ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
         ast_member_init_create("x", ast_int_lit_val(10)),
         nullptr);
 

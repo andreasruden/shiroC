@@ -1,0 +1,11 @@
+// Provides Adder class
+
+export class Adder
+{
+    var last_result: i32 = 0;
+
+    fn add(lhs: i32, rhs: i32) -> i32 {
+        last_result = lhs + rhs;
+        return self.last_result;
+    }
+}

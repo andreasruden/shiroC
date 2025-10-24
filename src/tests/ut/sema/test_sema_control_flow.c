@@ -25,7 +25,7 @@ TEST_FIXTURE(ut_sema_cf_fixture_t)
 
 TEST_SETUP(ut_sema_cf_fixture_t)
 {
-    fix->ctx = semantic_context_create();
+    fix->ctx = semantic_context_create("test", "sema_control_flow");
     ASSERT_NEQ(nullptr, fix->ctx);
 
     fix->sema = semantic_analyzer_create(fix->ctx);
@@ -36,6 +36,7 @@ TEST_TEARDOWN(ut_sema_cf_fixture_t)
 {
     semantic_analyzer_destroy(fix->sema);
     semantic_context_destroy(fix->ctx);
+    ast_type_cache_reset();
 }
 
 // If statement with non-boolean condition

@@ -26,7 +26,7 @@ TEST_FIXTURE(ut_sema_var_fixture_t)
 
 TEST_SETUP(ut_sema_var_fixture_t)
 {
-    fix->ctx = semantic_context_create();
+    fix->ctx = semantic_context_create("test", "sema_var");
     ASSERT_NEQ(nullptr, fix->ctx);
 
     fix->collector = decl_collector_create(fix->ctx);
@@ -41,6 +41,7 @@ TEST_TEARDOWN(ut_sema_var_fixture_t)
     semantic_analyzer_destroy(fix->sema);
     decl_collector_destroy(fix->collector);
     semantic_context_destroy(fix->ctx);
+    ast_type_cache_reset();
 }
 
 // Emit an error when a name in the same scope is redeclared

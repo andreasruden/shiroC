@@ -6,17 +6,20 @@
 
 typedef struct semantic_context
 {
-    symbol_table_t* export;
+    char* project_name;
+    char* module_name;
+    symbol_table_t* exports;
     symbol_table_t* global;
     symbol_table_t* current;
+    vec_t imports;        // ast_import_t* decls that appear in AST
     vec_t scope_stack;
-    vec_t error_nodes;  // vec<ast_node_t*>: nodes that have semantic errors, we do not own these nodes (AST does)
+    vec_t error_nodes;    // vec<ast_node_t*>: nodes that have semantic errors, we do not own these nodes (AST does)
     vec_t warning_nodes;  // vec<ast_node_t*>: nodes that have semantic warnings, we do not own these nodes (AST does)
 
     vec_t builtin_ast_gc;  // AST that was injected with semantic_context_register_builtins
 } semantic_context_t;
 
-semantic_context_t* semantic_context_create();
+semantic_context_t* semantic_context_create(const char* project_name, const char* module_name);
 
 void semantic_context_destroy(semantic_context_t* ctx);
 

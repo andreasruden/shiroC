@@ -34,6 +34,7 @@ TEST_SETUP(parser_statements_fixture_t)
 TEST_TEARDOWN(parser_statements_fixture_t)
 {
     parser_destroy(fix->parser);
+    ast_type_cache_reset();
 }
 
 TEST(parser_statements_fixture_t, parse_decl_stmt_no_init)

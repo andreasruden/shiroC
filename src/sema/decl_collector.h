@@ -14,6 +14,6 @@ decl_collector_t* decl_collector_create(semantic_context_t* ctx);
 void decl_collector_destroy(decl_collector_t* collector);
 
 // Returns false if decl symbols are not valid (ctx contains errors)
-bool decl_collector_run(decl_collector_t* collector, ast_node_t* root);
+bool decl_collector_run(decl_collector_t* collector, ast_node_t* node);
 
 #endif

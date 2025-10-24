@@ -2,6 +2,7 @@
 
 #include "ast/type.h"
 #include "common/debug/panic.h"
+#include "sema/symbol.h"
 
 #include <llvm-c/Types.h>
 #include <llvm-c/Core.h>
@@ -67,7 +68,7 @@ LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
         }
         case AST_TYPE_USER:
         {
-            LLVMTypeRef class_type = LLVMGetTypeByName2(ctx, type->data.user.name);
+            LLVMTypeRef class_type = LLVMGetTypeByName2(ctx, type->data.user.class_symbol->fully_qualified_name);
             panic_if(class_type == nullptr);
             return class_type;
         }

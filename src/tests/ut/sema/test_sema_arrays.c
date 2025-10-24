@@ -29,7 +29,7 @@ TEST_FIXTURE(ut_sema_array_fixture_t)
 
 TEST_SETUP(ut_sema_array_fixture_t)
 {
-    fix->ctx = semantic_context_create();
+    fix->ctx = semantic_context_create("test", "sema_array");
     ASSERT_NEQ(nullptr, fix->ctx);
 
     fix->collector = decl_collector_create(fix->ctx);
@@ -44,6 +44,7 @@ TEST_TEARDOWN(ut_sema_array_fixture_t)
     semantic_analyzer_destroy(fix->sema);
     decl_collector_destroy(fix->collector);
     semantic_context_destroy(fix->ctx);
+    ast_type_cache_reset();
 }
 
 TEST(ut_sema_array_fixture_t, array_literal_type_inference_basic)

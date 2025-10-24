@@ -11,7 +11,9 @@
 #include "sema/symbol.h"
 #include "sema/symbol_table.h"
 
-semantic_context_t* semantic_context_create()
+#include <string.h>
+
+semantic_context_t* semantic_context_create(const char* project_name, const char* module_name)
 {
     semantic_context_t* ctx = malloc(sizeof(*ctx));
 
@@ -19,13 +21,16 @@ semantic_context_t* semantic_context_create()
     symbol_table_t* global_scope = symbol_table_create(nullptr, SCOPE_GLOBAL);
 
     *ctx = (semantic_context_t){
-        .export = export_scope,
+        .project_name = strdup(project_name),
+        .module_name = strdup(module_name),
+        .exports = export_scope,
         .global = global_scope,
         .current = global_scope,
         .scope_stack = VEC_INIT(symbol_table_destroy_void),
         .error_nodes = VEC_INIT(nullptr),    // we do not own these nodes
         .warning_nodes = VEC_INIT(nullptr),  // we do not own these nodes
         .builtin_ast_gc = VEC_INIT(ast_node_destroy),
+        .imports = VEC_INIT(nullptr),        // we do not own these nodes
     };
 
     vec_push(&ctx->scope_stack, global_scope);
@@ -38,11 +43,14 @@ void semantic_context_destroy(semantic_context_t* ctx)
     if (ctx == nullptr)
         return;
 
-    symbol_table_destroy(ctx->export);
+    free(ctx->project_name);
+    free(ctx->module_name);
+    symbol_table_destroy(ctx->exports);
     vec_deinit(&ctx->scope_stack);
     vec_deinit(&ctx->error_nodes);
     vec_deinit(&ctx->warning_nodes);
     vec_deinit(&ctx->builtin_ast_gc);
+    vec_deinit(&ctx->imports);
     free(ctx);
 }
 
@@ -76,16 +84,18 @@ void semantic_context_register_builtins(semantic_context_t* ctx)
 {
     // Create parameter: value: i32
     ast_param_decl_t* param = (ast_param_decl_t*)ast_param_decl_create("value", ast_type_builtin(TYPE_I32));
+    symbol_t* param_symbol = symbol_create(param->name, SYMBOL_PARAMETER, param, nullptr, nullptr, nullptr);
+    param_symbol->type = param->type;
 
     // Register printI32(i32) -> void
     ast_def_t* fn_def = ast_fn_def_create_va("printI32", ast_type_builtin(TYPE_VOID),
         ast_compound_stmt_create_empty(), param, nullptr);
     vec_push(&ctx->builtin_ast_gc, fn_def);
 
-    symbol_t* print_i32 = symbol_create("printI32", SYMBOL_FUNCTION, fn_def);
+    symbol_t* print_i32 = symbol_create("printI32", SYMBOL_FUNCTION, fn_def, nullptr, nullptr, nullptr);
     print_i32->type = ast_type_invalid();  // FIXME: should be function signature type
     print_i32->data.function.return_type = ast_type_builtin(TYPE_VOID);
-    vec_push(&print_i32->data.function.parameters, param);
+    vec_push(&print_i32->data.function.parameters, param_symbol);
 
     symbol_table_insert(ctx->global, print_i32);
 }

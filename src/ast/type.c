@@ -8,6 +8,7 @@
 #include "common/debug/panic.h"
 #include "common/util/ssprintf.h"
 #include "parser/lexer.h"
+#include "sema/symbol.h"
 
 #include <string.h>
 
@@ -15,6 +16,7 @@
 ast_type_t* invalid_cache = nullptr;
 static ast_type_t* builtins_cache[TYPE_END] = {};
 static hash_table_t* user_cache = nullptr;
+static hash_table_t* user_unresolved_cache = nullptr;
 static hash_table_t* pointer_cache = nullptr;  // Key: pointee type address -> Value: pointer type
 static hash_table_t* fixed_array_cache = nullptr;  // Key: element type address, size -> Value: array type
 static hash_table_t* heap_array_cache = nullptr;  // Key: element type address -> Value: array type
@@ -34,7 +36,10 @@ static void ast_type_destroy(void* type_)
     }
 
     if (type->kind == AST_TYPE_USER)
+    {
+        // NOTE: class_symbol is owned by semantic_context, not by the type
         free(type->data.user.name);
+    }
     else if (type->kind == AST_TYPE_POINTER)
         free(type->data.pointer.str_repr);
     else if (type->kind == AST_TYPE_ARRAY)
@@ -58,9 +63,27 @@ ast_type_t* ast_type_builtin(type_t type)
     return ast_type;
 }
 
-ast_type_t* ast_type_user(const char* type_name)
+ast_type_t* ast_type_user(symbol_t* class_symbol)
 {
-    ast_type_t* ast_type = hash_table_find(user_cache, type_name);
+    ast_type_t* ast_type = hash_table_find(user_cache, class_symbol->fully_qualified_name);
+    if (ast_type != nullptr)
+        return ast_type;
+
+    ast_type = malloc(sizeof(ast_type_t));
+    panic_if(ast_type == nullptr);
+
+    *ast_type = (ast_type_t){
+        .kind = AST_TYPE_USER,
+        .data.user.class_symbol = class_symbol,
+    };
+    hash_table_insert(user_cache, class_symbol->fully_qualified_name, ast_type);
+
+    return ast_type;
+}
+
+ast_type_t* ast_type_user_unresolved(const char* type_name)
+{
+    ast_type_t* ast_type = hash_table_find(user_unresolved_cache, type_name);
     if (ast_type != nullptr)
         return ast_type;
 
@@ -71,7 +94,7 @@ ast_type_t* ast_type_user(const char* type_name)
         .kind = AST_TYPE_USER,
         .data.user.name = strdup(type_name),
     };
-    hash_table_insert(user_cache, type_name, ast_type);
+    hash_table_insert(user_unresolved_cache, type_name, ast_type);
 
     return ast_type;
 }
@@ -189,7 +212,7 @@ ast_type_t* ast_type_from_token(token_t* tok)
         case TOKEN_NULL:  return ast_type_builtin(TYPE_NULL);
 
         case TOKEN_IDENTIFIER:
-        return ast_type_user(tok->value);
+        return ast_type_user_unresolved(tok->value);
 
         default:
             return ast_type_invalid();
@@ -399,7 +422,11 @@ const char* ast_type_string(ast_type_t* type)
         case AST_TYPE_BUILTIN:
             return type_to_str(type->data.builtin.type);
         case AST_TYPE_USER:
+        {
+            if (type->data.user.class_symbol)
+                return type->data.user.class_symbol->fully_qualified_name;
             return type->data.user.name;
+        }
         case AST_TYPE_INVALID:
             return "INVALID";
         case AST_TYPE_POINTER:
@@ -511,6 +538,29 @@ void ast_type_cache_init()
     }
 
     user_cache = hash_table_create(ast_type_destroy);
+    user_unresolved_cache = hash_table_create(ast_type_destroy);
+    pointer_cache = hash_table_create(ast_type_destroy);
+    fixed_array_cache = hash_table_create(ast_type_destroy);
+    heap_array_cache = hash_table_create(ast_type_destroy);
+    view_cache = hash_table_create(ast_type_destroy);
+    gc_array = vec_create(ast_type_destroy);
+}
+
+void ast_type_cache_reset()
+{
+    // Clear all non-builtin type caches. This is needed between unit tests
+    // to prevent cached types from holding dangling pointers to freed symbols.
+    hash_table_destroy(user_cache);
+    hash_table_destroy(user_unresolved_cache);
+    hash_table_destroy(pointer_cache);
+    hash_table_destroy(fixed_array_cache);
+    hash_table_destroy(heap_array_cache);
+    hash_table_destroy(view_cache);
+    vec_destroy(gc_array);
+
+    // Recreate the caches
+    user_cache = hash_table_create(ast_type_destroy);
+    user_unresolved_cache = hash_table_create(ast_type_destroy);
     pointer_cache = hash_table_create(ast_type_destroy);
     fixed_array_cache = hash_table_create(ast_type_destroy);
     heap_array_cache = hash_table_create(ast_type_destroy);
@@ -525,6 +575,7 @@ void ast_type_cache_cleanup()
     for (int type = 0; type < TYPE_END; ++type)
         free(builtins_cache[type]);
     hash_table_destroy(user_cache);
+    hash_table_destroy(user_unresolved_cache);
     hash_table_destroy(pointer_cache);
     hash_table_destroy(fixed_array_cache);
     hash_table_destroy(heap_array_cache);
