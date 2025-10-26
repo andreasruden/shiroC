@@ -419,8 +419,6 @@ bool module_compile(module_t* module)
 
     llvm_codegen_destroy(llvm);
 
-    ast_type_cache_reset();
-
     // Compile .ll to .o
     char* obj_path = join_path(module->builder->build_dir, ssprintf("%s.o", module->name));
     const char* llc_cmd = ssprintf("llc -filetype=obj \"%s\" -o \"%s\"", ll_path, obj_path);

@@ -2,6 +2,7 @@
 
 #include "builder/module.h"
 #include "common/containers/hash_table.h"
+#include "common/containers/string.h"
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
 #include "common/toml_parser.h"
@@ -11,6 +12,7 @@
 #include "sema/symbol_table.h"
 
 #include <ctype.h>
+#include <libgen.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,7 +53,7 @@ void dependency_destroy_void(void* dep)
     dependency_destroy(dep);
 }
 
-builder_t* builder_create(const char* root_dir)
+builder_t* builder_create(const char* root_dir, const char* compiler_path)
 {
     builder_t* builder = malloc(sizeof(*builder));
     panic_if(builder == nullptr);
@@ -64,6 +66,42 @@ builder_t* builder_create(const char* root_dir)
         .modules = HASH_TABLE_INIT(module_destroy_void),
         .dependencies = VEC_INIT(dependency_destroy_void),
     };
+
+    // TODO: This resolution is just for developing
+    // Resolve std library path relative to compiler binary
+    // Compiler is at build/bin/shiro, std is at src/std
+    char* compiler_path_copy = strdup(compiler_path);
+    char* compiler_dir = dirname(compiler_path_copy);
+
+    // Build path: <compiler_dir>/../../src/std
+    string_t std_path_rel = STRING_INIT;
+    string_append_cstr(&std_path_rel, ssprintf("%s/../../src/std", compiler_dir));
+    free(compiler_path_copy);
+
+    // Canonicalize the path
+    char* std_path = realpath(string_cstr(&std_path_rel), nullptr);
+    string_deinit(&std_path_rel);
+
+    if (std_path != nullptr)
+    {
+        // Verify std directory exists
+        struct stat path_stat;
+        if (stat(std_path, &path_stat) == 0 && S_ISDIR(path_stat.st_mode))
+        {
+            // Add std as first implicit dependency
+            dependency_t* std_dep = dependency_create("std", std_path);
+            vec_push(&builder->dependencies, std_dep);
+        }
+        else
+        {
+            fprintf(stderr, "Warning: std library not found at %s, continuing without it\n", std_path);
+        }
+        free(std_path);
+    }
+    else
+    {
+        fprintf(stderr, "Warning: Could not resolve std library path, continuing without it\n");
+    }
 
     return builder;
 }

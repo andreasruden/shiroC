@@ -1,0 +1,6 @@
+[project]
+name = "Std"
+
+[[lib]]
+name = "IO"
+src = "IO/"

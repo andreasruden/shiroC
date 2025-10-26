@@ -32,7 +32,7 @@ typedef struct builder
     vec_t dependencies;    // dependency_t* - all loaded dependency projects
 } builder_t;
 
-builder_t* builder_create(const char* root_dir);
+builder_t* builder_create(const char* root_dir, const char* compiler_path);
 
 void builder_destroy(builder_t* builder);
 

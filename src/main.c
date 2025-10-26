@@ -169,7 +169,7 @@ int main(int argc, char** argv)
     struct stat path_stat;
     if (stat(filepath, &path_stat) == 0 && S_ISDIR(path_stat.st_mode))
     {
-        builder_t* builder = builder_create(filepath);
+        builder_t* builder = builder_create(filepath, argv[0]);
         bool success = builder_run(builder);
         builder_destroy(builder);
         return success ? 0 : 64;
