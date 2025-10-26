@@ -114,7 +114,7 @@ static ast_coercion_kind_t check_coercion_with_expr(semantic_analyzer_t* sema, v
 
     if (coercion == COERCION_INVALID && emit_error)
     {
-        semantic_context_add_error(sema->ctx, node, error ? error : ssprintf("cannot coerce type '%s' into type '%s",
+        semantic_context_add_error(sema->ctx, node, error ? error : ssprintf("cannot coerce type '%s' into type '%s'",
             ast_type_string(from_expr->type), ast_type_string(to_type)));
     }
 
@@ -715,11 +715,17 @@ static void* analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* 
 
     bin_op->rhs = ast_transformer_transform(sema, bin_op->rhs, nullptr);
     if (bin_op->rhs->type == ast_type_invalid())
+    {
+        bin_op->base.type = ast_type_invalid();
         return bin_op;  // avoid cascading errors
+    }
 
     ast_coercion_kind_t coercion = check_coercion_with_expr(sema, bin_op, bin_op->rhs, bin_op->lhs->type, true);
     if (coercion == COERCION_INVALID)
+    {
+        bin_op->base.type = ast_type_invalid();
         return bin_op;
+    }
     else if (coercion != COERCION_EQUAL && coercion != COERCION_ALWAYS)
     {
         semantic_context_add_error(sema->ctx, bin_op->lhs,
@@ -892,7 +898,14 @@ static symbol_t* analyze_call_and_method_shared(semantic_analyzer_t* sema, void*
     // Resolve arguments before overload resolution
     size_t num_args = vec_size(arguments);
     for (size_t i = 0; i < num_args; ++i)
-        AST_TRANSFORMER_TRANSFORM_VEC(sema, arguments, i, nullptr);
+    {
+        ast_expr_t* expr = vec_get(arguments, i);
+        ast_expr_t* replacement = ast_transformer_transform(sema, expr, nullptr);
+        if (expr != replacement)
+            vec_replace(arguments, i, replacement);
+        if (replacement->type == ast_type_invalid())
+            return nullptr;
+    }
 
     symbol_t* function = nullptr;
     if (vec_size(fn_symbols) == 1)
@@ -1563,6 +1576,11 @@ static void* analyze_unary_op(void* self_, ast_unary_op_t* unary_op, void* out_)
 
     symbol_t* symbol = nullptr;  // can be nullptr after visit
     unary_op->expr = ast_transformer_transform(sema, unary_op->expr, &symbol);
+    if (unary_op->expr->type == ast_type_invalid())
+    {
+        unary_op->base.type = ast_type_invalid();
+        return unary_op;
+    }
 
     switch (unary_op->op)
     {
