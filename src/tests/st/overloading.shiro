@@ -63,8 +63,7 @@ fn main() -> i32 {
     printI32(d);  //! stdout: "12"
 
     var e = multiply(5.0f32, 6.0f32);
-    // FIXME: Need casting implemented for this
-    // printI32(e);  // would print "30"
+    printI32(e as i32);  //! stdout: "30"
 
     // Test overloaded methods
     var calc = Calculator { value = 10 };
