@@ -67,6 +67,8 @@ symbol_t* symbol_clone(symbol_t* source, bool include_ast, symbol_t* parent_name
             }
             new_symb->data.function.return_type = source->data.function.return_type;
             new_symb->data.function.overload_index = source->data.function.overload_index;
+            new_symb->data.function.extern_abi = source->data.function.extern_abi ?
+                strdup(source->data.function.extern_abi) : nullptr;
             break;
         case SYMBOL_CLASS:
         {
@@ -111,6 +113,7 @@ void symbol_destroy(symbol_t* symbol)
             [[fallthrough]];
         case SYMBOL_FUNCTION:
             vec_deinit(&symbol->data.function.parameters);
+            free(symbol->data.function.extern_abi);
             break;
         case SYMBOL_CLASS:
             symbol_table_destroy(symbol->data.class.symbols);

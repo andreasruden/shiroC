@@ -128,7 +128,8 @@ static void print_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     self->indentation += PRINT_INDENTATION_WIDTH;
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
         ast_visitor_visit(self, vec_get(&fn_def->params, i), out);
-    ast_visitor_visit(self, fn_def->body, out);
+    if (fn_def->body)
+        ast_visitor_visit(self, fn_def->body, out);
     self->indentation -= PRINT_INDENTATION_WIDTH;
 }
 

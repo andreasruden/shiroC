@@ -329,6 +329,9 @@ static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
 {
     // TODO: This and method is very similar, should try to reuse their impl
 
+    if (fn->extern_abi != nullptr)
+        return fn;  // do not analyze definition of external decl
+
     semantic_analyzer_t* sema = self_;
     panic_if(fn->return_type == nullptr);  // solved by decl_collector
     panic_if(fn->symbol == nullptr);

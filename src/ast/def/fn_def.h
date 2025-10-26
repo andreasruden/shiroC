@@ -13,9 +13,10 @@ typedef struct ast_fn_def
     ast_def_t base;
     vec_t params;  // vec<ast_param_decl_t*>
     ast_type_t* return_type;
-    ast_stmt_t* body;
+    ast_stmt_t* body;      // nullptr for imports or external declarations
     size_t overload_index; // set by SEMA
-    symbol_t* symbol;       // only valid after decl_collector & while semantic_context is valid (we do not own memory)
+    symbol_t* symbol;      // only valid after decl_collector & while semantic_context is valid (we do not own memory)
+    char* extern_abi;      // if not nullptr, function is external
     bool exported;
 } ast_fn_def_t;
 

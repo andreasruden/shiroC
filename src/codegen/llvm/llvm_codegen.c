@@ -372,10 +372,20 @@ static void emit_method_bodies(llvm_codegen_t* llvm, ast_class_def_t* class_def)
     llvm->current_class = nullptr;
 }
 
+static LLVMCallConv lookup_call_conv(const char* str)
+{
+    if (strcmp(str, "C") == 0)
+        return LLVMCCallConv;
+
+    fprintf(stderr, "Unknown calling convention: %s\n", str);
+    return LLVMCCallConv;
+}
+
 // Pass 2: Declare function signature
 static void declare_function(llvm_codegen_t* llvm, symbol_t* fn_symb)
 {
-    const char* mangled_fn_name = MANGLE_FUNCTION_NAME(fn_symb);
+    bool external = fn_symb->data.function.extern_abi != nullptr;
+    const char* mangled_fn_name = external ? fn_symb->name : MANGLE_FUNCTION_NAME(fn_symb);
 
     if (LLVMGetNamedFunction(llvm->module, mangled_fn_name) != nullptr)
         return;  // already declared by previous AST in this module
@@ -392,13 +402,19 @@ static void declare_function(llvm_codegen_t* llvm, symbol_t* fn_symb)
     // Declare function signature
     LLVMTypeRef fn_type = LLVMFunctionType(llvm_type(llvm->context, fn_symb->data.function.return_type), param_types,
         param_count, false);
-    LLVMAddFunction(llvm->module, mangled_fn_name, fn_type);
+    LLVMValueRef func = LLVMAddFunction(llvm->module, mangled_fn_name, fn_type);
     free(param_types);
+
+    if (external)
+        LLVMSetFunctionCallConv(func, lookup_call_conv(fn_symb->data.function.extern_abi));
 }
 
 // Pass 3: Define function body
 static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
 {
+    if (fn_def->extern_abi != nullptr)
+        return;
+
     llvm->symbols = hash_table_create(nullptr);
 
     // Get the declared function

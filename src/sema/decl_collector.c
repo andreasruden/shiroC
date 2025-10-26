@@ -162,6 +162,7 @@ static void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     fn_def->symbol = symbol;
     fn_def->overload_index = num_prev_defs;
     symbol->data.function.overload_index = fn_def->overload_index;
+    symbol->data.function.extern_abi = fn_def->extern_abi ? strdup(fn_def->extern_abi) : nullptr;
 
     symbol_table_insert(collector->ctx->global, symbol);
     if (fn_def->exported)

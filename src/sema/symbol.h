@@ -35,6 +35,7 @@ typedef struct symbol
             vec_t parameters;         // symbol_t*
             ast_type_t* return_type;
             size_t overload_index;
+            char* extern_abi;         // nullpt if function is not extern decl
         } function;  // used by function & method
 
         struct

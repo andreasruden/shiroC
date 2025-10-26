@@ -193,3 +193,24 @@ TEST(parser_functions_fixture_t, parse_exported_function)
     ast_node_destroy(root);
     ast_node_destroy(expected);
 }
+
+// Parse source code with external function declaration
+TEST(parser_functions_fixture_t, parse_extern_function_with_abi)
+{
+    parser_set_source(fix->parser, "test", "extern \"C\" fn abs(x: i32) -> i32;");
+    ast_root_t* root = parser_parse(fix->parser);
+    ASSERT_NEQ(nullptr, root);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    ast_fn_def_t* fn = (ast_fn_def_t*)ast_fn_def_create_va("abs", ast_type_builtin(TYPE_I32), nullptr,
+            ast_param_decl_create("x", ast_type_builtin(TYPE_I32)),
+            nullptr);
+    fn->extern_abi = strdup("C");
+    ast_root_t* expected = ast_root_create_va(
+        (ast_def_t*)fn,
+        nullptr);
+
+    ASSERT_TREES_EQUAL(expected, root);
+    ast_node_destroy(root);
+    ast_node_destroy(expected);
+}

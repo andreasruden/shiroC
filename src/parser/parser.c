@@ -1062,7 +1062,7 @@ static ast_decl_t* parse_param_decl(parser_t* parser)
     return decl;
 }
 
-static ast_def_t* parse_fn_def(parser_t* parser, bool exported)
+static ast_def_t* parse_fn_def(parser_t* parser, bool exported, bool external)
 {
     token_t* id = nullptr;
     vec_t params = VEC_INIT(ast_node_destroy);
@@ -1101,13 +1101,17 @@ static ast_def_t* parse_fn_def(parser_t* parser, bool exported)
     if (lexer_peek_token(parser->lexer)->type == TOKEN_ARROW)
     {
         lexer_next_token(parser->lexer);
-        ret_type = parse_type_annotation(parser);;
+        ret_type = parse_type_annotation(parser);
     }
 
     // Body
-    ast_stmt_t* body = parse_compound_stmt(parser);
-    if (body == nullptr)
-        goto cleanup;
+    ast_stmt_t* body = nullptr;
+    if (!external)
+    {
+        body = parse_compound_stmt(parser);
+        if (body == nullptr)
+            goto cleanup;
+    }
 
     fn_def = ast_fn_def_create(id->value, &params, ret_type, body, exported);
     parser_set_source_tok_to_current(parser, fn_def, tok_fn);
@@ -1136,7 +1140,7 @@ static ast_decl_t* parse_member_decl(parser_t* parser)
 static ast_def_t* parse_method_def(parser_t* parser)
 {
     token_t* tok_start = lexer_peek_token(parser->lexer);
-    ast_fn_def_t* fn_def = (ast_fn_def_t*)parse_fn_def(parser, false);
+    ast_fn_def_t* fn_def = (ast_fn_def_t*)parse_fn_def(parser, false, false);
     if (fn_def == nullptr)
         return nullptr;
     ast_def_t* method = ast_method_def_create_from(fn_def);
@@ -1228,6 +1232,27 @@ static ast_def_t* parse_import_def(parser_t* parser)
     return import_def;
 }
 
+static ast_def_t* parse_extern_def(parser_t* parser)
+{
+    token_t* tok_extern = lexer_next_token_iff(parser->lexer, TOKEN_EXTERN);
+    if (!tok_extern)
+        return nullptr;
+
+    token_t* tok_abi = lexer_next_token_iff(parser->lexer, TOKEN_STRING);
+    if (tok_abi == nullptr)
+        return nullptr;
+
+    ast_fn_def_t* fn = (ast_fn_def_t*)parse_fn_def(parser, false, true);
+    if (fn == nullptr)
+        return nullptr;
+
+    fn->extern_abi = strdup(tok_abi->value);
+
+    lexer_next_token_iff(parser->lexer, TOKEN_SEMICOLON);
+
+    return (ast_def_t*)fn;
+}
+
 static ast_def_t* parse_top_level_definition(parser_t* parser)
 {
     bool export = false;
@@ -1237,7 +1262,7 @@ parse:
     {
         case TOKEN_FN:
             parser->state = PARSER_STATE_REST;
-            return parse_fn_def(parser, export);
+            return parse_fn_def(parser, export, false);
         case TOKEN_CLASS:
             parser->state = PARSER_STATE_REST;
             return parse_class_def(parser, export);
@@ -1251,6 +1276,10 @@ parse:
             export = true;
             lexer_next_token(parser->lexer);
             goto parse;
+        case TOKEN_EXTERN:
+            if (export)
+                lexer_emit_token_malformed(parser->lexer, lexer_peek_token(parser->lexer), "cannot mix with export");
+            return parse_extern_def(parser);
         default:
             break;
     }
