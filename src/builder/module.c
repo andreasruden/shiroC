@@ -4,6 +4,7 @@
 #include "ast/root.h"
 #include "builder/builder.h"
 #include "codegen/llvm/llvm_codegen.h"
+#include "common/containers/string.h"
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
 #include "common/util/path.h"
@@ -91,11 +92,13 @@ module_t* module_create(builder_t* builder, const char* name, const char* src_di
     *module = (module_t){
         .builder = builder,
         .kind = kind,
+        .is_dependency = false,
         .name = strdup(name),
+        .project_name = nullptr,
         .src_dir = strdup(src_dir),
         .sources = VEC_INIT(module_src_destroy),
         .dependencies = VEC_INIT(free),
-        .sema_context = semantic_context_create(builder->project, name),
+        .sema_context = nullptr,  // Created later in module_decl_collect
     };
 
     return module;
@@ -107,6 +110,7 @@ void module_destroy(module_t* module)
         return;
 
     free(module->name);
+    free(module->project_name);
     free(module->src_dir);
     vec_deinit(&module->sources);
     vec_deinit(&module->dependencies);
@@ -230,6 +234,10 @@ bool module_decl_collect(module_t* module)
 {
     printf("Building symbols of module %s\n", module->name);
 
+    // Create semantic context now that module->is_dependency and module->project_name are set
+    const char* proj_name = module->is_dependency ? module->project_name : nullptr;
+    module->sema_context = semantic_context_create(proj_name, module->name);
+
     semantic_context_register_builtins(module->sema_context);
 
     decl_collector_t* decl_collector = decl_collector_create(module->sema_context);
@@ -260,35 +268,89 @@ bool module_populate_dependencies(module_t* module)
     {
         ast_import_def_t* import = vec_get(&module->sema_context->imports, i);
 
-        // NOTE: We only support "Self" imports currently
-        if (strcmp(import->project_name, "Self") != 0)
+        // Validate project name against available projects
+        bool is_valid_project = false;
+        if (strcmp(import->project_name, "Self") == 0)
         {
+            is_valid_project = true;
+        }
+        else
+        {
+            // Check if it's a loaded dependency project
+            for (size_t j = 0; j < vec_size(&module->builder->dependencies); ++j)
+            {
+                dependency_t* dep = vec_get(&module->builder->dependencies, j);
+                if (strcmp(dep->project_name, import->project_name) == 0)
+                {
+                    is_valid_project = true;
+                    break;
+                }
+            }
+        }
+
+        if (!is_valid_project)
+        {
+            // Build list of available projects for error message
+            string_t available_projects = STRING_INIT;
+            string_append_cstr(&available_projects, "Self");
+            for (size_t j = 0; j < vec_size(&module->builder->dependencies); ++j)
+            {
+                dependency_t* dep = vec_get(&module->builder->dependencies, j);
+                string_append_cstr(&available_projects, ", ");
+                string_append_cstr(&available_projects, dep->project_name);
+            }
+
             semantic_context_add_error(module->sema_context, import,
-                ssprintf("External project imports are not yet supported"));
+                ssprintf("Unknown project '%s' in import statement. Available projects: %s",
+                    import->project_name, string_cstr(&available_projects)));
+            string_deinit(&available_projects);
             continue;
         }
 
-        // Module cannot import itself
-        if (strcmp(import->module_name, module->name) == 0)
+        // Module cannot import itself from its own project
+        if (strcmp(import->project_name, "Self") == 0 && strcmp(import->module_name, module->name) == 0)
         {
             semantic_context_add_error(module->sema_context, import,
                 ssprintf("Module cannot import itself"));
             continue;
         }
 
+        // Construct lookup key: for "Self" use module name, for dependencies use "dep_name.module_name"
+        const char* module_lookup_key;
+        if (strcmp(import->project_name, "Self") == 0)
+        {
+            module_lookup_key = import->module_name;
+        }
+        else
+        {
+            // Find dependency name from project name
+            const char* dep_name = nullptr;
+            for (size_t j = 0; j < vec_size(&module->builder->dependencies); ++j)
+            {
+                dependency_t* dep = vec_get(&module->builder->dependencies, j);
+                if (strcmp(dep->project_name, import->project_name) == 0)
+                {
+                    dep_name = dep->name;
+                    break;
+                }
+            }
+            module_lookup_key = ssprintf("%s.%s", dep_name, import->module_name);
+        }
+
         // Check if imported module exists
-        if (hash_table_find(&module->builder->modules, import->module_name) == nullptr)
+        if (hash_table_find(&module->builder->modules, module_lookup_key) == nullptr)
         {
             semantic_context_add_error(module->sema_context, import,
-                ssprintf("Module '%s' not found", import->module_name));
+                ssprintf("Module '%s' not found in project '%s'", import->module_name, import->project_name));
             continue;
         }
 
+        // Check for duplicates in dependency list
         bool already_added = false;
         for (size_t j = 0; j < vec_size(&module->dependencies); ++j)
         {
             const char* dep_name = vec_get(&module->dependencies, j);
-            if (strcmp(dep_name, import->module_name) == 0)
+            if (strcmp(dep_name, module_lookup_key) == 0)
             {
                 already_added = true;
                 break;
@@ -296,7 +358,7 @@ bool module_populate_dependencies(module_t* module)
         }
 
         if (!already_added)
-            vec_push(&module->dependencies, strdup(import->module_name));
+            vec_push(&module->dependencies, strdup(module_lookup_key));
     }
 
     printf("Module %s depends on:\n", module->name);
@@ -407,8 +469,12 @@ bool module_link(module_t* module)
     // Add all dependency object files
     for (size_t i = 0; i < vec_size(&module->dependencies); ++i)
     {
-        const char* dep_name = vec_get(&module->dependencies, i);
-        char* dep_obj_path = join_path(module->builder->build_dir, ssprintf("%s.o", dep_name));
+        const char* dep_lookup_key = vec_get(&module->dependencies, i);
+        module_t* dep_module = hash_table_find(&module->builder->modules, dep_lookup_key);
+        panic_if(dep_module == nullptr);
+
+        // Use dep_module->name (e.g., "CoreMath") instead of lookup key (e.g., "math-utils.CoreMath")
+        char* dep_obj_path = join_path(module->builder->build_dir, ssprintf("%s.o", dep_module->name));
         string_append_cstr(&link_cmd_str, " \"");
         string_append_cstr(&link_cmd_str, dep_obj_path);
         string_append_cstr(&link_cmd_str, "\"");

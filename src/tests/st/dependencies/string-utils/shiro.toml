@@ -1,0 +1,6 @@
+[project]
+name = "StringLib"
+
+[[lib]]
+name = "CoreString"
+src = "src/core/"

@@ -1,0 +1,30 @@
+//! run: "./build/TestMultiple/bin/Main"
+
+import MathLib.CoreMath;
+import StringLib.CoreString;
+
+fn main() -> i32 {
+    // Test using both dependencies
+    var math_result = MathLib.CoreMath.add(10, 5);
+    if (math_result != 15) {
+        return 1;
+    }
+
+    var string_len = StringLib.CoreString.get_length();
+    if (string_len != 42) {
+        return 2;
+    }
+
+    var is_valid = StringLib.CoreString.validate();
+    if (is_valid == false) {
+        return 3;
+    }
+
+    // Verify namespace isolation (both can have different results)
+    var math_multiply = MathLib.CoreMath.multiply(3, 4);
+    if (math_multiply != 12) {
+        return 4;
+    }
+
+    return 0;  // Success
+}

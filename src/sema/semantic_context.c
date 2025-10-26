@@ -23,14 +23,17 @@ semantic_context_t* semantic_context_create(const char* project_name, const char
     symbol_table_t* export_scope = symbol_table_create(nullptr, SCOPE_EXPORT);
     symbol_table_t* global_scope = symbol_table_create(nullptr, SCOPE_GLOBAL);
 
-    symbol_t* self_namespace = symbol_create("Self", SYMBOL_NAMESPACE, nullptr, nullptr);
+    // Determine namespace name: use "Self" for own modules, project_name for dependencies
+    const char* namespace_name = (project_name != nullptr) ? project_name : "Self";
+
+    symbol_t* self_namespace = symbol_create(namespace_name, SYMBOL_NAMESPACE, nullptr, nullptr);
     self_namespace->type = ast_type_builtin(TYPE_VOID);  // TODO: Unsure what types to give NS symbols
     symbol_table_insert(global_scope, self_namespace);
     symbol_t* module_namespace = symbol_create(module_name, SYMBOL_NAMESPACE, nullptr, self_namespace);
     module_namespace->type = ast_type_builtin(TYPE_VOID);
 
     *ctx = (semantic_context_t){
-        .self_projectname = strdup(project_name),
+        .self_projectname = (project_name != nullptr) ? strdup(project_name) : strdup("Self"),
         .self_namespace = self_namespace,
         .module_namespace = module_namespace,
         .exports = export_scope,

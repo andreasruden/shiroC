@@ -1,0 +1,18 @@
+// Basic math functions for testing dependency system
+
+export fn add(a: i32, b: i32) -> i32 {
+    return a + b;
+}
+
+export fn subtract(a: i32, b: i32) -> i32 {
+    return a - b;
+}
+
+export fn multiply(a: i32, b: i32) -> i32 {
+    return a * b;
+}
+
+// This function is NOT exported - should not be accessible
+fn internal_helper(x: i32) -> i32 {
+    return x * 2;
+}

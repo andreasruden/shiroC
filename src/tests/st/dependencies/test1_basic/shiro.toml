@@ -1,0 +1,10 @@
+[project]
+name = "TestBasic"
+
+[[dep]]
+name = "math-utils"
+src = "../math-utils"
+
+[[bin]]
+name = "Main"
+src = "src/app/"

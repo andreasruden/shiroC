@@ -1,0 +1,7 @@
+//! compile
+
+import FakeLib.SomeModule; //! error: "Unknown project 'FakeLib' in import"
+
+fn main() -> i32 {
+    return 0;
+}

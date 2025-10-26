@@ -37,7 +37,7 @@ TEST_FIXTURE(ut_sema_access_fixture_t)
 
 TEST_SETUP(ut_sema_access_fixture_t)
 {
-    fix->ctx = semantic_context_create("TestProject", "TestModule");
+    fix->ctx = semantic_context_create(nullptr, "TestModule");  // nullptr = own module, uses "Self" namespace
     ASSERT_NEQ(nullptr, fix->ctx);
 
     fix->collector = decl_collector_create(fix->ctx);

@@ -1,0 +1,6 @@
+[project]
+name = "MathLib"
+
+[[lib]]
+name = "CoreMath"
+src = "src/core/"

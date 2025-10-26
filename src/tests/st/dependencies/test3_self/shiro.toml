@@ -1,0 +1,14 @@
+[project]
+name = "TestSelf"
+
+[[dep]]
+name = "math-utils"
+src = "../math-utils"
+
+[[lib]]
+name = "Utils"
+src = "src/utils/"
+
+[[bin]]
+name = "Main"
+src = "src/main/"

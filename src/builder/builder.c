@@ -6,6 +6,7 @@
 #include "common/debug/panic.h"
 #include "common/toml_parser.h"
 #include "common/util/path.h"
+#include "common/util/ssprintf.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol_table.h"
 
@@ -14,8 +15,41 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 static constexpr char BUILD_INSTRUCTIONS_FILENAME[] = "shiro.toml";
+
+dependency_t* dependency_create(const char* name, const char* src_path)
+{
+    dependency_t* dep = malloc(sizeof(*dep));
+    panic_if(dep == nullptr);
+
+    *dep = (dependency_t){
+        .name = strdup(name),
+        .src_path = strdup(src_path),
+        .modules = VEC_INIT(nullptr),  // Don't own modules - they're owned by builder->modules
+        .project_name = nullptr,  // Set when parsing dependency's shiro.toml
+    };
+
+    return dep;
+}
+
+void dependency_destroy(dependency_t* dep)
+{
+    if (dep == nullptr)
+        return;
+
+    free(dep->name);
+    free(dep->src_path);
+    free(dep->project_name);
+    vec_deinit(&dep->modules);
+    free(dep);
+}
+
+void dependency_destroy_void(void* dep)
+{
+    dependency_destroy(dep);
+}
 
 builder_t* builder_create(const char* root_dir)
 {
@@ -28,6 +62,7 @@ builder_t* builder_create(const char* root_dir)
         .build_dir = nullptr,  // Set later once we know the project name
         .bin_dir = nullptr,    // Set later once we know the project name
         .modules = HASH_TABLE_INIT(module_destroy_void),
+        .dependencies = VEC_INIT(dependency_destroy_void),
     };
 
     return builder;
@@ -43,6 +78,7 @@ void builder_destroy(builder_t* builder)
     free(builder->build_dir);
     free(builder->bin_dir);
     hash_table_deinit(&builder->modules);
+    vec_deinit(&builder->dependencies);
     free(builder);
 }
 
@@ -146,6 +182,73 @@ static bool extract_module(builder_t* builder, hash_table_t* section, bool lib)
     return true;
 }
 
+static bool extract_dependency(builder_t* builder, hash_table_t* section)
+{
+    if (section == nullptr)
+    {
+        fprintf(stderr, "Error: Invalid section in `dep` array\n");
+        return false;
+    }
+
+    const char* dep_name = hash_table_find(section, "name");
+    const char* dep_src = hash_table_find(section, "src");
+
+    // Validate name field
+    if (dep_name == nullptr)
+    {
+        fprintf(stderr, "Error: missing mandatory field `name` in `dep` array\n");
+        return false;
+    }
+
+    if (!verify_name(dep_name))
+        return false;
+
+    // Validate src field
+    if (dep_src == nullptr)
+    {
+        fprintf(stderr, "Error: missing mandatory field `src` in `dep` array\n");
+        return false;
+    }
+
+    // Resolve dependency path relative to project root
+    char* resolved_dep_path = join_path(builder->root_dir, dep_src);
+
+    // Check if src path exists
+    struct stat path_stat;
+    if (stat(resolved_dep_path, &path_stat) != 0)
+    {
+        fprintf(stderr, "Error: dependency src path '%s' does not exist\n", resolved_dep_path);
+        free(resolved_dep_path);
+        return false;
+    }
+
+    if (!S_ISDIR(path_stat.st_mode))
+    {
+        fprintf(stderr, "Error: dependency src path '%s' is not a directory\n", resolved_dep_path);
+        free(resolved_dep_path);
+        return false;
+    }
+
+    // Check for duplicate dependency names
+    for (size_t i = 0; i < vec_size(&builder->dependencies); ++i)
+    {
+        dependency_t* existing = vec_get(&builder->dependencies, i);
+        if (strcmp(existing->name, dep_name) == 0)
+        {
+            fprintf(stderr, "Error: duplicate dependency name '%s'\n", dep_name);
+            free(resolved_dep_path);
+            return false;
+        }
+    }
+
+    // Create and add dependency with resolved path
+    dependency_t* dep = dependency_create(dep_name, resolved_dep_path);
+    vec_push(&builder->dependencies, dep);
+    free(resolved_dep_path);
+
+    return true;
+}
+
 static bool extract_build_instructions(builder_t* builder)
 {
     char* toml_path = nullptr;
@@ -225,10 +328,185 @@ static bool extract_build_instructions(builder_t* builder)
         }
     }
 
+    // Parse dependencies from "dep" array
+    vec_t* deps = toml_as_array_section(hash_table_find(toml_file, "dep"));
+    if (deps != nullptr)
+    {
+        for (size_t i = 0; i < vec_size(deps); ++i)
+        {
+            hash_table_t* section = toml_as_section(vec_get(deps, i));
+            if (!section)
+            {
+                fprintf(stderr, "Error: Invalid section in `dep` array\n");
+                error = true;
+                goto cleanup;
+            }
+
+            if (!extract_dependency(builder, section))
+            {
+                error = true;
+                goto cleanup;
+            }
+        }
+    }
+
 cleanup:
     hash_table_destroy(toml_file);
     free(toml_path);
     return !error;
+}
+
+static bool builder_load_dependency(builder_t* builder, dependency_t* dep)
+{
+    char* toml_path = nullptr;
+    hash_table_t* toml_file = nullptr;
+    bool error = false;
+
+    // Parse dependency's shiro.toml
+    toml_path = join_path(dep->src_path, BUILD_INSTRUCTIONS_FILENAME);
+    toml_file = toml_parse_file(toml_path);
+    if (toml_file == nullptr)
+    {
+        fprintf(stderr, "Error: Missing or invalid build file for dependency '%s' at %s\n",
+            dep->name, toml_path);
+        error = true;
+        goto cleanup;
+    }
+
+    // Extract project name from dependency's [project] section
+    hash_table_t* project_section = toml_as_section(hash_table_find(toml_file, "project"));
+    if (project_section == nullptr)
+    {
+        fprintf(stderr, "Error: Missing mandatory section `project` in dependency '%s'\n", dep->name);
+        error = true;
+        goto cleanup;
+    }
+
+    const char* project_name = hash_table_find(project_section, "name");
+    if (project_name == nullptr)
+    {
+        fprintf(stderr, "Error: Missing mandatory field `name` in `project` section of dependency '%s'\n",
+            dep->name);
+        error = true;
+        goto cleanup;
+    }
+
+    if (!verify_name(project_name))
+    {
+        error = true;
+        goto cleanup;
+    }
+
+    dep->project_name = strdup(project_name);
+    printf("Loading dependency %s (project: %s)\n", dep->name, project_name);
+
+    // Process [[bin]] modules from dependency
+    vec_t* bins = toml_as_array_section(hash_table_find(toml_file, "bin"));
+    if (bins != nullptr)
+    {
+        for (size_t i = 0; i < vec_size(bins); ++i)
+        {
+            hash_table_t* section = toml_as_section(vec_get(bins, i));
+            if (!section)
+            {
+                fprintf(stderr, "Error: Invalid section in `bin` array of dependency '%s'\n", dep->name);
+                error = true;
+                goto cleanup;
+            }
+
+            const char* module_name = hash_table_find(section, "name");
+            const char* module_src = hash_table_find(section, "src");
+
+            if (module_name == nullptr || !verify_name(module_name))
+            {
+                error = true;
+                goto cleanup;
+            }
+
+            if (module_src == nullptr)
+            {
+                fprintf(stderr, "Error: missing mandatory section `src` in `bin` array of dependency '%s'\n",
+                    dep->name);
+                error = true;
+                goto cleanup;
+            }
+
+            char* module_path = join_path(dep->src_path, module_src);
+            module_t* module = module_create(builder, module_name, module_path, MODULE_BINARY);
+            module->is_dependency = true;
+            module->project_name = strdup(dep->project_name);
+
+            // Add to builder's module map with namespaced key: "dep_name.module_name"
+            const char* namespaced_key = ssprintf("%s.%s", dep->name, module_name);
+            hash_table_insert(&builder->modules, namespaced_key, module);
+
+            // Add to dependency's module vector
+            vec_push(&dep->modules, module);
+            free(module_path);
+        }
+    }
+
+    // Process [[lib]] modules from dependency
+    vec_t* libs = toml_as_array_section(hash_table_find(toml_file, "lib"));
+    if (libs != nullptr)
+    {
+        for (size_t i = 0; i < vec_size(libs); ++i)
+        {
+            hash_table_t* section = toml_as_section(vec_get(libs, i));
+            if (!section)
+            {
+                fprintf(stderr, "Error: Invalid section in `lib` array of dependency '%s'\n", dep->name);
+                error = true;
+                goto cleanup;
+            }
+
+            const char* module_name = hash_table_find(section, "name");
+            const char* module_src = hash_table_find(section, "src");
+
+            if (module_name == nullptr || !verify_name(module_name))
+            {
+                error = true;
+                goto cleanup;
+            }
+
+            if (module_src == nullptr)
+            {
+                fprintf(stderr, "Error: missing mandatory section `src` in `lib` array of dependency '%s'\n",
+                    dep->name);
+                error = true;
+                goto cleanup;
+            }
+
+            char* module_path = join_path(dep->src_path, module_src);
+            module_t* module = module_create(builder, module_name, module_path, MODULE_LIBRARY);
+            module->is_dependency = true;
+            module->project_name = strdup(dep->project_name);
+
+            // Add to builder's module map with namespaced key: "dep_name.module_name"
+            const char* namespaced_key = ssprintf("%s.%s", dep->name, module_name);
+            hash_table_insert(&builder->modules, namespaced_key, module);
+
+            // Add to dependency's module vector
+            vec_push(&dep->modules, module);
+            free(module_path);
+        }
+    }
+
+cleanup:
+    hash_table_destroy(toml_file);
+    free(toml_path);
+    return !error;
+}
+
+static bool builder_load_all_dependencies(builder_t* builder)
+{
+    for (size_t i = 0; i < vec_size(&builder->dependencies); ++i)
+    {
+        dependency_t* dep = vec_get(&builder->dependencies, i);
+        if (!builder_load_dependency(builder, dep))
+            return false;
+    }
+    return true;
 }
 
 static bool for_each_module(builder_t* builder, bool (*fn)(module_t*))
@@ -252,15 +530,14 @@ static bool inject_exports_into_module(module_t* module)
         panic_if(dep_mod == nullptr);
 
         // Register namespace symbols for qualified name resolution
-        // TODO: For dependencies project name should be used, for own project "Self" should be used
-        const char* project_ns_name = "Self";
+        const char* project_ns_name = dep_mod->is_dependency ? dep_mod->project_name : "Self";
         symbol_t* project_ns = symbol_table_lookup_local(module->sema_context->global, project_ns_name);
         if (project_ns == nullptr)
         {
             project_ns = semantic_context_register_namespace(module->sema_context, nullptr, project_ns_name,
                 nullptr);
         }
-        symbol_t* mod_ns = semantic_context_register_namespace(module->sema_context, project_ns, dep_name,
+        symbol_t* mod_ns = semantic_context_register_namespace(module->sema_context, project_ns, dep_mod->name,
             nullptr);  // don't copy our exports, symbol_table_import will make appropriate clones
 
         symbol_table_import(module->sema_context->global, dep_mod->sema_context->exports, mod_ns);
@@ -271,6 +548,10 @@ static bool inject_exports_into_module(module_t* module)
 bool builder_run(builder_t* builder)
 {
     if (!extract_build_instructions(builder))
+        return false;
+
+    // Load all dependency projects
+    if (!builder_load_all_dependencies(builder))
         return false;
 
     // Build AST for every module
@@ -291,15 +572,34 @@ bool builder_run(builder_t* builder)
     if (!for_each_module(builder, inject_exports_into_module))
         return false;
 
-    // Build modules in dependency defined order
-    if (!for_each_module(builder, module_compile))
-        return false;
+    // Compile dependency modules first
+    for (size_t i = 0; i < vec_size(&builder->dependencies); ++i)
+    {
+        dependency_t* dep = vec_get(&builder->dependencies, i);
+        for (size_t j = 0; j < vec_size(&dep->modules); ++j)
+        {
+            module_t* module = vec_get(&dep->modules, j);
+            if (!module_compile(module))
+                return false;
+        }
+    }
+
+    // Then compile main project modules
+    hash_table_iter_t compile_itr;
+    for (hash_table_iter_init(&compile_itr, &builder->modules); hash_table_iter_has_elem(&compile_itr);
+        hash_table_iter_next(&compile_itr))
+    {
+        module_t* module = hash_table_iter_current(&compile_itr)->value;
+        if (!module->is_dependency && !module_compile(module))
+            return false;
+    }
 
     // Link executable module with its dependencies
-    hash_table_iter_t itr;
-    for (hash_table_iter_init(&itr, &builder->modules); hash_table_iter_has_elem(&itr); hash_table_iter_next(&itr))
+    hash_table_iter_t link_itr;
+    for (hash_table_iter_init(&link_itr, &builder->modules); hash_table_iter_has_elem(&link_itr);
+        hash_table_iter_next(&link_itr))
     {
-        module_t* module = hash_table_iter_current(&itr)->value;
+        module_t* module = hash_table_iter_current(&link_itr)->value;
         if (module->kind == MODULE_BINARY && !module_link(module))
             return false;
     }

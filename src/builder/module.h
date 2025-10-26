@@ -23,7 +23,9 @@ typedef struct module
 {
     builder_t* builder;
     module_kind_t kind;
+    bool is_dependency;      // true if this module comes from a dependency project
     char* name;
+    char* project_name;      // Only set for dependency modules (e.g., "math-utils")
     char* src_dir;
     vec_t sources;  // module_src_t*
     vec_t dependencies;  // name of module (char*)

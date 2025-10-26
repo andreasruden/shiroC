@@ -1,0 +1,32 @@
+//! run: "./build/TestSelf/bin/Main"
+
+import Self.Utils;
+import MathLib.CoreMath;
+
+fn main() -> i32 {
+    // Test using own modules with Self namespace
+    var doubled = Self.Utils.double(5);
+    if (doubled != 10) {
+        return 1;
+    }
+
+    var tripled = Self.Utils.triple(4);
+    if (tripled != 12) {
+        return 2;
+    }
+
+    // Test using dependency with project namespace
+    var sum = MathLib.CoreMath.add(7, 3);
+    if (sum != 10) {
+        return 3;
+    }
+
+    // Mix both - use dependency result with own module
+    var dep_result = MathLib.CoreMath.multiply(2, 3);
+    var final_result = Self.Utils.double(dep_result);
+    if (final_result != 12) {
+        return 4;
+    }
+
+    return 0;  // Success
+}

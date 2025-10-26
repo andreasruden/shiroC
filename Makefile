@@ -224,7 +224,7 @@ test-ut: $(UT_TARGETS)
 	done
 
 test-st: $(BIN_DIR)
-	python3 scripts/systemtester/tester.py -c ./build/bin/shiro src/tests/st/
+	python3 scripts/systemtester/tester.py -r -c ./build/bin/shiro src/tests/st/
 
 .PHONY: tests
 tests: test-ut test-st

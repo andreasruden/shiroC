@@ -1,0 +1,23 @@
+//! run: "./build/TestBasic/bin/Main"
+
+import MathLib.CoreMath;
+
+fn main() -> i32 {
+    // Test basic dependency usage
+    var result = MathLib.CoreMath.add(5, 10);
+    if (result != 15) {
+        return 1;
+    }
+
+    result = MathLib.CoreMath.subtract(20, 8);
+    if (result != 12) {
+        return 2;
+    }
+
+    result = MathLib.CoreMath.multiply(3, 7);
+    if (result != 21) {
+        return 3;
+    }
+
+    return 0;  // Success
+}

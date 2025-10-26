@@ -1,0 +1,6 @@
+[project]
+name = "TestError"
+
+[[bin]]
+name = "Main"
+src = "src/main/"
