@@ -9,6 +9,7 @@
 typedef enum
 {
     // Keywords
+    TOKEN_AS,
     TOKEN_BOOL,
     TOKEN_BREAK,
     TOKEN_CLASS,

@@ -21,6 +21,7 @@ typedef struct
 
 static keyword_t lexer_keywords[] =
 {
+    {"as", TOKEN_AS},
     {"bool", TOKEN_BOOL},
     {"break", TOKEN_BREAK},
     {"class", TOKEN_CLASS},
@@ -93,6 +94,7 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_AS: return "as";
         case TOKEN_EXTERN: return "extern";
         case TOKEN_EXPORT: return "export";
         case TOKEN_IMPORT: return "import";

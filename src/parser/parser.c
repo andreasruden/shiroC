@@ -15,6 +15,7 @@
 #include "ast/expr/bin_op.h"
 #include "ast/expr/bool_lit.h"
 #include "ast/expr/call_expr.h"
+#include "ast/expr/cast_expr.h"
 #include "ast/expr/construct_expr.h"
 #include "ast/expr/expr.h"
 #include "ast/expr/float_lit.h"
@@ -54,6 +55,7 @@
 #include <string.h>
 
 static ast_stmt_t* parse_compound_stmt(parser_t* parser);
+static ast_type_t* parse_type_annotation(parser_t* parser);
 
 parser_t* parser_create()
 {
@@ -583,12 +585,31 @@ static ast_expr_t* parse_unary_expr(parser_t* parser)
     return parse_postfix_expr(parser);
 }
 
+static ast_expr_t* parse_cast_expr(parser_t* parser)
+{
+    token_t* first_tok = lexer_peek_token(parser->lexer);
+
+    ast_expr_t* lhs = parse_unary_expr(parser);
+    if (lhs == nullptr)
+        return nullptr;
+
+    if (lexer_peek_token(parser->lexer)->type != TOKEN_AS)
+        return lhs;
+    lexer_next_token(parser->lexer);
+
+    ast_type_t* type = parse_type_annotation(parser);
+
+    ast_expr_t* cast = ast_cast_expr_create(lhs, type);
+    parser_set_source_tok_to_current(parser, cast, first_tok);
+    return cast;
+}
+
 // Use precedence climbing to efficiently parse binary operator expressions
 static ast_expr_t* climb_expr_precedence(parser_t* parser, int min_precedence)
 {
     token_t* first_tok = lexer_peek_token(parser->lexer);
 
-    ast_expr_t* lhs = parse_unary_expr(parser);
+    ast_expr_t* lhs = parse_cast_expr(parser);
     if (lhs == nullptr)
         return nullptr;
 

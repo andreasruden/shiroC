@@ -65,6 +65,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/expr/bin_op.c \
 	$(SRC_DIR)/ast/expr/bool_lit.c \
 	$(SRC_DIR)/ast/expr/call_expr.c \
+	$(SRC_DIR)/ast/expr/cast_expr.c \
 	$(SRC_DIR)/ast/expr/coercion_expr.c \
 	$(SRC_DIR)/ast/expr/construct_expr.c \
 	$(SRC_DIR)/ast/expr/expr.c \
@@ -128,6 +129,7 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/parser/test_parser_statements.c \
 	$(UT_SRC_DIR)/sema/test_sema_access.c \
 	$(UT_SRC_DIR)/sema/test_sema_arrays.c \
+	$(UT_SRC_DIR)/sema/test_sema_casts.c \
 	$(UT_SRC_DIR)/sema/test_sema_classes.c \
 	$(UT_SRC_DIR)/sema/test_sema_control_flow.c \
 	$(UT_SRC_DIR)/sema/test_sema_expressions.c \

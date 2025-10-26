@@ -6,6 +6,7 @@
 #include "ast/def/import_def.h"
 #include "ast/def/method_def.h"
 #include "ast/expr/access_expr.h"
+#include "ast/expr/cast_expr.h"
 #include "ast/expr/coercion_expr.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/member_access.h"
@@ -1029,6 +1030,82 @@ static void* analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
     return call;
 }
 
+static void* analyzer_cast_expr(void* self_, ast_cast_expr_t* cast, void* out_)
+{
+    semantic_analyzer_t* sema = self_;
+
+    cast->expr = ast_transformer_transform(sema, cast->expr, out_);
+    if (cast->expr->type == ast_type_invalid())
+    {
+        cast->base.type = ast_type_invalid();
+        return cast;
+    }
+
+    cast->target = type_resolver_solve(sema->ctx, cast->target, cast);
+    if (cast->target == ast_type_invalid())
+    {
+        cast->base.type = ast_type_invalid();
+        return cast;
+    }
+
+    switch (cast->expr->type->kind)
+    {
+        case AST_TYPE_USER:
+        case AST_TYPE_ARRAY:
+        case AST_TYPE_HEAP_ARRAY:
+        case AST_TYPE_VIEW:
+            semantic_context_add_error(sema->ctx, cast, ssprintf("cannot cast '%s' to anything",
+                ast_type_string(cast->expr->type)));
+            cast->base.type = ast_type_invalid();
+            return cast;
+        case AST_TYPE_BUILTIN:
+            // Freely cast between arithemtic types
+            if (ast_type_is_arithmetic(cast->expr->type) && ast_type_is_arithmetic(cast->target))
+            {
+                cast->base.type = cast->target;
+                return cast;
+            }
+            // Int <-> bool is OK
+            if ((ast_type_is_integer(cast->expr->type) || cast->expr->type == ast_type_builtin(TYPE_BOOL)) &&
+                (ast_type_is_integer(cast->target) || cast->target == ast_type_builtin(TYPE_BOOL)))
+            {
+                cast->base.type = cast->target;
+                return cast;
+            }
+            // usize -> pointer is OK
+            if (cast->expr->type == ast_type_builtin(TYPE_USIZE) && cast->target->kind == AST_TYPE_POINTER)
+            {
+                cast->base.type = cast->target;
+                return cast;
+            }
+            semantic_context_add_error(sema->ctx, cast, ssprintf("cannot cast from '%s' to '%s'",
+                ast_type_string(cast->expr->type), ast_type_string(cast->target)));
+            cast->base.type = ast_type_invalid();
+            return cast;
+        case AST_TYPE_POINTER:
+            // pointer -> pointer is OK
+            if (cast->target->kind == AST_TYPE_POINTER)
+            {
+                cast->base.type = cast->target;
+                return cast;
+            }
+            // pointer -> usize is OK
+            if (cast->target == ast_type_builtin(TYPE_USIZE))
+            {
+                cast->base.type = cast->target;
+                return cast;
+            }
+            semantic_context_add_error(sema->ctx, cast, ssprintf("cannot cast from '%s' to '%s'",
+                ast_type_string(cast->expr->type), ast_type_string(cast->target)));
+            cast->base.type = ast_type_invalid();
+            return cast;
+        case AST_TYPE_INVALID:
+            break;
+    }
+
+    panic("Unhandled cast from type %s", ast_type_string(cast->expr->type));
+}
+
 static void* analyze_construct_expr(void* self_, ast_construct_expr_t* construct, void* out_)
 {
     (void)out_;
@@ -1130,7 +1207,7 @@ static void* analyze_float_lit(void* self_, ast_float_lit_t* lit, void* out_)
     else if (strcmp(lit->suffix, "f64") == 0) type = ast_type_builtin(TYPE_F64);
     else if (strlen(lit->suffix) > 0)
     {
-        semantic_context_add_error(sema->ctx, lit, ssprintf("invalid suffix '%s' for integer literal", lit->suffix));
+        semantic_context_add_error(sema->ctx, lit, ssprintf("invalid suffix '%s' for float literal", lit->suffix));
         lit->base.type = ast_type_invalid();
         return lit;
     }
@@ -1175,6 +1252,8 @@ static void* analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
     else if (strcmp(lit->suffix, "u16") == 0) type = ast_type_builtin(TYPE_U16);
     else if (strcmp(lit->suffix, "u32") == 0) type = ast_type_builtin(TYPE_U32);
     else if (strcmp(lit->suffix, "u64") == 0) type = ast_type_builtin(TYPE_U64);
+    else if (strcmp(lit->suffix, "isize") == 0) type = ast_type_builtin(TYPE_ISIZE);
+    else if (strcmp(lit->suffix, "usize") == 0) type = ast_type_builtin(TYPE_USIZE);
     else if (strlen(lit->suffix) > 0)
     {
         semantic_context_add_error(sema->ctx, lit, ssprintf("invalid suffix '%s' for integer literal", lit->suffix));
@@ -1191,7 +1270,7 @@ static void* analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
         if (type == ast_type_builtin(TYPE_I8)) max_magnitude = (uint64_t)INT8_MAX;
         else if (type == ast_type_builtin(TYPE_I16)) max_magnitude = (uint64_t)INT16_MAX;
         else if (type == ast_type_builtin(TYPE_I32)) max_magnitude = (uint64_t)INT32_MAX;
-        else /* i64 */ max_magnitude = (uint64_t)INT64_MAX;
+        else /* i64/isize */ max_magnitude = (uint64_t)INT64_MAX;  // TODO: isize should depend on architecture
 
         if (lit->has_minus_sign)
             max_magnitude += 1;
@@ -1218,7 +1297,7 @@ static void* analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
         if (type == ast_type_builtin(TYPE_U8)) max_val = UINT8_MAX;
         else if (type == ast_type_builtin(TYPE_U16)) max_val = UINT16_MAX;
         else if (type == ast_type_builtin(TYPE_U32)) max_val = UINT32_MAX;
-        else /* u64 */ max_val = UINT64_MAX;
+        else /* u64/usize */ max_val = UINT64_MAX;  // TODO: usize should depend on architecture
 
         fits = lit->value.magnitude <= max_val;
         if (fits)
@@ -1769,6 +1848,7 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             .transform_bin_op = analyze_bin_op,
             .transform_bool_lit = analyze_bool_lit,
             .transform_call_expr = analyze_call_expr,
+            .transform_cast_expr = analyzer_cast_expr,
             .transform_construct_expr = analyze_construct_expr,
             .transform_float_lit = analyze_float_lit,
             .transform_int_lit = analyze_int_lit,

@@ -4,6 +4,7 @@
 #include "ast/def/class_def.h"
 #include "ast/def/import_def.h"
 #include "ast/def/method_def.h"
+#include "ast/expr/cast_expr.h"
 #include "ast/expr/coercion_expr.h"
 #include "ast/expr/construct_expr.h"
 #include "ast/expr/member_init.h"
@@ -1089,6 +1090,110 @@ static void emit_call_expr(void* self_, ast_call_expr_t* call, void* out_)
         free(args);
 }
 
+static void emit_cast_expr(void* self_, ast_cast_expr_t* cast, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    LLVMValueRef* out_val = out_;
+
+    // Evaluate source expression
+    LLVMValueRef value = nullptr;
+    ast_visitor_visit(llvm, cast->expr, &value);
+
+    ast_type_t* from = cast->expr->type;
+    ast_type_t* to = cast->target;
+
+    LLVMTypeRef target_llvm_type = llvm_type(llvm->context, to);
+    LLVMValueRef result = nullptr;
+
+    // Pointer to pointer cast
+    if (from->kind == AST_TYPE_POINTER && to->kind == AST_TYPE_POINTER)
+    {
+        result = LLVMBuildBitCast(llvm->builder, value, target_llvm_type, "ptrcast");
+    }
+    // Pointer to usize cast
+    else if (from->kind == AST_TYPE_POINTER && to->kind == AST_TYPE_BUILTIN && to->data.builtin.type == TYPE_USIZE)
+    {
+        result = LLVMBuildPtrToInt(llvm->builder, value, target_llvm_type, "ptr2int");
+    }
+    // usize to pointer cast
+    else if (from->kind == AST_TYPE_BUILTIN && from->data.builtin.type == TYPE_USIZE && to->kind == AST_TYPE_POINTER)
+    {
+        result = LLVMBuildIntToPtr(llvm->builder, value, target_llvm_type, "int2ptr");
+    }
+    // Integer to integer cast
+    else if (ast_type_is_integer(from) && ast_type_is_integer(to))
+    {
+        size_t from_size = ast_type_sizeof(from);
+        size_t to_size = ast_type_sizeof(to);
+
+        if (from_size < to_size)
+        {
+            // Extend based on source signedness
+            if (ast_type_is_signed(from))
+                result = LLVMBuildSExt(llvm->builder, value, target_llvm_type, "sext");
+            else
+                result = LLVMBuildZExt(llvm->builder, value, target_llvm_type, "zext");
+        }
+        else if (from_size > to_size)
+        {
+            // Truncate
+            result = LLVMBuildTrunc(llvm->builder, value, target_llvm_type, "trunc");
+        }
+        else
+        {
+            // Same size (e.g. i32 -> u32), no-op in LLVM
+            result = value;
+        }
+    }
+    // Float to float cast
+    else if (ast_type_is_real(from) && ast_type_is_real(to))
+    {
+        size_t from_size = ast_type_sizeof(from);
+        size_t to_size = ast_type_sizeof(to);
+
+        if (from_size < to_size)
+            result = LLVMBuildFPExt(llvm->builder, value, target_llvm_type, "fpext");
+        else if (from_size > to_size)
+            result = LLVMBuildFPTrunc(llvm->builder, value, target_llvm_type, "fptrunc");
+        else
+            result = value;
+    }
+    // Integer to float cast
+    else if (ast_type_is_integer(from) && ast_type_is_real(to))
+    {
+        if (ast_type_is_signed(from))
+            result = LLVMBuildSIToFP(llvm->builder, value, target_llvm_type, "si2fp");
+        else
+            result = LLVMBuildUIToFP(llvm->builder, value, target_llvm_type, "ui2fp");
+    }
+    // Float to integer cast
+    else if (ast_type_is_real(from) && ast_type_is_integer(to))
+    {
+        if (ast_type_is_signed(to))
+            result = LLVMBuildFPToSI(llvm->builder, value, target_llvm_type, "fp2si");
+        else
+            result = LLVMBuildFPToUI(llvm->builder, value, target_llvm_type, "fp2ui");
+    }
+    // Bool to integer cast
+    else if (from == ast_type_builtin(TYPE_BOOL) && ast_type_is_integer(to))
+    {
+        result = LLVMBuildZExt(llvm->builder, value, target_llvm_type, "bool2int");
+    }
+    // Integer to bool cast
+    else if (ast_type_is_integer(from) && to == ast_type_builtin(TYPE_BOOL))
+    {
+        LLVMValueRef zero = LLVMConstInt(llvm_type(llvm->context, from), 0, false);
+        result = LLVMBuildICmp(llvm->builder, LLVMIntNE, value, zero, "int2bool");
+    }
+    else
+    {
+        panic("cast from %s to %s not implemented", ast_type_string(from), ast_type_string(to));
+    }
+
+    if (out_val != nullptr)
+        *out_val = result;
+}
+
 static void emit_coercion_expr(void* self_, ast_coercion_expr_t* coercion, void* out_)
 {
     llvm_codegen_t* llvm = self_;
@@ -1613,6 +1718,7 @@ llvm_codegen_t* llvm_codegen_create(const char* project_name, const char* module
             .visit_bin_op = emit_bin_op,
             .visit_bool_lit = emit_bool_lit,
             .visit_call_expr = emit_call_expr,
+            .visit_cast_expr = emit_cast_expr,
             .visit_coercion_expr = emit_coercion_expr,
             .visit_construct_expr = emit_construct_expr,
             .visit_float_lit = emit_float_lit,

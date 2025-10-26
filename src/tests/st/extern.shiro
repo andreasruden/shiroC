@@ -2,8 +2,17 @@
 
 extern "C" fn abs(x: i32) -> i32;
 
+extern "C" fn malloc(size: usize) -> void*;
+
+extern "C" fn free(ptr: void*);
+
 fn main() -> i32 {
     printI32(abs(-10));  //! stdout: "10"
+
+    var ptr = malloc(4 as usize) as i32*;
+    *ptr = 20;
+    printI32(*ptr);  //! stdout: "20"
+    free(ptr as void*);
 
     return 0;
 }
