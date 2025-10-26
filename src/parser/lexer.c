@@ -801,6 +801,11 @@ bool token_type_is_arithmetic_op(token_type_t token_type)
         case TOKEN_MODULO:
         case TOKEN_PLUS:
         case TOKEN_MINUS:
+        case TOKEN_PLUS_ASSIGN:
+        case TOKEN_MINUS_ASSIGN:
+        case TOKEN_MUL_ASSIGN:
+        case TOKEN_DIV_ASSIGN:
+        case TOKEN_MODULO_ASSIGN:
             return true;
         default:
             break;

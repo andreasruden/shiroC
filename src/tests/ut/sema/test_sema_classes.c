@@ -887,3 +887,39 @@ TEST(ut_sema_classes_fixture_t, local_variable_shadows_method_parameter_error)
 
     ast_node_destroy(root);
 }
+
+// Arithmetic assignment operators (*=, +=, -=, /=, %=) cannot be used with user types
+TEST(ut_sema_classes_fixture_t, arithmetic_assign_op_on_class_error)
+{
+    // Test that p1 *= p2 produces an error when p1 and p2 are instances of a class
+    ast_expr_t* error_node = ast_bin_op_create(TOKEN_MUL_ASSIGN, ast_ref_expr_create("p1"),
+        ast_ref_expr_create("p2"));
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("Point",
+            ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
+            ast_member_decl_create("y", ast_type_builtin(TYPE_I32), nullptr),
+            nullptr),
+        ast_fn_def_create_va("main", nullptr,
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(
+                    ast_var_decl_create("p1", ast_type_user_unresolved("Point"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
+                            ast_member_init_create("x", ast_int_lit_val(10)),
+                            ast_member_init_create("y", ast_int_lit_val(20)),
+                            nullptr))),
+                ast_decl_stmt_create(
+                    ast_var_decl_create("p2", ast_type_user_unresolved("Point"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("Point"),
+                            ast_member_init_create("x", ast_int_lit_val(5)),
+                            ast_member_init_create("y", ast_int_lit_val(3)),
+                            nullptr))),
+                ast_expr_stmt_create(error_node),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "cannot");
+
+    ast_node_destroy(root);
+}

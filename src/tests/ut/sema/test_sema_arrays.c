@@ -560,34 +560,3 @@ TEST(ut_sema_array_fixture_t, view_from_array_literal_error)
 
     ast_node_destroy(block);
 }
-
-TEST(ut_sema_array_fixture_t, array_to_array_assignment_error)
-{
-    // fn foo() -> [i32, 3] {
-    //     var arr: [i32, 3] = [1, 2, 3];
-    //     return arr;  // Error: cannot assign array to array
-    // }
-    ast_expr_t* error_node = ast_ref_expr_create("arr");
-
-    ast_stmt_t* body = ast_compound_stmt_create_va(
-        ast_decl_stmt_create(ast_var_decl_create("arr",
-            ast_type_array(ast_type_builtin(TYPE_I32), 3),
-            ast_array_lit_create_va(
-                ast_int_lit_val(1),
-                ast_int_lit_val(2),
-                ast_int_lit_val(3),
-                nullptr
-            ))),
-        ast_return_stmt_create(error_node),
-        nullptr
-    );
-
-    ast_def_t* fn_def = ast_fn_def_create_va("foo",
-        ast_type_array(ast_type_builtin(TYPE_I32), 3),
-        body,
-        nullptr);
-
-    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(fn_def), error_node, "cannot assign array");
-
-    ast_node_destroy(fn_def);
-}

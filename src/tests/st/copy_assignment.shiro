@@ -1,0 +1,62 @@
+//! run
+
+class BasicA {
+    var value: i32;
+}
+
+class BasicB {
+    var value: i32;
+}
+
+class Composite {
+    var a: BasicA;
+    var bPtr: BasicB*;
+}
+
+fn main() -> i32 {
+    var a = BasicA{
+        value = 10
+    };
+
+    var b = BasicB{
+        value = 20
+    };
+
+    var a_copy = a;
+    printI32(a_copy.value);  //! stdout: "10"
+
+    a.value = 20;
+    printI32(a_copy.value);  //! stdout: "10"
+    a_copy = a;
+    printI32(a_copy.value);  //! stdout: "20"
+
+    var comp = Composite{
+        a = a_copy,
+        bPtr = &b
+    };
+    printI32(comp.a.value);  //! stdout: "20"
+    printI32(comp.bPtr.value);  //! stdout: "20"
+
+    var comp2: Composite;
+    comp2 = comp;
+    comp2.bPtr.value = 30;
+    printI32(b.value);  //! stdout: "30"
+    printI32(comp.bPtr.value);  //! stdout: "30"
+    printI32(comp2.bPtr.value);  //! stdout: "30"
+
+    var arr = [1, 2, 3];
+    var arr2 = arr;
+    arr2[0] = 10;
+    printI32(arr[0]);  //! stdout: "1"
+    printI32(arr2[0]);  //! stdout: "10"
+    printI32(arr2[1]);  //! stdout: "2"
+    printI32(arr2[2]);  //! stdout: "3"
+
+    var arr3: [i32, 3];
+    arr3 = arr2;
+    printI32(arr3[0]);  //! stdout: "10"
+    printI32(arr3[1]);  //! stdout: "2"
+    printI32(arr3[2]);  //! stdout: "3"
+
+    return 0;
+}

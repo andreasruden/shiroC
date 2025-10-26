@@ -103,15 +103,6 @@ static ast_coercion_kind_t check_coercion_with_expr(semantic_analyzer_t* sema, v
         coercion = COERCION_INVALID;
     }
 
-    // Disable assigning from arrays that are not array literals
-    // TODO: Figure out when/if we want to allow this; and how we want to differentiate copy/moving
-    if (from_expr->type->kind == AST_TYPE_ARRAY && AST_KIND(from_expr) != AST_EXPR_ARRAY_LIT &&
-        to_type->kind != AST_TYPE_VIEW)
-    {
-        error = "cannot assign array";
-        coercion = COERCION_INVALID;
-    }
-
     if (coercion == COERCION_INVALID && emit_error)
     {
         semantic_context_add_error(sema->ctx, node, error ? error : ssprintf("cannot coerce type '%s' into type '%s'",
@@ -718,6 +709,14 @@ static void* analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* 
     {
         bin_op->base.type = ast_type_invalid();
         return bin_op;  // avoid cascading errors
+    }
+
+    if (token_type_is_arithmetic_op(bin_op->op) && (!ast_type_is_arithmetic(bin_op->lhs->type) ||
+        !ast_type_is_arithmetic(bin_op->rhs->type)))
+    {
+        semantic_context_add_error(sema->ctx, bin_op, "arithmetic operator cannot be used on type");
+        bin_op->base.type = ast_type_invalid();
+        return bin_op;
     }
 
     ast_coercion_kind_t coercion = check_coercion_with_expr(sema, bin_op, bin_op->rhs, bin_op->lhs->type, true);
