@@ -88,12 +88,12 @@ TEST(ut_sema_fn_fixture_t, call_expr_arg_count_mismatch_error)
     );
 
     // Register bar function in global symbol table
-    symbol_t* bar_symbol = symbol_create("bar", SYMBOL_FUNCTION, bar_fn, nullptr, nullptr, nullptr);
+    symbol_t* bar_symbol = symbol_create("bar", SYMBOL_FUNCTION, bar_fn, nullptr);
     bar_symbol->type = ast_type_builtin(TYPE_VOID);
-    symbol_t* param_x_symb = symbol_create("x", SYMBOL_PARAMETER, param_x, nullptr, nullptr, nullptr);
+    symbol_t* param_x_symb = symbol_create("x", SYMBOL_PARAMETER, param_x, nullptr);
     param_x_symb->type = ast_type_builtin(TYPE_I32);
     vec_push(&bar_symbol->data.function.parameters, param_x_symb);
-    symbol_t* param_y_symb = symbol_create("y", SYMBOL_PARAMETER, param_y, nullptr, nullptr, nullptr);
+    symbol_t* param_y_symb = symbol_create("y", SYMBOL_PARAMETER, param_y, nullptr);
     param_y_symb->type = ast_type_builtin(TYPE_I32);
     vec_push(&bar_symbol->data.function.parameters, param_y_symb);
     symbol_table_insert(fix->ctx->global, bar_symbol);
@@ -124,9 +124,9 @@ TEST(ut_sema_fn_fixture_t, call_expr_arg_type_mismatch_error)
     );
 
     // Register bar function in global symbol table
-    symbol_t* bar_symbol = symbol_create("bar", SYMBOL_FUNCTION, bar_fn, nullptr, nullptr, nullptr);
+    symbol_t* bar_symbol = symbol_create("bar", SYMBOL_FUNCTION, bar_fn, nullptr);
     bar_symbol->type = ast_type_builtin(TYPE_VOID);
-    symbol_t* param_x_symb = symbol_create("x", SYMBOL_PARAMETER, param_x, nullptr, nullptr, nullptr);
+    symbol_t* param_x_symb = symbol_create("x", SYMBOL_PARAMETER, param_x, nullptr);
     param_x_symb->type = ast_type_builtin(TYPE_BOOL);
     vec_push(&bar_symbol->data.function.parameters, param_x_symb);
     symbol_table_insert(fix->ctx->global, bar_symbol);

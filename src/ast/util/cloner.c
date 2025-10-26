@@ -114,6 +114,15 @@ static void clone_paren_expr(void* self_, ast_paren_expr_t* paren, void* out_)
     cloner->result = ast_paren_expr_create(inner);
 }
 
+static void clone_access_expr(void* self_, ast_access_expr_t* access_expr, void* out_)
+{
+    (void)out_;
+    cloner_visitor_t* cloner = self_;
+    ast_expr_t* outer = ast_expr_clone(access_expr->outer);
+    ast_expr_t* inner = ast_expr_clone(access_expr->inner);
+    cloner->result = ast_access_expr_create(outer, inner);
+}
+
 static void clone_member_access(void* self_, ast_member_access_t* access, void* out_)
 {
     (void)out_;
@@ -224,6 +233,7 @@ ast_expr_t* ast_expr_clone(ast_expr_t* expr)
     cloner.base.visit_bin_op = clone_bin_op;
     cloner.base.visit_unary_op = clone_unary_op;
     cloner.base.visit_paren_expr = clone_paren_expr;
+    cloner.base.visit_access_expr = clone_access_expr;
     cloner.base.visit_member_access = clone_member_access;
     cloner.base.visit_array_subscript = clone_array_subscript;
     cloner.base.visit_array_slice = clone_array_slice;

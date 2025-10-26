@@ -161,6 +161,21 @@ static void print_import_def(void* self_, ast_import_def_t* import_def, void* ou
     string_append_cstr(out, "\n");
 }
 
+static void print_access_expr(void* self_, ast_access_expr_t* access_expr, void* out_)
+{
+    ast_printer_t* self = self_;
+    string_t* out = out_;
+
+    string_append_cstr(out, ssprintf("%*sAccessExpr", self->indentation, ""));
+    print_source_location(self, access_expr, out);
+    string_append_cstr(out, "\n");
+
+    self->indentation += PRINT_INDENTATION_WIDTH;
+    ast_visitor_visit(self, access_expr->outer, out);
+    ast_visitor_visit(self, access_expr->inner, out);
+    self->indentation -= PRINT_INDENTATION_WIDTH;
+}
+
 static void print_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
 {
     ast_printer_t* self = self_;
@@ -599,6 +614,7 @@ ast_printer_t* ast_printer_create()
             .visit_method_def = print_method_def,
             .visit_import_def = print_import_def,
             // Expressions
+            .visit_access_expr = print_access_expr,
             .visit_array_lit = print_array_lit,
             .visit_array_slice = print_array_slice,
             .visit_array_subscript = print_array_subscript,

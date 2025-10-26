@@ -8,7 +8,6 @@
 #include "ast/node.h"
 #include "ast/type.h"
 #include "ast/visitor.h"
-#include "common/containers/hash_table.h"
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
 #include "common/util/ssprintf.h"
@@ -32,20 +31,31 @@ struct decl_collector
 // Pass 1: Register all user types
 static void register_class_symbol(decl_collector_t* collector, ast_class_def_t* class_def)
 {
-    symbol_t* prev_symbol;
-    if ((prev_symbol = symbol_table_lookup(collector->ctx->global, class_def->base.name)) != nullptr)
+    vec_t* overloads = symbol_table_overloads(collector->ctx->global, class_def->base.name);
+    if (overloads != nullptr)
     {
-        semantic_context_add_error(collector->ctx, class_def, ssprintf("redeclaration of name '%s'",
-            class_def->base.name));
-            // TODO:
-            // ssprintf("redeclaration of name '%s', previously from <%s:%d>", class_def->base.name,
-                // prev_symbol->ast->source_begin.filename, prev_symbol->ast->source_begin.line));
+        // Allow collision with namespace, but nothing else
+        bool is_valid = true;
+        for (size_t i = 0; i < vec_size(overloads) && is_valid; ++i)
+        {
+            symbol_t* collider = vec_get(overloads, i);
+            if (collider->kind != SYMBOL_NAMESPACE)
+                is_valid = false;
+        }
+
+        if (!is_valid)
+        {
+            semantic_context_add_error(collector->ctx, class_def, ssprintf("redeclaration of name '%s'",
+                class_def->base.name));
+                // TODO:
+                // ssprintf("redeclaration of name '%s', previously from <%s:%d>", class_def->base.name,
+                    // prev_symbol->ast->source_begin.filename, prev_symbol->ast->source_begin.line));
+        }
         return;
     }
 
-    const char* proj_name = class_def->exported ? collector->ctx->project_name : nullptr;
-    const char* mod_name = class_def->exported ? collector->ctx->module_name : nullptr;
-    class_def->symbol = symbol_create(class_def->base.name, SYMBOL_CLASS, class_def, proj_name, mod_name, nullptr);
+    symbol_t* parent_namespace = class_def->exported ? collector->ctx->module_namespace : nullptr;
+    class_def->symbol = symbol_create(class_def->base.name, SYMBOL_CLASS, class_def, parent_namespace);
     class_def->symbol->type = ast_type_user(class_def->symbol);
     symbol_table_insert(collector->ctx->global, class_def->symbol);
 }
@@ -68,7 +78,7 @@ static void collect_class_def(void* self_, ast_class_def_t* class_def, void* out
         ast_visitor_visit(collector, vec_get(&class_def->methods, i), nullptr);
 
     if (class_def->exported)
-        symbol_table_insert(collector->ctx->exports, symbol_clone(class_def->symbol, false));
+        symbol_table_insert(collector->ctx->exports, class_def->symbol);
 
     collector->current_class = nullptr;
 }
@@ -79,8 +89,14 @@ static bool is_valid_overload(vec_t* symbols, vec_t* parameters)
     for (size_t i = 0; i < vec_size(symbols); ++i)
     {
         symbol_t* other_symbol = vec_get(symbols, i);
-        if (other_symbol->kind != SYMBOL_FUNCTION && other_symbol->kind != SYMBOL_METHOD)
+        if (other_symbol->kind != SYMBOL_FUNCTION && other_symbol->kind != SYMBOL_METHOD &&
+            other_symbol->kind != SYMBOL_NAMESPACE)
+        {
             return false;
+        }
+
+        if (other_symbol->kind == SYMBOL_NAMESPACE)
+            continue;
 
         if (vec_size(&other_symbol->data.function.parameters) != num_params)
             continue;
@@ -107,9 +123,8 @@ static void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
     decl_collector_t* collector = self_;
 
     // Create symbol & resolve parameter types
-    const char* proj_name = fn_def->exported ? collector->ctx->project_name : nullptr;
-    const char* mod_name = fn_def->exported ? collector->ctx->module_name : nullptr;
-    symbol_t* symbol = symbol_create(fn_def->base.name, SYMBOL_FUNCTION, fn_def, proj_name, mod_name, nullptr);
+    symbol_t* parent_namespace = fn_def->exported ? collector->ctx->module_namespace : nullptr;
+    symbol_t* symbol = symbol_create(fn_def->base.name, SYMBOL_FUNCTION, fn_def, parent_namespace);
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
         ast_visitor_visit(collector, vec_get(&fn_def->params, i), symbol);
 
@@ -150,7 +165,7 @@ static void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 
     symbol_table_insert(collector->ctx->global, symbol);
     if (fn_def->exported)
-        symbol_table_insert(collector->ctx->exports, symbol_clone(symbol, false));
+        symbol_table_insert(collector->ctx->exports, symbol);
 }
 
 static void collect_import_def(void* self_, ast_import_def_t* import, void* out_)
@@ -193,7 +208,7 @@ static void collect_member_decl(void* self_, ast_member_decl_t* member, void* ou
         return;
 
     // Verify class does not already contain member by given name
-    symbol_t* prev_def = hash_table_find(&collector->current_class->data.class.members, member->base.name);
+    symbol_t* prev_def = symbol_table_lookup_local(collector->current_class->data.class.symbols, member->base.name);
     if (prev_def != nullptr)
     {
         semantic_context_add_error(collector->ctx, member, ssprintf("redeclaration of '%s'", member->base.name));
@@ -218,10 +233,10 @@ static void collect_member_decl(void* self_, ast_member_decl_t* member, void* ou
         default_expr->type = member->base.type;
     }
 
-    symbol_t* member_symb = symbol_create(member->base.name, SYMBOL_MEMBER, member, nullptr, nullptr, nullptr);
+    symbol_t* member_symb = symbol_create(member->base.name, SYMBOL_MEMBER, member, collector->current_class);
     member_symb->data.member.default_value = default_expr;
     member_symb->type = member->base.type;
-    hash_table_insert(&collector->current_class->data.class.members, member->base.name, member_symb);
+    symbol_table_insert(collector->current_class->data.class.symbols, member_symb);
 }
 
 static void collect_method_def(void* self_, ast_method_def_t* method, void* out_)
@@ -237,7 +252,7 @@ static void collect_method_def(void* self_, ast_method_def_t* method, void* out_
         ast_visitor_visit(collector, vec_get(&method->base.params, i), nullptr);
 
     // Handle method clashes with overloading rules
-    vec_t* symbols = symbol_table_overloads(collector->current_class->data.class.methods, method->base.base.name);
+    vec_t* symbols = symbol_table_overloads(collector->current_class->data.class.symbols, method->base.base.name);
     size_t num_prev_defs = symbols ? vec_size(symbols) : 0;
     if (symbols != nullptr && !is_valid_overload(symbols, &method->base.params))
     {
@@ -260,17 +275,14 @@ static void collect_method_def(void* self_, ast_method_def_t* method, void* out_
     }
 
     // Build symbol for method
-    const char* proj_name = collector->current_class->source_project;
-    const char* mod_name = collector->current_class->source_module;
-    symbol_t* method_symbol = symbol_create(method->base.base.name, SYMBOL_METHOD, method, proj_name, mod_name,
-        collector->current_class->name);
+    symbol_t* method_symbol = symbol_create(method->base.base.name, SYMBOL_METHOD, method, collector->current_class);
     method_symbol->type = ast_type_invalid();  // TODO: actual function type
     method_symbol->data.function.return_type = method->base.return_type == nullptr ?
         ast_type_builtin(TYPE_VOID) : method->base.return_type;
     for (size_t i = 0; i < vec_size(&method->base.params); ++i)
     {
         ast_param_decl_t* param = vec_get(&method->base.params, i);
-        symbol_t* param_symb = symbol_create(param->name, SYMBOL_PARAMETER, param, nullptr, nullptr, nullptr);
+        symbol_t* param_symb = symbol_create(param->name, SYMBOL_PARAMETER, param, nullptr);
         param_symb->type = param->type;
         vec_push(&method_symbol->data.function.parameters, param_symb);
     }
@@ -278,9 +290,7 @@ static void collect_method_def(void* self_, ast_method_def_t* method, void* out_
     method->overload_index = num_prev_defs;
     method_symbol->data.function.overload_index = method->overload_index;
 
-    symbol_table_insert(collector->current_class->data.class.methods, method_symbol);
-
-    // TODO: Warning if method & member share name?
+    symbol_table_insert(collector->current_class->data.class.symbols, method_symbol);
 }
 
 static void collect_param_decl(void* self_, ast_param_decl_t* param_decl, void* out_)
@@ -294,7 +304,7 @@ static void collect_param_decl(void* self_, ast_param_decl_t* param_decl, void* 
 
     if (fn != nullptr)
     {
-        symbol_t* param_symb = symbol_create(param_decl->name, SYMBOL_PARAMETER, param_decl, nullptr, nullptr, nullptr);
+        symbol_t* param_symb = symbol_create(param_decl->name, SYMBOL_PARAMETER, param_decl, nullptr);
         param_symb->type = param_decl->type;
         vec_push(&fn->data.function.parameters, param_symb);
     }

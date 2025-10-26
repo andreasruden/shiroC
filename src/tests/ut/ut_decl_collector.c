@@ -178,18 +178,18 @@ TEST(decl_collector_fixture_t, collect_class_with_members_and_methods)
     ASSERT_EQ("Point", sym->name);
 
     // Verify members were collected into the class symbol
-    symbol_t* member_x = hash_table_find(&sym->data.class.members, "x");
+    symbol_t* member_x = symbol_table_lookup(sym->data.class.symbols, "x");
     ASSERT_NEQ(nullptr, member_x);
     ASSERT_EQ("x", member_x->name);
     ASSERT_EQ(ast_type_builtin(TYPE_I32), member_x->type);
 
-    symbol_t* member_y = hash_table_find(&sym->data.class.members, "y");
+    symbol_t* member_y = symbol_table_lookup(sym->data.class.symbols, "y");
     ASSERT_NEQ(nullptr, member_y);
     ASSERT_EQ("y", member_y->name);
     ASSERT_EQ(ast_type_builtin(TYPE_I32), member_y->type);
 
     // Verify methods were collected into the class symbol
-    symbol_t* method_getX = symbol_table_lookup(sym->data.class.methods, "getX");
+    symbol_t* method_getX = symbol_table_lookup(sym->data.class.symbols, "getX");
     ASSERT_NEQ(nullptr, method_getX);
     ASSERT_EQ("getX", method_getX->name);
     ASSERT_EQ(SYMBOL_METHOD, method_getX->kind);
@@ -358,9 +358,8 @@ TEST(decl_collector_fixture_t, exported_class_in_export_table)
     symbol_t* export_sym = symbol_table_lookup(fix->ctx->exports, "Point");
     ASSERT_NEQ(nullptr, export_sym);
     ASSERT_EQ(SYMBOL_CLASS, export_sym->kind);
-    ASSERT_EQ(1, export_sym->data.class.members.size);
-    ASSERT_EQ(1, export_sym->data.class.methods->map.size);
-    symbol_t* method_sym = symbol_table_lookup(export_sym->data.class.methods, "method");
+    ASSERT_EQ(2, export_sym->data.class.symbols->map.size);
+    symbol_t* method_sym = symbol_table_lookup(export_sym->data.class.symbols, "method");
     ASSERT_NEQ(nullptr, method_sym);
     ASSERT_EQ(SYMBOL_METHOD, method_sym->kind);
     ASSERT_EQ(ast_type_invalid(), method_sym->type);

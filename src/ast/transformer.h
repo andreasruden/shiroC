@@ -8,6 +8,7 @@
 #include "ast/def/fn_def.h"
 #include "ast/def/method_def.h"
 #include "ast/def/import_def.h"
+#include "ast/expr/access_expr.h"
 #include "ast/expr/array_lit.h"
 #include "ast/expr/array_slice.h"
 #include "ast/expr/array_subscript.h"
@@ -64,6 +65,7 @@ struct ast_transformer
     void* (*transform_import_def)(void* self_, ast_import_def_t* import_def, void *out_);
 
     // Expressions
+    void* (*transform_access_expr)(void* self_, ast_access_expr_t* access_expr, void *out_);
     void* (*transform_array_lit)(void* self_, ast_array_lit_t* lit, void *out_);
     void* (*transform_array_slice)(void* self_, ast_array_slice_t* array_slice, void *out_);
     void* (*transform_array_subscript)(void* self_, ast_array_subscript_t* array_subscript, void *out_);

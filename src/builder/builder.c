@@ -6,6 +6,7 @@
 #include "common/debug/panic.h"
 #include "common/toml_parser.h"
 #include "common/util/path.h"
+#include "sema/semantic_context.h"
 #include "sema/symbol_table.h"
 
 #include <ctype.h>
@@ -249,8 +250,20 @@ static bool inject_exports_into_module(module_t* module)
         const char* dep_name = vec_get(&module->dependencies, i);
         module_t* dep_mod = hash_table_find(&module->builder->modules, dep_name);
         panic_if(dep_mod == nullptr);
-        symbol_table_import(module->sema_context->global, dep_mod->sema_context->exports, module->builder->project,
-            dep_name);
+
+        // Register namespace symbols for qualified name resolution
+        // TODO: For dependencies project name should be used, for own project "Self" should be used
+        const char* project_ns_name = "Self";
+        symbol_t* project_ns = symbol_table_lookup_local(module->sema_context->global, project_ns_name);
+        if (project_ns == nullptr)
+        {
+            project_ns = semantic_context_register_namespace(module->sema_context, nullptr, project_ns_name,
+                nullptr);
+        }
+        symbol_t* mod_ns = semantic_context_register_namespace(module->sema_context, project_ns, dep_name,
+            nullptr);  // don't copy our exports, symbol_table_import will make appropriate clones
+
+        symbol_table_import(module->sema_context->global, dep_mod->sema_context->exports, mod_ns);
     }
     return true;
 }

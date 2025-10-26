@@ -1,4 +1,6 @@
+#include "ast/expr/access_expr.h"
 #include "ast/expr/bin_op.h"
+#include "ast/expr/call_expr.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/paren_expr.h"
 #include "ast/expr/ref_expr.h"
@@ -295,6 +297,55 @@ TEST(parser_expressions_fixture_t, parse_assignment_with_expression)
             ast_bin_op_create(TOKEN_STAR,
                 ast_ref_expr_create("b"),
                 ast_ref_expr_create("c"))));
+
+    ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expected);
+    ast_node_destroy(expr);
+}
+
+TEST(parser_expressions_fixture_t, parse_simple_access_expr)
+{
+    parser_set_source(fix->parser, "test", "obj.field");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    // Should parse as: access_expr(ref("obj"), ref("field"))
+    ast_expr_t* expected = ast_access_expr_create(ast_ref_expr_create("obj"), ast_ref_expr_create("field"));
+
+    ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expected);
+    ast_node_destroy(expr);
+}
+
+TEST(parser_expressions_fixture_t, parse_chained_access_expr)
+{
+    parser_set_source(fix->parser, "test", "obj.inner.value");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    // Should parse as: access_expr(access_expr(ref("obj"), ref("inner")), ref("value"))
+    ast_expr_t* expected = ast_access_expr_create(
+        ast_access_expr_create(ast_ref_expr_create("obj"), ast_ref_expr_create("inner")),
+        ast_ref_expr_create("value"));
+
+    ASSERT_TREES_EQUAL(expected, expr);
+    ast_node_destroy(expected);
+    ast_node_destroy(expr);
+}
+
+TEST(parser_expressions_fixture_t, parse_access_expr_call)
+{
+    parser_set_source(fix->parser, "test", "X.Y()");
+    ast_expr_t* expr = parser_parse_expr(fix->parser);
+    ASSERT_NEQ(nullptr, expr);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    // Should parse as: call_expr(access_expr(ref("X"), ref("Y")))
+    ast_expr_t* expected = ast_call_expr_create_va(
+        ast_access_expr_create(ast_ref_expr_create("X"), ast_ref_expr_create("Y")),
+        nullptr);
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expected);

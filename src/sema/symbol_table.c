@@ -13,10 +13,16 @@ symbol_table_t* symbol_table_create(symbol_table_t* parent, scope_kind_t kind)
     symbol_table_t* table = malloc(sizeof(*table));
     panic_if(table == nullptr);
 
+    // All symbol tables own the vectors (hash table values), so always destroy them
+    // The vectors themselves have delete_fn set per-scope in symbol_table_insert:
+    //   - SCOPE_EXPORT: vec's delete_fn = nullptr (don't destroy symbols, just references)
+    //   - Other scopes: vec's delete_fn = symbol_destroy_void (destroy owned symbols)
+    vec_delete_fn destructor = vec_destroy_void;
+
     *table = (symbol_table_t){
         .parent = parent,
         .kind = kind,
-        .map = HASH_TABLE_INIT(vec_destroy_void),
+        .map = HASH_TABLE_INIT(destructor),
     };
 
     return table;
@@ -41,10 +47,24 @@ void symbol_table_insert(symbol_table_t* table, symbol_t* symbol)
     vec_t* symbols = hash_table_find(&table->map, symbol->name);
     if (symbols == nullptr)
     {
-        symbols = vec_create(symbol_destroy_void);
+        // SCOPE_EXPORT tables don't own symbols, others do
+        vec_delete_fn destructor = (table->kind == SCOPE_EXPORT) ? nullptr : symbol_destroy_void;
+        symbols = vec_create(destructor);
         hash_table_insert(&table->map, symbol->name, symbols);
     }
     vec_push(symbols, symbol);
+}
+
+symbol_table_t* symbol_table_parent_with_symbol(symbol_table_t* table, const char* name)
+{
+    symbol_table_t* itr = table;
+    while (itr != nullptr)
+    {
+        if (symbol_table_lookup_local(itr, name) != nullptr)
+            return itr;
+        itr = itr->parent;
+    }
+    return nullptr;
 }
 
 symbol_t* symbol_table_lookup(symbol_table_t* table, const char* name)
@@ -69,8 +89,7 @@ vec_t* symbol_table_overloads(symbol_table_t* table, const char* name)
     return hash_table_find(&table->map, name);
 }
 
-void symbol_table_import(symbol_table_t* dst, symbol_table_t* src, const char* source_project,
-    const char* source_module)
+void symbol_table_import(symbol_table_t* dst, symbol_table_t* src, symbol_t* imported_namespace)
 {
     hash_table_iter_t itr;
     for (hash_table_iter_init(&itr, &src->map); hash_table_iter_has_elem(&itr); hash_table_iter_next(&itr))
@@ -81,52 +100,8 @@ void symbol_table_import(symbol_table_t* dst, symbol_table_t* src, const char* s
         for (size_t i = 0; i < vec_size(symbols); ++i)
         {
             symbol_t* symbol = vec_get(symbols, i);
-            symbol_t* cloned_symbol = symbol_clone(symbol, false);
-            // NOTE: Could remove arguments of function, they should not be needed
-            panic_if(strcmp(cloned_symbol->source_project, source_project) != 0);
-            panic_if(strcmp(cloned_symbol->source_module, source_module) != 0);
+            symbol_t* cloned_symbol = symbol_clone(symbol, false, imported_namespace);
             symbol_table_insert(dst, cloned_symbol);
         }
     }
-}
-
-static void* symbol_vec_clone_wrapper_with_ast(void* symbols_vec)
-{
-    vec_t* src_vec = symbols_vec;
-    vec_t* dst_vec = vec_create(symbol_destroy_void);
-
-    for (size_t i = 0; i < vec_size(src_vec); ++i)
-    {
-        symbol_t* original_symbol = vec_get(src_vec, i);
-        symbol_t* cloned_symbol = symbol_clone(original_symbol, true);
-        vec_push(dst_vec, cloned_symbol);
-    }
-
-    return dst_vec;
-}
-
-static void* symbol_vec_clone_wrapper_without_ast(void* symbols_vec)
-{
-    vec_t* src_vec = symbols_vec;
-    vec_t* dst_vec = vec_create(symbol_destroy_void);
-
-    for (size_t i = 0; i < vec_size(src_vec); ++i)
-    {
-        symbol_t* original_symbol = vec_get(src_vec, i);
-        symbol_t* cloned_symbol = symbol_clone(original_symbol, false);
-        vec_push(dst_vec, cloned_symbol);
-    }
-
-    return dst_vec;
-}
-
-void symbol_table_clone(symbol_table_t* dst, symbol_table_t* src, bool include_ast)
-{
-    panic_if(dst->map.size != 0);
-
-    dst->kind = src->kind;
-    dst->parent = src->parent;
-    hash_table_deinit(&dst->map);
-    hash_table_clone(&dst->map, &src->map, include_ast ? symbol_vec_clone_wrapper_with_ast :
-        symbol_vec_clone_wrapper_without_ast);
 }

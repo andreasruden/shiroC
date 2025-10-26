@@ -25,6 +25,7 @@ typedef enum ast_node_kind
     AST_DEF_END, // Sentinel
 
     // Expressions
+    AST_EXPR_ACCESS,
     AST_EXPR_ARRAY_LIT,
     AST_EXPR_ARRAY_SLICE,
     AST_EXPR_ARRAY_SUBSCRIPT,

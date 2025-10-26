@@ -5,11 +5,13 @@
 #include "ast/def/fn_def.h"
 #include "ast/def/import_def.h"
 #include "ast/def/method_def.h"
+#include "ast/expr/access_expr.h"
 #include "ast/expr/coercion_expr.h"
 #include "ast/expr/int_lit.h"
 #include "ast/expr/member_access.h"
 #include "ast/expr/member_init.h"
 #include "ast/expr/method_call.h"
+#include "ast/expr/ref_expr.h"
 #include "ast/expr/self_expr.h"
 #include "ast/expr/unary_op.h"
 #include "ast/node.h"
@@ -22,6 +24,7 @@
 #include "common/debug/panic.h"
 #include "common/util/ssprintf.h"
 #include "parser/lexer.h"
+#include "sema/access_transformer.h"
 #include "sema/init_tracker.h"
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
@@ -31,8 +34,7 @@
 #include <stdint.h>
 #include <string.h>
 
-static symbol_t* add_variable_to_scope(semantic_analyzer_t* sema, void* node, const char* name, ast_type_t* type,
-    bool member)
+static symbol_t* add_variable_to_scope(semantic_analyzer_t* sema, void* node, const char* name, ast_type_t* type)
 {
     // Error: same scope redeclaration
     symbol_t* collision = symbol_table_lookup_local(sema->ctx->current, name);
@@ -64,7 +66,7 @@ static symbol_t* add_variable_to_scope(semantic_analyzer_t* sema, void* node, co
             collision->ast->source_begin.filename, collision->ast->source_begin.line));
     }
 
-    symbol_t* symb = symbol_create(name, member ? SYMBOL_MEMBER : SYMBOL_VARIABLE, node, nullptr, nullptr, nullptr);
+    symbol_t* symb = symbol_create(name, SYMBOL_VARIABLE, node, nullptr);
     symb->type = type;
     symbol_table_insert(sema->ctx->current, symb);
     return symb;
@@ -162,11 +164,11 @@ static void* analyze_member_decl(void* self_, ast_member_decl_t* member, void* o
         }
     }
 
-    // Copy class symbol (added by decl_collector) into current context
-    symbol_t* member_symb = hash_table_find(&sema->current_class->data.class.members, member->base.name);
+    // Copy member symbol (added by decl_collector) into current context
+    symbol_t* member_symb = symbol_table_lookup_local(sema->current_class->data.class.symbols, member->base.name);
     panic_if(member_symb == nullptr);
     panic_if(member_symb->kind != SYMBOL_MEMBER);
-    symbol_table_insert(sema->ctx->current, symbol_clone(member_symb, true));
+    symbol_table_insert(sema->ctx->current, symbol_clone(member_symb, true, sema->current_class));
 
     return member;
 }
@@ -187,7 +189,7 @@ static void* analyze_param_decl(void* self_, ast_param_decl_t* param, void* out_
         return param;
     }
 
-    symbol_t* symbol = add_variable_to_scope(sema, param, param->name, param->type, false);
+    symbol_t* symbol = add_variable_to_scope(sema, param, param->name, param->type);
     if (symbol != nullptr)
     {
         symbol->kind = SYMBOL_PARAMETER;
@@ -279,7 +281,7 @@ static void* analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     }
 
     var->type = actual_type;
-    symbol_t* symbol = add_variable_to_scope(sema, var, var->name, actual_type, false);
+    symbol_t* symbol = add_variable_to_scope(sema, var, var->name, actual_type);
     if (symbol != nullptr)
         init_tracker_set_initialized(sema->init_tracker, symbol, var->init_expr != nullptr);
     return var;
@@ -299,7 +301,7 @@ static void* analyze_class_def(void* self_, ast_class_def_t* class_def, void* ou
 
     // Add "self" to scope
     ast_decl_t* self_decl = ast_member_decl_create("self", ast_type_user(class_symb), nullptr);
-    symbol_t* self_symb = symbol_create("self", SYMBOL_MEMBER, self_decl, nullptr, nullptr, nullptr);
+    symbol_t* self_symb = symbol_create("self", SYMBOL_MEMBER, self_decl, sema->current_class);
     self_symb->type = class_symb->type;
     symbol_table_insert(sema->ctx->current, self_symb);
 
@@ -307,7 +309,7 @@ static void* analyze_class_def(void* self_, ast_class_def_t* class_def, void* ou
     for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
     {
         ast_method_def_t* method = vec_get(&class_def->methods, i);
-        symbol_table_insert(sema->ctx->current, symbol_clone(method->symbol, true));
+        symbol_table_insert(sema->ctx->current, symbol_clone(method->symbol, true, class_symb));
     }
 
     // Visit members first to add them to the class scope
@@ -636,6 +638,20 @@ static void* analyze_array_subscript(void* self_, ast_array_subscript_t* subscri
     return subscript;
 }
 
+static void* analyze_access_expr(void* self_, ast_access_expr_t* access, void* out_)
+{
+    semantic_analyzer_t* sema = self_;
+
+    ast_expr_t* transformed = access_transformer_resolve(sema, access, false, nullptr);
+
+    // If type is invalid and node kind didn't change, it's an error - return early
+    // If node kind changed (e.g., to member_access), we need to analyze it even if type is invalid
+    if (transformed->type == ast_type_invalid() && AST_KIND(transformed) == AST_EXPR_ACCESS)
+        return transformed;
+
+    return ast_transformer_transform(sema, transformed, out_);
+}
+
 // Returns true if via some coercion we can think of LHS and RHS as the same type
 // NOTE: This does not imply the types are valid for an operator, check that with is_type_valid_for_operator().
 static bool is_type_equal_for_bin_op(ast_type_t* lhs_type, ast_type_t* rhs_type)
@@ -835,7 +851,7 @@ static symbol_t* function_overload_resolution(semantic_analyzer_t* sema, void* n
                 valid = false;
         }
 
-        // Verify we find only one candidate method
+        // Verify we find only one candidate function
         if (valid)
         {
             if (match == nullptr)
@@ -845,10 +861,10 @@ static symbol_t* function_overload_resolution(semantic_analyzer_t* sema, void* n
             }
 
             // Unless we are shadowing an imported function with our self-defined function
-            bool is_candidate_ours = candidate->source_module == nullptr ||
-                strcmp(candidate->source_module, sema->ctx->module_name) == 0;
-            bool is_match_ours = match->source_module == nullptr ||
-                strcmp(match->source_module, sema->ctx->module_name) == 0;
+            bool is_candidate_ours = candidate->parent_namespace == nullptr ||
+                candidate->parent_namespace == sema->ctx->module_namespace;
+            bool is_match_ours = match->parent_namespace == nullptr ||
+                match->parent_namespace == sema->ctx->module_namespace;
             if (is_match_ours == is_candidate_ours)
             {
                 semantic_context_add_error(sema->ctx, node, "ambiguous resolution, multiple signatures match");
@@ -922,8 +938,51 @@ static void* analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 {
     (void)out_;
     semantic_analyzer_t* sema = self_;
-
     symbol_t* symbol = nullptr;
+    symbol_table_t* symbol_table = sema->ctx->global;
+
+    // Special handling: if function is an access_expr, resolve it in call context
+    // This allows transforming obj.method() into method_call or resolving NameSpace.fn()
+    if (AST_KIND(call->function) == AST_EXPR_ACCESS)
+    {
+        ast_access_expr_t* access = (ast_access_expr_t*)call->function;
+        ast_expr_t* transformed = access_transformer_resolve(sema, access, true, &symbol);
+        if (transformed->type == ast_type_invalid())
+        {
+            call->function = transformed;
+            call->base.type = ast_type_invalid();
+            return call;
+        }
+
+        panic_if(symbol == nullptr);
+
+        if (symbol->kind == SYMBOL_METHOD)
+        {
+            // Transform to method_call: instance is in transformed, method candidate is in symbol
+            // (still may need overload resolution)
+            ast_expr_t* replacement = ast_method_call_create(transformed, symbol->name, &call->arguments);
+            call->arguments = VEC_INIT(nullptr);  // transferred to method_call
+            call->function = nullptr;
+            ast_node_destroy(call);
+            return ast_transformer_transform(sema, replacement, out_);
+        }
+        else
+        {
+            // Normal function inside a namespace
+            panic_if(symbol->kind != SYMBOL_FUNCTION);
+            panic_if(symbol->parent_namespace == nullptr);
+            call->function = transformed;
+            if (symbol->parent_namespace->kind == SYMBOL_NAMESPACE)
+                symbol_table = symbol->parent_namespace->data.namespace.exports;
+            else
+            {
+                panic_if(symbol->parent_namespace->kind != SYMBOL_CLASS);
+                symbol_table = symbol->parent_namespace->data.class.symbols;
+            }
+        }
+    }
+
+    // Normal handling
     call->function = ast_transformer_transform(sema, call->function, &symbol);
     if (symbol == nullptr)
     {
@@ -947,7 +1006,7 @@ static void* analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
         return call;
     }
 
-    vec_t* symbols = symbol_table_overloads(sema->ctx->global, symbol->name);
+    vec_t* symbols = symbol_table_overloads(symbol_table, symbol->name);
     panic_if(symbols == nullptr);
 
     symbol_t* chosen_fn = analyze_call_and_method_shared(sema, call, symbols, &call->arguments);
@@ -957,8 +1016,9 @@ static void* analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
         return call;
     }
     panic_if(chosen_fn->kind != SYMBOL_FUNCTION);
-    panic_if(chosen_fn->ast == nullptr);
 
+    if (AST_KIND(call->function) == AST_EXPR_REF)
+        ((ast_ref_expr_t*)call->function)->resolved_symbol = chosen_fn;
     call->function_symbol = chosen_fn;
     call->base.is_lvalue = false;
     call->base.type = chosen_fn->data.function.return_type;
@@ -1016,11 +1076,17 @@ static void* analyze_construct_expr(void* self_, ast_construct_expr_t* construct
 
     // Handle default initializations, also make sure no non-default initializable member was left out
     hash_table_iter_t itr;
-    for (hash_table_iter_init(&itr, &class_symbol->data.class.members); hash_table_iter_has_elem(&itr);
+    for (hash_table_iter_init(&itr, &class_symbol->data.class.symbols->map); hash_table_iter_has_elem(&itr);
         hash_table_iter_next(&itr))
     {
         hash_table_entry_t* entry = hash_table_iter_current(&itr);
-        symbol_t* member_symb = entry->value;
+        vec_t* overloads = entry->value;
+        symbol_t* member_symb = vec_get(overloads, 0);
+
+        if (member_symb->kind != SYMBOL_MEMBER)
+            continue;  // ignore methods
+
+        panic_if(vec_size(overloads) != 1);
 
         if (hash_table_contains(&initialized_members, entry->key))
             continue;
@@ -1183,17 +1249,20 @@ static symbol_t* verify_class_instance(semantic_analyzer_t* sema, ast_expr_t** i
     if (instance->type == ast_type_invalid())
         return nullptr;
 
-    if (!instance->is_lvalue)
-    {
-        semantic_context_add_error(sema->ctx, instance, "not l-value");
-        return nullptr;
-    }
-
     // Expression before '.' must be a user-type or pointer to user type
     if (instance->type->kind != AST_TYPE_USER &&
         !(instance->type->kind == AST_TYPE_POINTER && instance->type->data.pointer.pointee->kind == AST_TYPE_USER))
     {
         semantic_context_add_error(sema->ctx, instance, "not class type or pointer to class type");
+        return nullptr;
+    }
+
+    // If instance is a class value (not a pointer), it must be an l-value.
+    // If instance is a pointer to a class, the pointer can be an r-value because
+    // dereferencing creates an l-value (e.g., getPtr().x is valid).
+    if (instance->type->kind == AST_TYPE_USER && !instance->is_lvalue)
+    {
+        semantic_context_add_error(sema->ctx, instance, "not l-value");
         return nullptr;
     }
 
@@ -1216,7 +1285,10 @@ static void* analyze_member_access(void* self_, ast_member_access_t* access, voi
     }
 
     // Make sure class contains the specified name as a member
-    symbol_t* member_symb = hash_table_find(&class_symb->data.class.members, access->member_name);
+    symbol_t* member_symb = symbol_table_lookup_local(class_symb->data.class.symbols, access->member_name);
+    if (member_symb != nullptr && member_symb->kind != SYMBOL_MEMBER)
+        member_symb = nullptr;
+
     if (member_symb == nullptr)
     {
         semantic_context_add_error(sema->ctx, access, ssprintf("type '%s' has no member '%s'",
@@ -1240,7 +1312,10 @@ static void* analyze_member_init(void* self_, ast_member_init_t* init, void* out
     panic_if(class_symb == nullptr || class_symb->kind != SYMBOL_CLASS);
 
     // Make sure member is defined in class
-    symbol_t* member_symb = hash_table_find(&class_symb->data.class.members, init->member_name);
+    symbol_t* member_symb = symbol_table_lookup_local(class_symb->data.class.symbols, init->member_name);
+    if (member_symb != nullptr && member_symb->kind != SYMBOL_MEMBER)
+        member_symb = nullptr;
+
     if (member_symb == nullptr)
     {
         *out = nullptr;
@@ -1284,7 +1359,7 @@ static void* analyze_method_call(void* self_, ast_method_call_t* call, void* out
     }
 
     // Make sure class contains the specified name as a method
-    vec_t* method_defs = symbol_table_overloads(class_symb->data.class.methods, call->method_name);
+    vec_t* method_defs = symbol_table_overloads(class_symb->data.class.symbols, call->method_name);
     if (method_defs == nullptr)
     {
         semantic_context_add_error(sema->ctx, call, ssprintf("type '%s' has no method '%s'",
@@ -1332,7 +1407,8 @@ static void* analyze_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
     semantic_analyzer_t* sema = self_;
     symbol_t** symbol_out = out_;
 
-    symbol_t* symbol = symbol_table_lookup(sema->ctx->current, ref_expr->name);
+    symbol_t* symbol = ref_expr->resolved_symbol ? ref_expr->resolved_symbol :
+        symbol_table_lookup(sema->ctx->current, ref_expr->name);
     if (symbol == nullptr)
     {
         semantic_context_add_error(sema->ctx, ref_expr, ssprintf("unknown symbol name '%s'", ref_expr->name));
@@ -1362,6 +1438,7 @@ static void* analyze_ref_expr(void* self_, ast_ref_expr_t* ref_expr, void* out_)
 
     ref_expr->base.is_lvalue = true;
     ref_expr->base.type = symbol->type;
+    ref_expr->resolved_symbol = symbol;
     return ref_expr;
 }
 
@@ -1682,6 +1759,7 @@ semantic_analyzer_t* semantic_analyzer_create(semantic_context_t* ctx)
             .transform_import_def = analyze_import_def,
             .transform_method_def = analyze_method_def,
             // Expressions
+            .transform_access_expr = analyze_access_expr,
             .transform_array_lit = analyze_array_lit,
             .transform_array_slice = analyze_array_slice,
             .transform_array_subscript = analyze_array_subscript,

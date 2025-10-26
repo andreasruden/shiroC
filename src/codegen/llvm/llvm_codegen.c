@@ -265,11 +265,16 @@ static void create_class_layout(llvm_codegen_t* llvm, symbol_t* class_symb)
     // Populate class layout with members
     int i = 0;
     hash_table_iter_t itr;
-    for (hash_table_iter_init(&itr, &class_symb->data.class.members); hash_table_iter_has_elem(&itr);
+    for (hash_table_iter_init(&itr, &class_symb->data.class.symbols->map); hash_table_iter_has_elem(&itr);
         hash_table_iter_next(&itr))
     {
-        symbol_t* member_symb = hash_table_iter_current(&itr)->value;
-        panic_if(member_symb->kind != SYMBOL_MEMBER);
+        vec_t* overloads = hash_table_iter_current(&itr)->value;
+        symbol_t* member_symb = vec_get(overloads, 0);
+        if (member_symb->kind != SYMBOL_MEMBER)
+            continue;
+
+        panic_if(vec_size(overloads) != 1);
+
         hash_table_insert(&layout->member_indices, member_symb->name, (void*)(intptr_t)i);
         vec_push(&layout->member_names, strdup(member_symb->name));
         vec_push(&layout->member_types, member_symb->type);
@@ -285,15 +290,16 @@ static void declare_class_methods(llvm_codegen_t* llvm, symbol_t* class_symb)
     panic_if(class_symb->kind != SYMBOL_CLASS);
 
     hash_table_iter_t itr;
-    for (hash_table_iter_init(&itr, &class_symb->data.class.methods->map); hash_table_iter_has_elem(&itr);
+    for (hash_table_iter_init(&itr, &class_symb->data.class.symbols->map); hash_table_iter_has_elem(&itr);
         hash_table_iter_next(&itr))
     {
         vec_t* overloads = hash_table_iter_current(&itr)->value;
-        panic_if(vec_size(overloads) == 0);
 
         for (size_t i = 0; i < vec_size(overloads); ++i)
         {
             symbol_t* method_symb = vec_get(overloads, i);
+            if (method_symb->kind != SYMBOL_METHOD)
+                continue;
 
             const char* mangled_name = MANGLE_FUNCTION_NAME(method_symb);
 
@@ -326,14 +332,29 @@ static void declare_class_members(llvm_codegen_t* llvm, symbol_t* class_symb)
     panic_if(class_type == nullptr);
 
     // Register the fields of the class in LLVM
-    unsigned int member_count = class_symb->data.class.members.size;
-    LLVMTypeRef* member_types = malloc(sizeof(LLVMTypeRef) * member_count);
     hash_table_iter_t itr;
-    int i = 0;
-    for (hash_table_iter_init(&itr, &class_symb->data.class.members); hash_table_iter_has_elem(&itr);
+    unsigned int member_count = 0;
+    for (hash_table_iter_init(&itr, &class_symb->data.class.symbols->map); hash_table_iter_has_elem(&itr);
         hash_table_iter_next(&itr))
     {
-        symbol_t* member_symb = hash_table_iter_current(&itr)->value;
+        vec_t* overloads = hash_table_iter_current(&itr)->value;
+        symbol_t* symb = vec_get(overloads, 0);
+        if (symb->kind == SYMBOL_MEMBER)
+            member_count++;
+    }
+
+    LLVMTypeRef* member_types = malloc(sizeof(LLVMTypeRef) * member_count);
+    int i = 0;
+    for (hash_table_iter_init(&itr, &class_symb->data.class.symbols->map); hash_table_iter_has_elem(&itr);
+        hash_table_iter_next(&itr))
+    {
+        vec_t* overloads = hash_table_iter_current(&itr)->value;
+        symbol_t* member_symb = vec_get(overloads, 0);
+        if (member_symb->kind != SYMBOL_MEMBER)
+            continue;
+
+        panic_if(vec_size(overloads) != 1);
+
         LLVMTypeRef member_type = llvm_type(llvm->context, member_symb->type);
         member_types[i] = member_type;
         ++i;

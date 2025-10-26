@@ -31,6 +31,9 @@ void symbol_table_destroy_void(void* table);
 
 void symbol_table_insert(symbol_table_t* table, symbol_t* symbol);
 
+// Return self or first parent for which symbol_table_lookup_local would return non-null
+symbol_table_t* symbol_table_parent_with_symbol(symbol_table_t* table, const char* name);
+
 // find the first symbol matching the name in self or parent table
 symbol_t* symbol_table_lookup(symbol_table_t* table, const char* name);
 
@@ -41,11 +44,8 @@ symbol_t* symbol_table_lookup_local(symbol_table_t* table, const char* name);
 // NOTE: Only local searche in self, parent matches are not included.
 vec_t* symbol_table_overloads(symbol_table_t* table, const char* name);
 
-// Import symbol table from another project/module; every symbol in src is cloned and given the
-// source_project & source_module. The AST, if defined, is not included in the dst.
-void symbol_table_import(symbol_table_t* dst, symbol_table_t* src, const char* source_project,
-    const char* source_module);
-
-void symbol_table_clone(symbol_table_t* dst, symbol_table_t* src, bool include_ast);
+// Import symbol table from another project/module, imported_namespace must be added first.
+// The AST, if defined, is not included in the dst.
+void symbol_table_import(symbol_table_t* dst, symbol_table_t* src, symbol_t* imported_namespace);
 
 #endif

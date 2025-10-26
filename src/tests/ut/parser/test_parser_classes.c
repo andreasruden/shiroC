@@ -2,6 +2,7 @@
 #include "ast/decl/member_decl.h"
 #include "ast/def/class_def.h"
 #include "ast/def/method_def.h"
+#include "ast/expr/access_expr.h"
 #include "ast/expr/array_subscript.h"
 #include "ast/expr/bin_op.h"
 #include "ast/expr/call_expr.h"
@@ -366,7 +367,7 @@ TEST(parser_classes_fixture_t, parse_simple_member_access)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
-    ast_expr_t* expected = ast_member_access_create(ast_ref_expr_create("p"), "x");
+    ast_expr_t* expected = ast_access_expr_create(ast_ref_expr_create("p"), ast_ref_expr_create("x"));
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expr);
@@ -384,7 +385,7 @@ TEST(parser_classes_fixture_t, parse_member_access_assignment)
     // Construct the expected tree
     ast_stmt_t* expected = ast_expr_stmt_create(
         ast_bin_op_create(TOKEN_ASSIGN,
-            ast_member_access_create(ast_ref_expr_create("p"), "x"),
+            ast_access_expr_create(ast_ref_expr_create("p"), ast_ref_expr_create("x")),
             ast_int_lit_val(10)));
 
     ASSERT_TREES_EQUAL(expected, stmt);
@@ -402,7 +403,7 @@ TEST(parser_classes_fixture_t, parse_member_method_call_with_args)
 
     // Construct the expected tree
     ast_stmt_t* expected = ast_expr_stmt_create(
-        ast_method_call_create_va(ast_ref_expr_create("p"), "distanceTo",
+        ast_call_expr_create_va(ast_access_expr_create(ast_ref_expr_create("p"), ast_ref_expr_create("distanceTo")),
         ast_unary_op_create(TOKEN_AMPERSAND, ast_ref_expr_create("other_p")), nullptr));
 
     ASSERT_TREES_EQUAL(expected, stmt);
@@ -419,9 +420,9 @@ TEST(parser_classes_fixture_t, parse_chained_member_access)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree: (line.start).x
-    ast_expr_t* expected = ast_member_access_create(
-        ast_member_access_create(ast_ref_expr_create("line"), "start"),
-        "x");
+    ast_expr_t* expected = ast_access_expr_create(
+        ast_access_expr_create(ast_ref_expr_create("line"), ast_ref_expr_create("start")),
+            ast_ref_expr_create("x"));
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expr);
@@ -438,8 +439,8 @@ TEST(parser_classes_fixture_t, parse_member_access_in_expression)
 
     // Construct the expected tree
     ast_expr_t* expected = ast_bin_op_create(TOKEN_PLUS,
-        ast_member_access_create(ast_ref_expr_create("p"), "x"),
-        ast_member_access_create(ast_ref_expr_create("p"), "y"));
+        ast_access_expr_create(ast_ref_expr_create("p"), ast_ref_expr_create("x")),
+        ast_access_expr_create(ast_ref_expr_create("p"), ast_ref_expr_create("y")));
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expr);
@@ -455,9 +456,9 @@ TEST(parser_classes_fixture_t, parse_member_access_on_call_result)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
-    ast_expr_t* expected = ast_member_access_create(
+    ast_expr_t* expected = ast_access_expr_create(
         ast_call_expr_create_va(ast_ref_expr_create("getPoint"), nullptr),
-        "x");
+            ast_ref_expr_create("x"));
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expr);
@@ -473,9 +474,9 @@ TEST(parser_classes_fixture_t, parse_member_access_on_subscript)
     ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
 
     // Construct the expected tree
-    ast_expr_t* expected = ast_member_access_create(
+    ast_expr_t* expected = ast_access_expr_create(
         ast_array_subscript_create(ast_ref_expr_create("points"), ast_int_lit_val(0)),
-        "x");
+            ast_ref_expr_create("x"));
 
     ASSERT_TREES_EQUAL(expected, expr);
     ast_node_destroy(expr);

@@ -131,6 +131,15 @@ static void present_array_lit(void* self_, ast_array_lit_t* lit, void* out_)
     string_append_char(out, ']');
 }
 
+static void present_access_expr(void* self_, ast_access_expr_t* access_expr, void* out_)
+{
+    PRELUDE
+
+    ast_visitor_visit(self, access_expr->outer, out);
+    string_append_char(out, '.');
+    ast_visitor_visit(self, access_expr->inner, out);
+}
+
 static void present_array_slice(void* self_, ast_array_slice_t* array_slice, void* out_)
 {
     PRELUDE
@@ -418,6 +427,7 @@ ast_presenter_t* ast_presenter_create()
             .visit_method_def = present_method_def,
             .visit_import_def = present_import_def,
             // Expressions
+            .visit_access_expr = present_access_expr,
             .visit_array_lit = present_array_lit,
             .visit_array_slice = present_array_slice,
             .visit_array_subscript = present_array_subscript,

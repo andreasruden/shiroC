@@ -46,7 +46,7 @@ static symbol_t* lookup_class_symbol(semantic_context_t* ctx, const char* name, 
     for (size_t i = 0; i < vec_size(overloads); ++i)
     {
         symbol_t* class_symb = vec_get(overloads, i);
-        bool is_ours = class_symb->source_module == nullptr || strcmp(class_symb->source_module, ctx->module_name) == 0;
+        bool is_ours = class_symb->parent_namespace == nullptr || class_symb->parent_namespace == ctx->module_namespace;
         if (is_ours)
         {
             selected_class = class_symb;

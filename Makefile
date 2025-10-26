@@ -58,6 +58,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/def/fn_def.c \
 	$(SRC_DIR)/ast/def/import_def.c \
 	$(SRC_DIR)/ast/def/method_def.c \
+	$(SRC_DIR)/ast/expr/access_expr.c \
 	$(SRC_DIR)/ast/expr/array_lit.c \
 	$(SRC_DIR)/ast/expr/array_slice.c \
 	$(SRC_DIR)/ast/expr/array_subscript.c \
@@ -100,6 +101,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/common/util/path.c \
 	$(SRC_DIR)/parser/lexer.c \
     $(SRC_DIR)/parser/parser.c \
+	$(SRC_DIR)/sema/access_transformer.c \
 	$(SRC_DIR)/sema/decl_collector.c \
 	$(SRC_DIR)/sema/expr_evaluator.c \
 	$(SRC_DIR)/sema/init_tracker.c \
@@ -124,6 +126,7 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/parser/test_parser_misc.c \
 	$(UT_SRC_DIR)/parser/test_parser_pointers.c \
 	$(UT_SRC_DIR)/parser/test_parser_statements.c \
+	$(UT_SRC_DIR)/sema/test_sema_access.c \
 	$(UT_SRC_DIR)/sema/test_sema_arrays.c \
 	$(UT_SRC_DIR)/sema/test_sema_classes.c \
 	$(UT_SRC_DIR)/sema/test_sema_control_flow.c \

@@ -8,6 +8,7 @@
 #include "ast/def/fn_def.h"
 #include "ast/def/method_def.h"
 #include "ast/def/import_def.h"
+#include "ast/expr/access_expr.h"
 #include "ast/expr/array_lit.h"
 #include "ast/expr/array_slice.h"
 #include "ast/expr/array_subscript.h"
@@ -448,6 +449,34 @@ static ast_expr_t* parse_member_access(parser_t* parser, ast_expr_t* instance)
     return access;
 }
 
+// outer is freed by caller if we return nullptr
+static ast_expr_t* parse_access(parser_t* parser, ast_expr_t* outer)
+{
+    if (AST_KIND(outer) == AST_EXPR_SELF)
+        return parse_member_access(parser, outer);
+
+    token_t* tok_dot = lexer_next_token_iff(parser->lexer, TOKEN_DOT);
+    if (tok_dot == nullptr)
+        return nullptr;
+
+    token_t* tok_inner = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
+    if (outer == nullptr)
+        return nullptr;
+
+    ast_expr_t* inner_ref = ast_ref_expr_create(tok_inner->value);
+    parser_set_source_tok_to_current(parser, inner_ref, tok_inner);
+
+    ast_expr_t* access = ast_access_expr_create(outer, inner_ref);
+    parser_set_source_tok_to_current(parser, inner_ref, tok_inner);
+    set_source_location(&AST_NODE(access)->source_begin, AST_NODE(outer)->source_begin.filename,
+        AST_NODE(outer)->source_begin.line, AST_NODE(outer)->source_begin.column);
+
+    if (lexer_peek_token(parser->lexer)->type == TOKEN_LPAREN)
+        return parse_call_expr(parser, access);
+
+    return access;
+}
+
 static ast_expr_t* parse_self_expr(parser_t* parser)
 {
     token_t* tok_self = lexer_next_token_iff(parser->lexer, TOKEN_SELF);
@@ -513,7 +542,7 @@ static ast_expr_t* parse_postfix_expr(parser_t* parser)
                 new_postfix_expr = parse_array_subscript(parser, postfix_expr);
                 break;
             case TOKEN_DOT:
-                new_postfix_expr = parse_member_access(parser, postfix_expr);
+                new_postfix_expr = parse_access(parser, postfix_expr);
                 break;
             default:
                 goto end;
