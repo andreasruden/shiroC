@@ -232,6 +232,7 @@ valgrind-ut: $(UT_TARGETS)
 		echo ""; \
 		echo "Running $$test with valgrind..."; \
 		valgrind --leak-check=full \
+		     --num-callers=100 \
 	         --show-leak-kinds=all \
 	         --errors-for-leak-kinds=all \
 	         --error-exitcode=1 \

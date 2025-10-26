@@ -23,7 +23,7 @@ VALGRIND_CMD = ["valgrind", "--error-exitcode=1", "--leak-check=full",
                 "--show-leak-kinds=all", "--errors-for-leak-kinds=all",
                 "--track-origins=yes", "--read-var-info=yes",
                 "--expensive-definedness-checks=yes", "--exit-on-first-error=yes",
-                "--suppressions=src/tests/valgrind.supp"]
+                "--suppressions=src/tests/valgrind.supp", "--num-callers=100"]
 
 
 class TestInstruction:
