@@ -12,6 +12,7 @@ typedef enum scope_kind
     SCOPE_BLOCK,
     SCOPE_CLASS,
     SCOPE_METHOD,
+    SCOPE_TEMPLATE,
 } scope_kind_t;
 
 typedef struct symbol_table symbol_table_t;

@@ -14,6 +14,7 @@ typedef enum ast_node_kind
     // Declarations
     AST_DECL_MEMBER,
     AST_DECL_PARAM,
+    AST_DECL_TYPE_PARAM,
     AST_DECL_VAR,
     AST_DECL_END, // Sentinel
 

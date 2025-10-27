@@ -300,12 +300,18 @@ static void* analyze_class_def(void* self_, ast_class_def_t* class_def, void* ou
 {
     semantic_analyzer_t* sema = self_;
 
-    semantic_context_push_scope(sema->ctx, SCOPE_CLASS);
-
     // Locate self in global scope
     symbol_t* class_symb = symbol_table_lookup(sema->ctx->global, class_def->base.name);
     panic_if(class_symb == nullptr);
     panic_if(class_symb->ast != AST_NODE(class_def));
+
+    // Check if this is a template definition (not an instance)
+    bool is_template = vec_size(&class_def->type_params) > 0 && class_symb->kind == SYMBOL_TEMPLATE_CLASS;
+    bool was_in_template = sema->is_in_template_context;
+    if (is_template)
+        sema->is_in_template_context = true;
+
+    semantic_context_push_scope(sema->ctx, SCOPE_CLASS);
     sema->current_class = class_symb;
 
     // Add "self" to scope
@@ -332,6 +338,7 @@ static void* analyze_class_def(void* self_, ast_class_def_t* class_def, void* ou
     ast_node_destroy(self_decl);
     semantic_context_pop_scope(sema->ctx);
     sema->current_class = nullptr;
+    sema->is_in_template_context = was_in_template;
     return class_def;
 }
 static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
@@ -344,6 +351,12 @@ static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     semantic_analyzer_t* sema = self_;
     panic_if(fn->return_type == nullptr);  // solved by decl_collector
     panic_if(fn->symbol == nullptr);
+
+    // Check if this is a template definition (not an instance)
+    bool is_template = vec_size(&fn->type_params) > 0 && fn->symbol->kind == SYMBOL_TEMPLATE_FUNCTION;
+    bool was_in_template = sema->is_in_template_context;
+    if (is_template)
+        sema->is_in_template_context = true;
 
     semantic_context_push_scope(sema->ctx, SCOPE_FUNCTION);
     sema->current_function = fn->symbol;
@@ -367,6 +380,7 @@ static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     semantic_context_pop_scope(sema->ctx);
     sema->current_function = nullptr;
     sema->current_function_scope = nullptr;
+    sema->is_in_template_context = was_in_template;
     return fn;
 }
 
@@ -725,8 +739,8 @@ static void* analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* 
         return bin_op;  // avoid cascading errors
     }
 
-    if (token_type_is_arithmetic_op(bin_op->op) && (!ast_type_is_arithmetic(bin_op->lhs->type) ||
-        !ast_type_is_arithmetic(bin_op->rhs->type)))
+    if (token_type_is_arithmetic_op(bin_op->op) && (!ast_type_has_trait(bin_op->lhs->type, TRAIT_ARITHMETIC) ||
+        !ast_type_has_trait(bin_op->rhs->type, TRAIT_ARITHMETIC)))
     {
         semantic_context_add_error(sema->ctx, bin_op, "arithmetic operator cannot be used on type");
         bin_op->base.type = ast_type_invalid();
@@ -776,9 +790,9 @@ static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, 
 
     if (token_type_is_arithmetic_op(operator))
     {
-        if (ast_type_is_arithmetic(type))
+        if (ast_type_has_trait(type, TRAIT_ARITHMETIC))
         {
-            *result_type = ast_type_builtin(type->data.builtin.type);
+            *result_type = type->kind == AST_TYPE_BUILTIN ? ast_type_builtin(type->data.builtin.type) : type;
             return true;
         }
         else
@@ -796,7 +810,7 @@ static bool is_type_valid_for_operator(ast_type_t* type, token_type_t operator, 
 
     if (token_type_is_relation_op(operator))
     {
-        if (ast_type_is_arithmetic(type))
+        if (ast_type_has_trait(type, TRAIT_COMPARABLE))
         {
             *result_type = ast_type_builtin(TYPE_BOOL);
             return true;
@@ -1099,8 +1113,9 @@ static void* analyzer_cast_expr(void* self_, ast_cast_expr_t* cast, void* out_)
             cast->base.type = ast_type_invalid();
             return cast;
         case AST_TYPE_BUILTIN:
-            // Freely cast between arithemtic types
-            if (ast_type_is_arithmetic(cast->expr->type) && ast_type_is_arithmetic(cast->target))
+            // Freely cast between arithmetic types
+            if (ast_type_has_trait(cast->expr->type, TRAIT_ARITHMETIC) &&
+                ast_type_has_trait(cast->target, TRAIT_ARITHMETIC))
             {
                 cast->base.type = cast->target;
                 return cast;

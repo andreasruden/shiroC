@@ -23,6 +23,7 @@ typedef struct semantic_analyzer
     symbol_table_t* current_function_scope;  // set if current_function != nullptr or current_method != nullptr
     init_tracker_t* init_tracker;
     bool is_lvalue_context;
+    bool is_in_template_context;  // Track when analyzing template definitions (not instances)
     int loop_depth;  // Track nesting depth of loops for break/continue validation
 } semantic_analyzer_t;
 

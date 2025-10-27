@@ -3,6 +3,7 @@
 
 #include "ast/decl/member_decl.h"
 #include "ast/decl/param_decl.h"
+#include "ast/decl/type_param_decl.h"
 #include "ast/decl/var_decl.h"
 #include "ast/def/class_def.h"
 #include "ast/def/fn_def.h"
@@ -59,6 +60,7 @@ struct ast_visitor
     // Declarations
     void (*visit_member_decl)(void* self_, ast_member_decl_t* member_decl, void *out_);
     void (*visit_param_decl)(void* self, ast_param_decl_t* fn_def, void *out_);
+    void (*visit_type_param_decl)(void* self_, ast_type_param_decl_t* type_param_decl, void *out_);
     void (*visit_var_decl)(void* self_, ast_var_decl_t* var_decl, void *out_);
 
     // Definitions

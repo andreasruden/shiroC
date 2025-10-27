@@ -55,6 +55,16 @@ static void print_param_decl(void* self_, ast_param_decl_t* param_decl, void* ou
     string_append_cstr(out, "\n");
 }
 
+static void print_type_param_decl(void* self_, ast_type_param_decl_t* type_param_decl, void* out_)
+{
+    string_t* out = out_;
+    ast_printer_t* self = self_;
+
+    string_append_cstr(out, ssprintf("%*sTypeParamDecl '%s'", self->indentation, "", type_param_decl->name));
+    print_source_location(self, type_param_decl, out);
+    string_append_cstr(out, "\n");
+}
+
 static void print_var_decl(void* self_, ast_var_decl_t* var_decl, void* out_)
 {
     string_t* out = out_;
@@ -608,6 +618,7 @@ ast_printer_t* ast_printer_create()
             // Declarations
             .visit_member_decl = print_member_decl,
             .visit_param_decl = print_param_decl,
+            .visit_type_param_decl = print_type_param_decl,
             .visit_var_decl = print_var_decl,
             // Definitions
             .visit_class_def = print_class_def,

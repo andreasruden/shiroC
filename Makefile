@@ -52,6 +52,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/ast/visitor.c \
 	$(SRC_DIR)/ast/decl/member_decl.c \
 	$(SRC_DIR)/ast/decl/param_decl.c \
+	$(SRC_DIR)/ast/decl/type_param_decl.c \
 	$(SRC_DIR)/ast/decl/var_decl.c \
 	$(SRC_DIR)/ast/def/def.c \
 	$(SRC_DIR)/ast/def/class_def.c \
@@ -110,6 +111,7 @@ COMMON_SRCS = \
 	$(SRC_DIR)/sema/semantic_context.c \
 	$(SRC_DIR)/sema/symbol_table.c \
 	$(SRC_DIR)/sema/symbol.c \
+	$(SRC_DIR)/sema/template_instantiator.c \
 	$(SRC_DIR)/sema/type_resolver.c
 COMMON_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(COMMON_SRCS))
 
@@ -127,6 +129,7 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/parser/test_parser_misc.c \
 	$(UT_SRC_DIR)/parser/test_parser_pointers.c \
 	$(UT_SRC_DIR)/parser/test_parser_statements.c \
+	$(UT_SRC_DIR)/parser/test_lexer_speculative.c \
 	$(UT_SRC_DIR)/sema/test_sema_access.c \
 	$(UT_SRC_DIR)/sema/test_sema_arrays.c \
 	$(UT_SRC_DIR)/sema/test_sema_casts.c \

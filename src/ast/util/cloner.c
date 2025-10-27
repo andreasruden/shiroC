@@ -1,5 +1,8 @@
 #include "cloner.h"
 
+#include "ast/decl/decl.h"
+#include "ast/def/class_def.h"
+#include "ast/def/fn_def.h"
 #include "ast/expr/array_lit.h"
 #include "ast/expr/array_slice.h"
 #include "ast/expr/array_subscript.h"
@@ -20,6 +23,7 @@
 #include "ast/expr/str_lit.h"
 #include "ast/expr/unary_op.h"
 #include "ast/expr/uninit_lit.h"
+#include "ast/stmt/stmt.h"
 #include "ast/visitor.h"
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
@@ -248,4 +252,35 @@ ast_expr_t* ast_expr_clone(ast_expr_t* expr)
     panic_if(cloner.result == nullptr);
     cloner.result->type = expr->type;
     return cloner.result;
+}
+
+// TODO: Implement full AST cloning for template instantiation
+// Stubs for now - return nullptr to indicate not yet implemented
+
+ast_fn_def_t* ast_fn_def_clone(ast_fn_def_t* fn)
+{
+    (void)fn;
+    // TODO: Implement full function cloning
+    return nullptr;
+}
+
+ast_class_def_t* ast_class_def_clone(ast_class_def_t* class_def)
+{
+    (void)class_def;
+    // TODO: Implement full class cloning
+    return nullptr;
+}
+
+ast_stmt_t* ast_stmt_clone(ast_stmt_t* stmt)
+{
+    (void)stmt;
+    // TODO: Implement full statement cloning
+    return nullptr;
+}
+
+ast_decl_t* ast_decl_clone(ast_decl_t* decl)
+{
+    (void)decl;
+    // TODO: Implement full declaration cloning
+    return nullptr;
 }

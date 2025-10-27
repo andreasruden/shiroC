@@ -14,6 +14,13 @@ static void ast_visitor_visit_param_decl(void* self_, ast_param_decl_t* param_de
     (void)out_;
 }
 
+static void ast_visitor_visit_type_param_decl(void* self_, ast_type_param_decl_t* type_param_decl, void* out_)
+{
+    (void)self_;
+    (void)type_param_decl;
+    (void)out_;
+}
+
 static void ast_visitor_visit_var_decl(void* self_, ast_var_decl_t* var_decl, void* out_)
 {
     if (var_decl->init_expr != nullptr)
@@ -263,6 +270,7 @@ void ast_visitor_init(ast_visitor_t* visitor)
         // Declarations
         .visit_member_decl = ast_visitor_visit_member_decl,
         .visit_param_decl = ast_visitor_visit_param_decl,
+        .visit_type_param_decl = ast_visitor_visit_type_param_decl,
         .visit_var_decl = ast_visitor_visit_var_decl,
         // Definitions
         .visit_class_def = ast_visitor_visit_class_def,

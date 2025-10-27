@@ -38,6 +38,19 @@ symbol_t* symbol_create(const char* name, symbol_kind_t kind, void* ast, symbol_
         case SYMBOL_NAMESPACE:
             symbol->data.namespace.exports = symbol_table_create(nullptr, SCOPE_EXPORT);
             break;
+        case SYMBOL_TEMPLATE_CLASS:
+            [[fallthrough]];
+        case SYMBOL_TEMPLATE_FUNCTION:
+            // Template data structures will be initialized by the caller
+            break;
+        case SYMBOL_CLASS_INSTANCE:
+            symbol->data.template_instance.type_arguments = VEC_INIT(nullptr);
+            symbol->data.class.symbols = symbol_table_create(nullptr, SCOPE_CLASS);
+            break;
+        case SYMBOL_FUNCTION_INSTANCE:
+            symbol->data.template_instance.type_arguments = VEC_INIT(nullptr);
+            symbol->data.function.parameters = VEC_INIT(symbol_destroy_void);
+            break;
         default:
             break;
     }
@@ -124,6 +137,21 @@ void symbol_destroy(symbol_t* symbol)
             break;
         case SYMBOL_NAMESPACE:
             symbol_table_destroy(symbol->data.namespace.exports);
+            break;
+        case SYMBOL_TEMPLATE_CLASS:
+            [[fallthrough]];
+        case SYMBOL_TEMPLATE_FUNCTION:
+            vec_deinit(&symbol->data.template.type_parameters);
+            vec_deinit(&symbol->data.template.instantiations);
+            symbol_table_destroy(symbol->data.template.scope);
+            break;
+        case SYMBOL_CLASS_INSTANCE:
+            vec_deinit(&symbol->data.template_instance.type_arguments);
+            symbol_table_destroy(symbol->data.class.symbols);
+            break;
+        case SYMBOL_FUNCTION_INSTANCE:
+            vec_deinit(&symbol->data.template_instance.type_arguments);
+            vec_deinit(&symbol->data.function.parameters);
             break;
         default:
             break;

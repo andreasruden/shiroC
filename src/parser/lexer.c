@@ -3,6 +3,7 @@
 #include "ast/node.h"
 #include "common/containers/string.h"
 #include "common/containers/vec.h"
+#include "common/debug/panic.h"
 #include "compiler_error.h"
 #include "common/util/ssprintf.h"
 
@@ -69,7 +70,12 @@ static void emit_error(lexer_t* lexer, const char* description, int line, int co
     {
         compiler_error_t* error = compiler_error_create_for_source(false,
             description, lexer->filename, line, col);
-        lexer->error_output(error, lexer->error_output_arg);
+
+        // In speculative mode, record errors for later commit/rollback
+        if (vec_size(&lexer->speculation_stack) > 0)
+            vec_push(&lexer->speculative_errors, error);
+        else
+            lexer->error_output(error, lexer->error_output_arg);
     }
 }
 
@@ -455,6 +461,8 @@ lexer_t* lexer_create(const char* filename, const char* source, lexer_error_outp
         .error_output_arg = error_output_arg,
         .peeked_tokens = VEC_INIT(nullptr),
         .created_tokens = VEC_INIT(token_destroy),
+        .speculation_stack = VEC_INIT(free),
+        .speculative_errors = VEC_INIT(compiler_error_destroy_void),
     };
 
     return lexer;
@@ -466,6 +474,8 @@ void lexer_destroy(lexer_t *lexer)
     {
         vec_deinit(&lexer->peeked_tokens);
         vec_deinit(&lexer->created_tokens);
+        vec_deinit(&lexer->speculation_stack);
+        vec_deinit(&lexer->speculative_errors);
         free(lexer->source);
         free(lexer->filename);
         free(lexer);
@@ -606,37 +616,102 @@ static token_t* lex_next_token(lexer_t* lexer)
 
 token_t* lexer_peek_token_n(lexer_t* lexer, size_t n)
 {
+    // In speculative mode, adjust the index by the number of consumed tokens
+    size_t adjusted_n = vec_size(&lexer->speculation_stack) > 0 ? (n + lexer->speculation_consumed_count) : n;
+
     // Ensure we have enough peeked tokens
-    while (vec_size(&lexer->peeked_tokens) <= n)
+    while (vec_size(&lexer->peeked_tokens) <= adjusted_n)
     {
         token_t* tok = lex_next_token(lexer);
         vec_push(&lexer->peeked_tokens, tok);
     }
 
-    return vec_get(&lexer->peeked_tokens, n);
+    return vec_get(&lexer->peeked_tokens, adjusted_n);
 }
 
 token_t* lexer_next_token(lexer_t* lexer)
 {
     token_t* tok;
-    if (vec_size(&lexer->peeked_tokens) == 0)
+    if (vec_size(&lexer->speculation_stack) > 0)
     {
-        tok = lex_next_token(lexer);
+        // In speculative mode, peek at the token we're about to "consume"
+        // peek_token_n will add speculation_consumed_count internally
+        tok = lexer_peek_token_n(lexer, 0);
+        ++lexer->speculation_consumed_count;
     }
     else
     {
-        tok = vec_get(&lexer->peeked_tokens, 0);
-        vec_remove(&lexer->peeked_tokens, 0);
-    }
+        if (vec_size(&lexer->peeked_tokens) == 0)
+        {
+            tok = lex_next_token(lexer);
+        }
+        else
+        {
+            tok = vec_get(&lexer->peeked_tokens, 0);
+            vec_remove(&lexer->peeked_tokens, 0);
+        }
 
-    lexer->last_consumed_end_line = lexer->line;
-    lexer->last_consumed_end_column = lexer->column;
+        lexer->last_consumed_end_line = lexer->line;
+        lexer->last_consumed_end_column = lexer->column;
+    }
     return tok;
 }
 
 token_t* lexer_peek_token(lexer_t* lexer)
 {
     return lexer_peek_token_n(lexer, 0);
+}
+
+void lexer_enter_speculative_mode(lexer_t* lexer)
+{
+    speculation_session_t* session = malloc(sizeof(*session));
+    session->consumed_count_snapshot = lexer->speculation_consumed_count;
+    session->errors_start_index = vec_size(&lexer->speculative_errors);
+    vec_push(&lexer->speculation_stack, session);
+}
+
+void lexer_commit_speculation(lexer_t* lexer)
+{
+    panic_if(vec_size(&lexer->speculation_stack) == 0);
+
+    speculation_session_t* session = vec_pop(&lexer->speculation_stack);
+    free(session);
+
+    // Only emit errors and remove tokens when stack becomes empty (outermost commit)
+    if (vec_size(&lexer->speculation_stack) == 0)
+    {
+        // Apply all errors that happened
+        for (size_t i = 0; i < vec_size(&lexer->speculative_errors); ++i)
+            lexer->error_output(vec_get(&lexer->speculative_errors, i), lexer->error_output_arg);
+        lexer->speculative_errors.delete_fn = nullptr;  // ownership transferred
+        vec_deinit(&lexer->speculative_errors);
+        lexer->speculative_errors = VEC_INIT(compiler_error_destroy_void);
+
+        // Remove the consumed tokens from peeked_tokens
+        for (size_t i = 0; i < lexer->speculation_consumed_count; ++i)
+            vec_remove(&lexer->peeked_tokens, 0);
+
+        lexer->speculation_consumed_count = 0;
+    }
+}
+
+void lexer_rollback_speculation(lexer_t* lexer)
+{
+    panic_if(vec_size(&lexer->speculation_stack) == 0);
+
+    speculation_session_t* session = vec_pop(&lexer->speculation_stack);
+
+    // Restore consumed count to when this session started
+    lexer->speculation_consumed_count = session->consumed_count_snapshot;
+
+    // Remove errors added during this session
+    while (vec_size(&lexer->speculative_errors) > session->errors_start_index)
+    {
+        void* err = vec_pop(&lexer->speculative_errors);
+        compiler_error_destroy_void(err);
+    }
+
+    free(session);
 }
 
 void lexer_emit_token_malformed(lexer_t* lexer, token_t* tok, const char* description)
@@ -653,7 +728,12 @@ void lexer_emit_token_malformed(lexer_t* lexer, token_t* tok, const char* descri
         string_append_cstr(&err, description);
         compiler_error_t* error = compiler_error_create_for_source(false, string_cstr(&err), lexer->filename,
             tok->line, tok->column);
-        lexer->error_output(error, lexer->error_output_arg);
+
+        // In speculative mode, record errors for later commit/rollback
+        if (vec_size(&lexer->speculation_stack) > 0)
+            vec_push(&lexer->speculative_errors, error);
+        else
+            lexer->error_output(error, lexer->error_output_arg);
     }
     string_deinit(&err);
 }
@@ -683,7 +763,12 @@ void lexer_emit_error_for_token(lexer_t* lexer, token_t* actual, token_type_t ex
             err = ssprintf("expected '%s'", token_type_str(expected));
         }
         compiler_error_t* error = compiler_error_create_for_source(false, err, lexer->filename, line, column);
-        lexer->error_output(error, lexer->error_output_arg);
+
+        // In speculative mode, record errors for later commit/rollback
+        if (vec_size(&lexer->speculation_stack) > 0)
+            vec_push(&lexer->speculative_errors, error);
+        else
+            lexer->error_output(error, lexer->error_output_arg);
     }
 }
 

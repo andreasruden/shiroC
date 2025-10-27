@@ -109,6 +109,12 @@ typedef struct token
 
 typedef void (*lexer_error_output_fn)(compiler_error_t* error, void* arg);
 
+typedef struct speculation_session
+{
+    size_t consumed_count_snapshot;  // Value of speculation_consumed_count when this session started
+    size_t errors_start_index;       // Index where this session's errors begin in speculative_errors
+} speculation_session_t;
+
 typedef struct lexer
 {
     char* source;
@@ -123,6 +129,9 @@ typedef struct lexer
     lexer_error_output_fn error_output;
     void* error_output_arg;
     vec_t created_tokens;
+    vec_t speculation_stack;  // Stack of speculation_session_t*
+    size_t speculation_consumed_count;
+    vec_t speculative_errors;
 } lexer_t;
 
 // If error_output is not nullptr, any error/warning that happens during lexing will be
@@ -143,6 +152,12 @@ token_t* lexer_next_token_iff(lexer_t* lexer, token_type_t token_type);
 token_t* lexer_peek_token(lexer_t* lexer);
 
 token_t* lexer_peek_token_n(lexer_t* lexer, size_t n);
+
+void lexer_enter_speculative_mode(lexer_t* lexer);
+
+void lexer_commit_speculation(lexer_t* lexer);
+
+void lexer_rollback_speculation(lexer_t* lexer);
 
 int token_type_get_precedence(token_type_t token_type);
 

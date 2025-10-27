@@ -17,6 +17,11 @@ typedef enum symbol_kind
     SYMBOL_METHOD,
     SYMBOL_TRAIT_IMPL,
     SYMBOL_NAMESPACE,
+    SYMBOL_TYPE_PARAMETER,
+    SYMBOL_TEMPLATE_CLASS,
+    SYMBOL_TEMPLATE_FUNCTION,
+    SYMBOL_CLASS_INSTANCE,
+    SYMBOL_FUNCTION_INSTANCE,
 } symbol_kind_t;
 
 typedef struct symbol
@@ -54,6 +59,21 @@ typedef struct symbol
         {
             symbol_table_t* exports;  // memory owned by us
         } namespace;
+
+        struct
+        {
+            vec_t type_parameters;     // vec<symbol_t*> - type parameter symbols
+            vec_t instantiations;      // vec<symbol_t*> - cache of instantiated symbols
+            ast_node_t* template_ast;  // original template AST (not owned by symbol)
+            symbol_table_t* scope;     // scope containing type parameters (memory owned by us)
+        } template;
+
+        struct
+        {
+            symbol_t* template_symbol;    // pointer to template symbol (not owned)
+            vec_t type_arguments;         // vec<ast_type_t*> - concrete types
+            ast_node_t* instantiated_ast; // cloned and specialized AST (not owned - owned by AST tree)
+        } template_instance;
     } data;
 } symbol_t;
 

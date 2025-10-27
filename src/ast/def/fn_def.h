@@ -11,7 +11,8 @@ typedef struct symbol symbol_t;
 typedef struct ast_fn_def
 {
     ast_def_t base;
-    vec_t params;  // vec<ast_param_decl_t*>
+    vec_t type_params;     // vec<ast_type_param_decl_t*>
+    vec_t params;          // vec<ast_param_decl_t*>
     ast_type_t* return_type;
     ast_stmt_t* body;      // nullptr for imports or external declarations
     size_t overload_index; // set by SEMA

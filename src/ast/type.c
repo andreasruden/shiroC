@@ -21,6 +21,8 @@ static hash_table_t* pointer_cache = nullptr;  // Key: pointee type address -> V
 static hash_table_t* fixed_array_cache = nullptr;  // Key: element type address, size -> Value: array type
 static hash_table_t* heap_array_cache = nullptr;  // Key: element type address -> Value: array type
 static hash_table_t* view_cache = nullptr;  // Key: element type address -> Value: view type
+static hash_table_t* type_variable_cache = nullptr;  // Key: variable name -> Value: type variable
+static hash_table_t* template_instance_cache = nullptr;  // Key: generated key -> Value: template instance
 static vec_t* gc_array = nullptr; // unresolved fixed size arrays for garbage collection
 
 static void set_default_traits(ast_type_t* type);
@@ -54,6 +56,13 @@ static void ast_type_destroy(void* type_)
         free(type->data.heap_array.str_repr);
     else if (type->kind == AST_TYPE_VIEW)
         free(type->data.view.str_repr);
+    else if (type->kind == AST_TYPE_VARIABLE)
+        free(type->data.type_variable.name);
+    else if (type->kind == AST_TYPE_TEMPLATE_INSTANCE)
+    {
+        free(type->data.template_instance.type_arguments);
+        free(type->data.template_instance.str_repr);
+    }
 
     free(type);
 }
@@ -96,9 +105,43 @@ ast_type_t* ast_type_user_unresolved(const char* type_name)
     *ast_type = (ast_type_t){
         .kind = AST_TYPE_USER,
         .data.user.name = strdup(type_name),
+        .data.user.type_arguments = nullptr,
+        .data.user.num_type_arguments = 0,
     };
     set_default_traits(ast_type);
     hash_table_insert(user_unresolved_cache, type_name, ast_type);
+
+    return ast_type;
+}
+
+ast_type_t* ast_type_user_unresolved_with_args(const char* type_name, ast_type_t** type_args, size_t num_type_args)
+{
+    // Generate cache key: type name + type argument addresses
+    string_t key_str = STRING_INIT;
+    string_append_cstr(&key_str, type_name);
+    for (size_t i = 0; i < num_type_args; ++i)
+        string_append_cstr(&key_str, ssprintf("<%p>", type_args[i]));
+    const char* key = string_release(&key_str);
+
+    ast_type_t* ast_type = hash_table_find(user_unresolved_cache, key);
+    if (ast_type != nullptr)
+        return ast_type;
+
+    ast_type = malloc(sizeof(ast_type_t));
+    panic_if(ast_type == nullptr);
+
+    // Copy type arguments array
+    ast_type_t** args_copy = malloc(sizeof(ast_type_t*) * num_type_args);
+    memcpy(args_copy, type_args, sizeof(ast_type_t*) * num_type_args);
+
+    *ast_type = (ast_type_t){
+        .kind = AST_TYPE_USER,
+        .data.user.name = strdup(type_name),
+        .data.user.type_arguments = args_copy,
+        .data.user.num_type_arguments = num_type_args,
+    };
+    set_default_traits(ast_type);
+    hash_table_insert(user_unresolved_cache, key, ast_type);
 
     return ast_type;
 }
@@ -194,6 +237,53 @@ ast_type_t* ast_type_invalid()
     return invalid_cache;
 }
 
+ast_type_t* ast_type_variable(const char* name)
+{
+    ast_type_t* type_var = hash_table_find(type_variable_cache, name);
+    if (type_var != nullptr)
+        return type_var;
+
+    type_var = malloc(sizeof(*type_var));
+
+    *type_var = (ast_type_t){
+        .kind = AST_TYPE_VARIABLE,
+        .data.type_variable.name = strdup(name),
+    };
+    set_default_traits(type_var);
+    hash_table_insert(type_variable_cache, name, type_var);
+    return type_var;
+}
+
+ast_type_t* ast_type_template_instance(symbol_t* template_symbol, ast_type_t** type_args, size_t num_type_args)
+{
+    // Generate cache key: template symbol address + type argument addresses
+    string_t key_str = STRING_INIT;
+    string_append_cstr(&key_str, ssprintf("%p", template_symbol));
+    for (size_t i = 0; i < num_type_args; ++i)
+        string_append_cstr(&key_str, ssprintf(",%p", type_args[i]));
+    const char* key = string_release(&key_str);
+
+    ast_type_t* instance = hash_table_find(template_instance_cache, key);
+    if (instance != nullptr)
+        return instance;
+
+    instance = malloc(sizeof(*instance));
+
+    // Copy type arguments array
+    ast_type_t** args_copy = malloc(sizeof(ast_type_t*) * num_type_args);
+    memcpy(args_copy, type_args, sizeof(ast_type_t*) * num_type_args);
+
+    *instance = (ast_type_t){
+        .kind = AST_TYPE_TEMPLATE_INSTANCE,
+        .data.template_instance.template_symbol = template_symbol,
+        .data.template_instance.type_arguments = args_copy,
+        .data.template_instance.num_type_arguments = num_type_args,
+    };
+    set_default_traits(instance);
+    hash_table_insert(template_instance_cache, key, instance);
+    return instance;
+}
+
 void ast_type_set_trait(ast_type_t* type, ast_trait_t trait)
 {
     type->traits[trait] = true;
@@ -232,7 +322,7 @@ ast_type_t* ast_type_from_token(token_t* tok)
         case TOKEN_NULL:   return ast_type_builtin(TYPE_NULL);
 
         case TOKEN_IDENTIFIER:
-        return ast_type_user_unresolved(tok->value);
+            return ast_type_user_unresolved(tok->value);
 
         default:
             return ast_type_invalid();
@@ -361,6 +451,8 @@ size_t ast_type_sizeof(ast_type_t* type)
         case AST_TYPE_HEAP_ARRAY:
         case AST_TYPE_USER:
         case AST_TYPE_INVALID:
+        case AST_TYPE_VARIABLE:
+        case AST_TYPE_TEMPLATE_INSTANCE:
             panic("Unhandled type kind %d", type->kind);
     }
 
@@ -507,6 +599,26 @@ const char* ast_type_string(ast_type_t* type)
             }
             return type->data.view.str_repr;
         }
+        case AST_TYPE_VARIABLE:
+            return type->data.type_variable.name;
+        case AST_TYPE_TEMPLATE_INSTANCE:
+        {
+            if (type->data.template_instance.str_repr == nullptr)
+            {
+                string_t tmp = STRING_INIT;
+                string_append_cstr(&tmp, type->data.template_instance.template_symbol->name);
+                string_append_char(&tmp, '<');
+                for (size_t i = 0; i < type->data.template_instance.num_type_arguments; ++i)
+                {
+                    string_append_cstr(&tmp, ast_type_string(type->data.template_instance.type_arguments[i]));
+                    if (i + 1 < type->data.template_instance.num_type_arguments)
+                        string_append_cstr(&tmp, ", ");
+                }
+                string_append_char(&tmp, '>');
+                type->data.template_instance.str_repr = string_release(&tmp);
+            }
+            return type->data.template_instance.str_repr;
+        }
     }
 
     panic("Case %d not handled", type->kind);
@@ -541,7 +653,42 @@ const char* type_to_str(type_t type)
 
 static void set_default_traits(ast_type_t* type)
 {
+    // Default: everything is copyable
     type->traits[TRAIT_COPYABLE] = true;
+
+    // Set traits based on type kind
+    if (type->kind == AST_TYPE_BUILTIN)
+    {
+        type_t builtin_type = type->data.builtin.type;
+
+        // Arithmetic types support arithmetic and comparison operations
+        if (builtin_type == TYPE_I8 || builtin_type == TYPE_I16 || builtin_type == TYPE_I32 ||
+            builtin_type == TYPE_I64 || builtin_type == TYPE_ISIZE ||
+            builtin_type == TYPE_U8 || builtin_type == TYPE_U16 || builtin_type == TYPE_U32 ||
+            builtin_type == TYPE_U64 || builtin_type == TYPE_USIZE ||
+            builtin_type == TYPE_F32 || builtin_type == TYPE_F64)
+        {
+            type->traits[TRAIT_ARITHMETIC] = true;
+            type->traits[TRAIT_COMPARABLE] = true;
+        }
+    }
+    else if (type->kind == AST_TYPE_POINTER)
+    {
+        type->traits[TRAIT_DEREFERENCEABLE] = true;
+        type->traits[TRAIT_SUBSCRIPTABLE] = true;
+    }
+    else if (type->kind == AST_TYPE_ARRAY || type->kind == AST_TYPE_HEAP_ARRAY || type->kind == AST_TYPE_VIEW)
+    {
+        type->traits[TRAIT_SUBSCRIPTABLE] = true;
+    }
+    else if (type->kind == AST_TYPE_VARIABLE)
+    {
+        // Type variables get all traits by default (will be constrained by trait bounds in the future)
+        type->traits[TRAIT_ARITHMETIC] = true;
+        type->traits[TRAIT_COMPARABLE] = true;
+        type->traits[TRAIT_SUBSCRIPTABLE] = true;
+        type->traits[TRAIT_DEREFERENCEABLE] = true;
+    }
 }
 
 __attribute__((constructor))
@@ -575,6 +722,8 @@ void ast_type_cache_init()
     fixed_array_cache = hash_table_create(ast_type_destroy);
     heap_array_cache = hash_table_create(ast_type_destroy);
     view_cache = hash_table_create(ast_type_destroy);
+    type_variable_cache = hash_table_create(ast_type_destroy);
+    template_instance_cache = hash_table_create(ast_type_destroy);
     gc_array = vec_create(ast_type_destroy);
 }
 
@@ -588,6 +737,8 @@ void ast_type_cache_reset()
     hash_table_destroy(fixed_array_cache);
     hash_table_destroy(heap_array_cache);
     hash_table_destroy(view_cache);
+    hash_table_destroy(type_variable_cache);
+    hash_table_destroy(template_instance_cache);
     vec_destroy(gc_array);
 
     // Recreate the caches
@@ -597,6 +748,8 @@ void ast_type_cache_reset()
     fixed_array_cache = hash_table_create(ast_type_destroy);
     heap_array_cache = hash_table_create(ast_type_destroy);
     view_cache = hash_table_create(ast_type_destroy);
+    type_variable_cache = hash_table_create(ast_type_destroy);
+    template_instance_cache = hash_table_create(ast_type_destroy);
     gc_array = vec_create(ast_type_destroy);
 }
 

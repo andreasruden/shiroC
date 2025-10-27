@@ -9,6 +9,7 @@ typedef struct symbol symbol_t;
 typedef struct ast_class_def
 {
     ast_def_t base;
+    vec_t type_params; // vec<ast_type_param_decl_t*>
     vec_t members;     // vec<ast_member_decl_t*>
     vec_t methods;     // vec<ast_method_def_t*>
     symbol_t* symbol;  // only valid after decl_collector & while semantic_context is valid (we do not own memory)

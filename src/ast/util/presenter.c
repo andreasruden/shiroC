@@ -39,6 +39,13 @@ static void present_param_decl(void* self_, ast_param_decl_t* param_decl, void* 
     string_append_cstr(out, ssprintf("%s: %s", param_decl->name, ast_type_string(param_decl->type)));
 }
 
+static void present_type_param_decl(void* self_, ast_type_param_decl_t* type_param_decl, void* out_)
+{
+    PRELUDE
+
+    string_append_cstr(out, ssprintf("%s", type_param_decl->name));
+}
+
 static void present_var_decl(void* self_, ast_var_decl_t* var_decl, void* out_)
 {
     PRELUDE
@@ -420,6 +427,7 @@ ast_presenter_t* ast_presenter_create()
             // Declarations
             .visit_member_decl = present_member_decl,
             .visit_param_decl = present_param_decl,
+            .visit_type_param_decl = present_type_param_decl,
             .visit_var_decl = present_var_decl,
             // Definitions
             .visit_class_def = present_class_def,

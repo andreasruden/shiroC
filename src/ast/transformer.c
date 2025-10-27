@@ -16,6 +16,14 @@ static void* ast_transformer_transform_param_decl(void* self_, ast_param_decl_t*
     return param_decl;
 }
 
+static void* ast_transformer_transform_type_param_decl(void* self_, ast_type_param_decl_t* type_param_decl, void* out_)
+{
+    (void)self_;
+    (void)type_param_decl;
+    (void)out_;
+    return type_param_decl;
+}
+
 static void* ast_transformer_transform_var_decl(void* self_, ast_var_decl_t* var_decl, void* out_)
 {
     if (var_decl->init_expr != nullptr)
@@ -300,6 +308,7 @@ void ast_transformer_init(ast_transformer_t* transformer)
         // Declarations
         .transform_member_decl = ast_transformer_transform_member_decl,
         .transform_param_decl = ast_transformer_transform_param_decl,
+        .transform_type_param_decl = ast_transformer_transform_type_param_decl,
         .transform_var_decl = ast_transformer_transform_var_decl,
         // Definitions
         .transform_class_def = ast_transformer_transform_class_def,

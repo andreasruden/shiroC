@@ -27,6 +27,7 @@ ast_def_t* ast_fn_def_create(const char* name, vec_t* params, ast_type_t* ret_ty
 
     *fn_def = (ast_fn_def_t){
         .base.name = strdup(name),
+        .type_params = VEC_INIT(ast_node_destroy),
         .return_type = ret_type,
         .body = body,
         .exported = exported,
@@ -71,6 +72,7 @@ static void ast_fn_def_destroy(void* self_)
         return;
 
     ast_def_deconstruct((ast_def_t*)self);
+    vec_deinit(&self->type_params);
     vec_deinit(&self->params);
     ast_node_destroy(self->body);
     free(self->extern_abi);

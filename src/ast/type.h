@@ -31,11 +31,13 @@ typedef enum ast_type_kind
 {
     AST_TYPE_INVALID,
     AST_TYPE_BUILTIN,
-    AST_TYPE_USER,        // unresolved until Semantic Analysis
+    AST_TYPE_USER,              // unresolved until Semantic Analysis
     AST_TYPE_POINTER,
-    AST_TYPE_ARRAY,       // unresolved until Semantic Analysis
-    AST_TYPE_HEAP_ARRAY,  // TODO: Dyn Array would probably be a better name (or flexible, ...?), heap gives wrong idea
+    AST_TYPE_ARRAY,             // unresolved until Semantic Analysis
+    AST_TYPE_HEAP_ARRAY,        // TODO: Dyn Array would probably be a better name (or flexible, ...?), heap gives wrong idea
     AST_TYPE_VIEW,
+    AST_TYPE_VARIABLE,          // Type parameter (e.g., T in a template)
+    AST_TYPE_TEMPLATE_INSTANCE, // Instantiated template type (e.g., MyType<i32>)
 } ast_type_kind_t;
 
 typedef enum ast_coercion_kind
@@ -52,6 +54,10 @@ typedef enum ast_trait
 {
     TRAIT_COPYABLE,
     TRAIT_EXPLICIT_DESTRUCTOR,
+    TRAIT_ARITHMETIC,     // Type supports arithmetic operations (+, -, *, /, %)
+    TRAIT_COMPARABLE,     // Type supports comparison operations (<, >, <=, >=)
+    TRAIT_SUBSCRIPTABLE,  // Type supports subscript operations ([])
+    TRAIT_DEREFERENCEABLE, // Type supports dereference operation (*)
 
     TRAIT_END,
 } ast_trait_t;
@@ -79,6 +85,8 @@ struct ast_type
         {
             char* name;              // nullptr if type is resolved
             symbol_t* class_symbol;  // nullptr until decl_collector (symbol owned by semantic_context)
+            ast_type_t** type_arguments; // type arguments for templates (nullptr if not a template)
+            size_t num_type_arguments;   // number of type arguments
         } user;
 
         struct
@@ -110,6 +118,19 @@ struct ast_type
             ast_type_t* element_type;
             char* str_repr;
         } view;
+
+        struct
+        {
+            char* name;  // type parameter name (e.g., "T")
+        } type_variable;
+
+        struct
+        {
+            symbol_t* template_symbol;  // pointer to template (class/fn) symbol
+            ast_type_t** type_arguments; // array of type arguments
+            size_t num_type_arguments;
+            char* str_repr;
+        } template_instance;
     } data;
 };
 
@@ -121,6 +142,10 @@ ast_type_t* ast_type_user(symbol_t* class_symbol);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_user_unresolved(const char* type_name);
+
+// Create unresolved user type with type arguments (for template instantiation during parsing)
+// Returned instance should not be edited.
+ast_type_t* ast_type_user_unresolved_with_args(const char* type_name, ast_type_t** type_args, size_t num_type_args);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_pointer(ast_type_t* pointee);
@@ -139,6 +164,12 @@ ast_type_t* ast_type_view(ast_type_t* element_type);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_invalid();
+
+// Returned instance should not be edited.
+ast_type_t* ast_type_variable(const char* name);
+
+// Returned instance should not be edited.
+ast_type_t* ast_type_template_instance(symbol_t* template_symbol, ast_type_t** type_args, size_t num_type_args);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_from_token(token_t* tok);

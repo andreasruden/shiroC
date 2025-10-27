@@ -2,6 +2,7 @@
 
 #include "ast/decl/member_decl.h"
 #include "ast/decl/param_decl.h"
+#include "ast/decl/type_param_decl.h"
 #include "ast/decl/var_decl.h"
 #include "ast/def/class_def.h"
 #include "ast/def/def.h"
@@ -56,6 +57,7 @@
 
 static ast_stmt_t* parse_compound_stmt(parser_t* parser);
 static ast_type_t* parse_type_annotation(parser_t* parser);
+static bool parse_type_arguments(parser_t* parser, vec_t* type_args);
 
 parser_t* parser_create()
 {
@@ -348,14 +350,21 @@ static ast_member_init_t* parse_member_init(parser_t* parser)
     return init;
 }
 
-static ast_expr_t* parse_construct_expr(parser_t* parser)
+// Try to parse construct expression.  Returns nullptr if this doesn't look like a construct.
+static ast_expr_t* try_parse_construct_expr(parser_t* parser)
 {
     vec_t inits = VEC_INIT(ast_node_destroy);
+    ast_expr_t* construct = nullptr;
 
-    token_t* type_name = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
-    if (type_name == nullptr)
+    lexer_enter_speculative_mode(parser->lexer);
+
+    token_t* tok_first = lexer_peek_token(parser->lexer);
+
+    ast_type_t* annotated_type = parse_type_annotation(parser);
+    if (annotated_type == ast_type_invalid())
         goto cleanup;
 
+    // If we don't see {, this isn't a construct expression
     if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACE))
         goto cleanup;
 
@@ -363,7 +372,7 @@ static ast_expr_t* parse_construct_expr(parser_t* parser)
     {
         ast_member_init_t* init = parse_member_init(parser);
         if (init == nullptr)
-            break;
+            goto cleanup;
         vec_push(&inits, init);
 
         if (lexer_peek_token(parser->lexer)->type != TOKEN_COMMA)
@@ -373,13 +382,16 @@ static ast_expr_t* parse_construct_expr(parser_t* parser)
 
     lexer_next_token_iff(parser->lexer, TOKEN_RBRACE);
 
-    ast_expr_t* construct = ast_construct_expr_create(ast_type_user_unresolved(type_name->value), &inits);
-    parser_set_source_tok_to_current(parser, construct, type_name);
-    return construct;
+    construct = ast_construct_expr_create(annotated_type, &inits);
+    parser_set_source_tok_to_current(parser, construct, tok_first);
 
 cleanup:
     vec_deinit(&inits);
-    return nullptr;
+    if (construct != nullptr)
+        lexer_commit_speculation(parser->lexer);
+    else
+        lexer_rollback_speculation(parser->lexer);
+    return construct;
 }
 
 static ast_expr_t* parse_ref_expr(parser_t* parser)
@@ -499,9 +511,14 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
         case TOKEN_INTEGER:
             return parse_int_lit(parser);
         case TOKEN_IDENTIFIER:
-            if (lexer_peek_token_n(parser->lexer, 1)->type == TOKEN_LBRACE)
-                return parse_construct_expr(parser);
+        {
+            // Try construct expression first (MyType { ... } or MyType<i32> { ... })
+            ast_expr_t* construct = try_parse_construct_expr(parser);
+            if (construct != nullptr)
+                return construct;
+            // Otherwise parse as reference
             return parse_ref_expr(parser);
+        }
         case TOKEN_LPAREN:
             return parse_paren_expr(parser);
         case TOKEN_TRUE:
@@ -841,6 +858,25 @@ static ast_type_t* parse_type_annotation(parser_t* parser)
     {
         type = ast_type_from_token(type_tok);
         lexer_next_token(parser->lexer);
+
+        // If this is a user type (identifier) and followed by '<', parse type arguments
+        if (type->kind == AST_TYPE_USER && lexer_peek_token(parser->lexer)->type == TOKEN_LT)
+        {
+            vec_t type_args = VEC_INIT(nullptr);  // vec of ast_type_t*
+            if (!parse_type_arguments(parser, &type_args))
+            {
+                vec_deinit(&type_args);
+                return ast_type_invalid();
+            }
+
+            // Create user type with type arguments
+            if (type_args.length > 0)
+            {
+                type = ast_type_user_unresolved_with_args(type->data.user.name,
+                    (ast_type_t**)type_args.mem, type_args.length);
+            }
+            vec_deinit(&type_args);
+        }
     }
 
     if (type->kind == AST_TYPE_INVALID)
@@ -1083,9 +1119,68 @@ static ast_decl_t* parse_param_decl(parser_t* parser)
     return decl;
 }
 
+// Returns false if parsing failed, true otherwise (even if there are no type params)
+// If successful, type_params vec contains ast_type_param_decl_t* nodes (ownership transferred to vec)
+static bool try_parse_type_params(parser_t* parser, vec_t* type_params)
+{
+    if (lexer_peek_token(parser->lexer)->type != TOKEN_LT)
+        return true;  // No type parameters is valid
+
+    lexer_next_token(parser->lexer);  // consume '<'
+
+    while (true)
+    {
+        token_t* name_tok = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
+        if (name_tok == nullptr)
+            return false;
+
+        ast_decl_t* type_param = ast_type_param_decl_create(name_tok->value);
+        parser_set_source_tok_to_current(parser, type_param, name_tok);
+        vec_push(type_params, type_param);
+
+        if (lexer_peek_token(parser->lexer)->type != TOKEN_COMMA)
+            break;
+        lexer_next_token(parser->lexer);  // consume ','
+    }
+
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_GT))
+        return false;
+
+    return true;
+}
+
+// Returns false if parsing failed, true otherwise (including if there are none)
+// If successful, type_args vec contains ast_type_t* (ownership transferred to vec)
+static bool parse_type_arguments(parser_t* parser, vec_t* type_args)
+{
+    if (lexer_peek_token(parser->lexer)->type != TOKEN_LT)
+        return true;  // No type arguments is valid
+
+    lexer_next_token(parser->lexer);  // consume '<'
+
+    while (true)
+    {
+        ast_type_t* type = parse_type_annotation(parser);
+        if (type->kind == AST_TYPE_INVALID)
+            return false;
+
+        vec_push(type_args, type);
+
+        if (lexer_peek_token(parser->lexer)->type != TOKEN_COMMA)
+            break;
+        lexer_next_token(parser->lexer);  // consume ','
+    }
+
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_GT))
+        return false;
+
+    return true;
+}
+
 static ast_def_t* parse_fn_def(parser_t* parser, bool exported, bool external, bool* trait_marker)
 {
     token_t* id = nullptr;
+    vec_t type_params = VEC_INIT(ast_node_destroy);
     vec_t params = VEC_INIT(ast_node_destroy);
     ast_def_t* fn_def = nullptr;
     ast_type_t* ret_type = nullptr;
@@ -1108,6 +1203,10 @@ static ast_def_t* parse_fn_def(parser_t* parser, bool exported, bool external, b
 
     id = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
     if (id == nullptr)
+        goto cleanup;
+
+    // Optional type parameters
+    if (!try_parse_type_params(parser, &type_params))
         goto cleanup;
 
     if (!lexer_next_token_iff(parser->lexer, TOKEN_LPAREN))
@@ -1147,6 +1246,7 @@ static ast_def_t* parse_fn_def(parser_t* parser, bool exported, bool external, b
     }
 
     fn_def = ast_fn_def_create(id->value, &params, ret_type, body, exported);
+    vec_move(&((ast_fn_def_t*)fn_def)->type_params, &type_params);
     parser_set_source_tok_to_current(parser, fn_def, tok_fn);
 
     if (ret_type != nullptr && ret_type->kind == AST_TYPE_INVALID)
@@ -1154,6 +1254,7 @@ static ast_def_t* parse_fn_def(parser_t* parser, bool exported, bool external, b
     ret_type = nullptr;
 
 cleanup:
+    vec_deinit(&type_params);
     vec_deinit(&params);
     return fn_def;
 }
@@ -1185,6 +1286,7 @@ static ast_def_t* parse_method_def(parser_t* parser)
 
 static ast_def_t* parse_class_def(parser_t* parser, bool exported)
 {
+    vec_t type_params = VEC_INIT(ast_node_destroy);
     vec_t members = VEC_INIT(ast_node_destroy);
     vec_t methods = VEC_INIT(ast_node_destroy);
 
@@ -1194,6 +1296,10 @@ static ast_def_t* parse_class_def(parser_t* parser, bool exported)
 
     token_t* tok_id = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
     if (!tok_id)
+        goto cleanup;
+
+    // Optional type parameters
+    if (!try_parse_type_params(parser, &type_params))
         goto cleanup;
 
     if (!lexer_next_token_iff(parser->lexer, TOKEN_LBRACE))
@@ -1229,10 +1335,12 @@ static ast_def_t* parse_class_def(parser_t* parser, bool exported)
         goto cleanup;
 
     ast_def_t* class_def = ast_class_def_create(tok_id->value, &members, &methods, exported);
+    vec_move(&((ast_class_def_t*)class_def)->type_params, &type_params);
     parser_set_source_tok_to_current(parser, class_def, tok_class);
     return class_def;
 
 cleanup:
+    vec_deinit(&type_params);
     vec_deinit(&members);
     vec_deinit(&methods);
     return nullptr;

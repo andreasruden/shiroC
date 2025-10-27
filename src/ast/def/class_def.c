@@ -27,6 +27,7 @@ ast_def_t* ast_class_def_create(const char* name, vec_t* members, vec_t* methods
 
     *class_def = (ast_class_def_t){
         .base.name = strdup(name),
+        .type_params = VEC_INIT(ast_node_destroy),
         .exported = exported,
     };
     vec_move(&class_def->members, members);
@@ -77,6 +78,7 @@ static void ast_class_def_destroy(void* self_)
         return;
 
     ast_def_deconstruct((ast_def_t*)self);
+    vec_deinit(&self->type_params);
     vec_deinit(&self->members);
     vec_deinit(&self->methods);
     free(self);
