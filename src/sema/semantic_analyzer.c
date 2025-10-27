@@ -1787,9 +1787,13 @@ static void* analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void*
         return_type, true);
     if (coercion == COERCION_INVALID)
         return ret_stmt;
-
-    if (coercion == COERCION_ALWAYS || coercion == COERCION_WIDEN)
+    else if (coercion == COERCION_ALWAYS || coercion == COERCION_WIDEN)
         ret_stmt->value_expr = ast_coercion_expr_create(ret_stmt->value_expr, return_type);
+    else if (coercion != COERCION_EQUAL)
+    {
+        semantic_context_add_error(sema->ctx, ret_stmt, "cannot coerce type without cast");
+        return ret_stmt;
+    }
 
     return ret_stmt;
 }
