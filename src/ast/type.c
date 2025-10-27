@@ -23,6 +23,8 @@ static hash_table_t* heap_array_cache = nullptr;  // Key: element type address -
 static hash_table_t* view_cache = nullptr;  // Key: element type address -> Value: view type
 static vec_t* gc_array = nullptr; // unresolved fixed size arrays for garbage collection
 
+static void set_default_traits(ast_type_t* type);
+
 static void ast_type_destroy(void* type_)
 {
     ast_type_t* type = type_;
@@ -76,6 +78,7 @@ ast_type_t* ast_type_user(symbol_t* class_symbol)
         .kind = AST_TYPE_USER,
         .data.user.class_symbol = class_symbol,
     };
+    set_default_traits(ast_type);
     hash_table_insert(user_cache, class_symbol->fully_qualified_name, ast_type);
 
     return ast_type;
@@ -94,6 +97,7 @@ ast_type_t* ast_type_user_unresolved(const char* type_name)
         .kind = AST_TYPE_USER,
         .data.user.name = strdup(type_name),
     };
+    set_default_traits(ast_type);
     hash_table_insert(user_unresolved_cache, type_name, ast_type);
 
     return ast_type;
@@ -111,7 +115,7 @@ ast_type_t* ast_type_pointer(ast_type_t* pointee)
         .kind = AST_TYPE_POINTER,
         .data.pointer.pointee = pointee,
     };
-
+    set_default_traits(pointer);
     hash_table_insert(pointer_cache, ssprintf("%p", pointee), pointer);
     return pointer;
 }
@@ -131,7 +135,7 @@ ast_type_t* ast_type_array(ast_type_t* element_type, size_t size)
         .data.array.size_known = true,
         .data.array.size = size,
     };
-
+    set_default_traits(array);
     hash_table_insert(fixed_array_cache, key, array);
     return array;
 }
@@ -146,7 +150,7 @@ ast_type_t* ast_type_array_size_unresolved(ast_type_t* element_type, ast_expr_t*
         .data.array.size_known = false,
         .data.array.size_expr = size_expr,
     };
-
+    set_default_traits(tmp_array);
     vec_push(gc_array, tmp_array);
     return tmp_array;
 }
@@ -163,7 +167,7 @@ ast_type_t* ast_type_heap_array(ast_type_t* element_type)
         .kind = AST_TYPE_HEAP_ARRAY,
         .data.heap_array.element_type = element_type,
     };
-
+    set_default_traits(array);
     hash_table_insert(heap_array_cache, ssprintf("%p", element_type), array);
     return array;
 }
@@ -180,7 +184,7 @@ ast_type_t* ast_type_view(ast_type_t* element_type)
         .kind = AST_TYPE_VIEW,
         .data.view.element_type = element_type,
     };
-
+    set_default_traits(view);
     hash_table_insert(view_cache, ssprintf("%p", element_type), view);
     return view;
 }
@@ -188,6 +192,21 @@ ast_type_t* ast_type_view(ast_type_t* element_type)
 ast_type_t* ast_type_invalid()
 {
     return invalid_cache;
+}
+
+void ast_type_set_trait(ast_type_t* type, ast_trait_t trait)
+{
+    type->traits[trait] = true;
+}
+
+void ast_type_clear_trait(ast_type_t* type, ast_trait_t trait)
+{
+    type->traits[trait] = false;
+}
+
+bool ast_type_has_trait(ast_type_t* type, ast_trait_t trait)
+{
+    return type->traits[trait];
 }
 
 ast_type_t* ast_type_from_token(token_t* tok)
@@ -520,6 +539,11 @@ const char* type_to_str(type_t type)
     panic("Case %d not handled", type);
 }
 
+static void set_default_traits(ast_type_t* type)
+{
+    type->traits[TRAIT_COPYABLE] = true;
+}
+
 __attribute__((constructor))
 void ast_type_cache_init()
 {
@@ -541,7 +565,7 @@ void ast_type_cache_init()
             .kind = AST_TYPE_BUILTIN,
             .data.builtin.type = (type_t)type,
         };
-
+        set_default_traits(ast_type);
         builtins_cache[type] = ast_type;
     }
 

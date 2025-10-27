@@ -1,3 +1,5 @@
-export fn print_int(x: i32) {
-    printI32(x);
+extern "C" fn puts(str: u8*);
+
+export fn println(str: string) {
+    puts(str.raw());
 }

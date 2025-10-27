@@ -240,6 +240,37 @@ static void collect_member_decl(void* self_, ast_member_decl_t* member, void* ou
     symbol_table_insert(collector->current_class->data.class.symbols, member_symb);
 }
 
+static bool handle_trait_impl(decl_collector_t* collector, ast_method_def_t* method)
+{
+    const char* name = method->base.base.name;
+
+    bool bad_signature = false;
+
+    if (strcmp("destruct", name) == 0)
+    {
+        if (method->base.return_type != ast_type_builtin(TYPE_VOID) || vec_size(&method->base.params) != 0)
+            bad_signature = true;
+        else
+        {
+            ast_type_set_trait(ast_type_user(collector->current_class), TRAIT_EXPLICIT_DESTRUCTOR);
+            ast_type_clear_trait(ast_type_user(collector->current_class), TRAIT_COPYABLE);
+        }
+    }
+    else
+    {
+        semantic_context_add_error(collector->ctx, method, ssprintf("there exists no '%s' trait", name));
+        return false;
+    }
+
+    if (bad_signature)
+    {
+        semantic_context_add_error(collector->ctx, method, ssprintf("incorrect signature for trait '%s'", name));
+        return false;
+    }
+
+    return true;
+}
+
 static void collect_method_def(void* self_, ast_method_def_t* method, void* out_)
 {
     // TODO: This is very similar to fn_def, try to share implementation
@@ -252,8 +283,10 @@ static void collect_method_def(void* self_, ast_method_def_t* method, void* out_
     for (size_t i = 0; i < vec_size(&method->base.params); ++i)
         ast_visitor_visit(collector, vec_get(&method->base.params, i), nullptr);
 
+    const char* method_name = method->is_trait_impl ? ssprintf("@%s", method->base.base.name) : method->base.base.name;
+
     // Handle method clashes with overloading rules
-    vec_t* symbols = symbol_table_overloads(collector->current_class->data.class.symbols, method->base.base.name);
+    vec_t* symbols = symbol_table_overloads(collector->current_class->data.class.symbols, method_name);
     size_t num_prev_defs = symbols ? vec_size(symbols) : 0;
     if (symbols != nullptr && !is_valid_overload(symbols, &method->base.params))
     {
@@ -275,8 +308,14 @@ static void collect_method_def(void* self_, ast_method_def_t* method, void* out_
             return;
     }
 
+    // Special verification for trait implementations
+    if (method->is_trait_impl && !handle_trait_impl(collector, method))
+        return;
+
     // Build symbol for method
-    symbol_t* method_symbol = symbol_create(method->base.base.name, SYMBOL_METHOD, method, collector->current_class);
+    symbol_t* method_symbol = symbol_create(method_name,
+        method->is_trait_impl ? SYMBOL_TRAIT_IMPL : SYMBOL_METHOD,
+        method, collector->current_class);
     method_symbol->type = ast_type_invalid();  // TODO: actual function type
     method_symbol->data.function.return_type = method->base.return_type == nullptr ?
         ast_type_builtin(TYPE_VOID) : method->base.return_type;

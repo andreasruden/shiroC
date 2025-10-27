@@ -12,15 +12,17 @@ fn add(a: i32, b: i32) -> i32
 fn main() -> i32
 {
     var adder = Adder{};  // Calculator's exported class (same as Self.Calculator.Adder)
-    print_int(adder.add(10, 20));  //! stdout: "30"
-    print_int(adder.last_result);  //! stdout: "30"
+    printI32(adder.add(10, 20));  //! stdout: "30"
+    printI32(adder.last_result);  //! stdout: "30"
 
     var i = add(100, 200);  // "buggy" add
-    print_int(i);  //! stdout: "20000"
+    printI32(i);  //! stdout: "20000"
 
     // access Calculator's exported add function
     i = Self.Calculator.add(100, 200);
-    print_int(i);  //! stdout: "300"
+    printI32(i);  //! stdout: "300"
+
+    println("testing");  //! stdout: "testing"
 
     return 0;
 }

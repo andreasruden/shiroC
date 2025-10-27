@@ -531,3 +531,45 @@ TEST(parser_classes_fixture_t, parse_exported_class_with_method)
     ast_node_destroy(root);
     ast_node_destroy(expected);
 }
+
+TEST(parser_classes_fixture_t, parse_method_with_at_prefix_sets_is_trait_impl)
+{
+    // Parse class with @destruct method - should set is_trait_impl=true
+    parser_set_source(fix->parser, "test",
+        "class MyClass {\n"
+        "    fn @destruct() { }\n"
+        "}");
+    ast_root_t* root = parser_parse(fix->parser);
+    ASSERT_NEQ(nullptr, root);
+    ASSERT_EQ(0, vec_size(parser_errors(fix->parser)));
+
+    // Verify structure
+    ASSERT_EQ(1, vec_size(&root->tl_defs));
+    ast_class_def_t* class_def = vec_get(&root->tl_defs, 0);
+    ASSERT_EQ(AST_DEF_CLASS, AST_KIND(class_def));
+    ASSERT_EQ(1, vec_size(&class_def->methods));
+
+    // Verify the method has is_trait_impl=true
+    ast_method_def_t* method = vec_get(&class_def->methods, 0);
+    ASSERT_EQ(AST_DEF_METHOD, AST_KIND(method));
+    ASSERT_TRUE(method->is_trait_impl);
+    ASSERT_EQ("destruct", method->base.base.name);
+
+    // Construct expected tree with is_trait_impl=true
+    ast_method_def_t* destruct_method = (ast_method_def_t*)ast_method_def_create_va("destruct", nullptr,
+        ast_compound_stmt_create_empty(),
+        nullptr);
+    destruct_method->is_trait_impl = true;
+
+    vec_t members = VEC_INIT(ast_node_destroy);
+    vec_t methods = VEC_INIT(ast_node_destroy);
+    vec_push(&methods, destruct_method);
+
+    ast_root_t* expected = ast_root_create_va(
+        ast_class_def_create("MyClass", &members, &methods, false),
+        nullptr);
+
+    ASSERT_TREES_EQUAL(expected, root);
+    ast_node_destroy(root);
+    ast_node_destroy(expected);
+}

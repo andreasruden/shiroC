@@ -95,6 +95,7 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_AT: return "@";
         case TOKEN_STRING: return "string";
         case TOKEN_AS: return "as";
         case TOKEN_EXTERN: return "extern";
@@ -490,6 +491,7 @@ static token_t* lex_symbol(lexer_t* lexer)
         case ':': return token_create(lexer, TOKEN_COLON, ":", line, col);
         case ',': return token_create(lexer, TOKEN_COMMA, ",", line, col);
         case '&': return token_create(lexer, TOKEN_AMPERSAND, "&", line, col);
+        case '@': return token_create(lexer, TOKEN_AT, "@", line, col);
 
         case '+':
             if (lexer_peek(lexer) == '=') {

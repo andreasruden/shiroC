@@ -1,0 +1,81 @@
+//! run
+
+class TypeWithDestructor {
+    var i: i32 = 0;
+
+    fn @destruct() {
+        printI32(self.i);
+    }
+}
+
+fn test_basic() -> i32 {
+    var t = TypeWithDestructor{i = 1};
+    return 0;
+}  //! stdout: "1"
+
+fn test_early_return(cond: bool) -> i32 {
+    var t1 = TypeWithDestructor{i = 2};
+
+    if (cond) {
+        return 10;
+    }
+
+    return 0;
+}  //! stdout: "2"
+
+fn test_if_scope() {
+    var t1 = TypeWithDestructor{i = 3};
+
+    if (true) {
+        var t2 = TypeWithDestructor{i = 4};
+    }  //! stdout: "4"
+}  //! stdout: "3"
+
+fn test_loop_scope() {
+    var i = 0;
+    while (i < 2) {
+        var t = TypeWithDestructor{i = 5};
+        i = i + 1;
+        //! stdout: "5"
+        //! stdout: "5"
+    }
+}
+
+fn test_break() {
+    var i = 0;
+    while (i < 10) {
+        var t = TypeWithDestructor{i = 6};
+        i = i + 1;
+        if (i == 2) {
+            break;
+        }  //! stdout: "6"
+    }  //! stdout: "6"
+}
+
+fn test_continue() {
+    var i = 0;
+    while (i < 2) {
+        var t = TypeWithDestructor{i = 7};
+        i = i + 1;
+        continue;  //! stdout: "7"
+    }  //! stdout: "7"
+}
+
+fn test_multiple_vars() {
+    var t1 = TypeWithDestructor{i = 8};
+    var t2 = TypeWithDestructor{i = 9};
+    // Should destroy in reverse order: t2 (9) then t1 (8)
+    //! stdout: "9"
+    //! stdout: "8"
+}
+
+fn main() -> i32 {
+    test_basic();
+    test_early_return(true);
+    test_if_scope();
+    test_loop_scope();
+    test_break();
+    test_continue();
+    test_multiple_vars();
+    return 0;
+}

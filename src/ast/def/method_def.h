@@ -10,6 +10,7 @@ typedef struct ast_method_def
     ast_fn_def_t base;
     size_t overload_index;  // set by SEMA
     symbol_t* symbol;       // only valid after decl_collector & while semantic_context is valid (we do not own memory)
+    bool is_trait_impl;
 } ast_method_def_t;
 
 // Ownership of fn_def transferred

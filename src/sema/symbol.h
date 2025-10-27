@@ -15,6 +15,7 @@ typedef enum symbol_kind
     SYMBOL_CLASS,
     SYMBOL_MEMBER,
     SYMBOL_METHOD,
+    SYMBOL_TRAIT_IMPL,
     SYMBOL_NAMESPACE,
 } symbol_kind_t;
 

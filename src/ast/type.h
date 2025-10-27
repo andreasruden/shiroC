@@ -48,6 +48,14 @@ typedef enum ast_coercion_kind
     COERCION_INIT,          // only valid during initialization
 } ast_coercion_kind_t;
 
+typedef enum ast_trait
+{
+    TRAIT_COPYABLE,
+    TRAIT_EXPLICIT_DESTRUCTOR,
+
+    TRAIT_END,
+} ast_trait_t;
+
 typedef struct ast_type ast_type_t;
 typedef struct ast_expr ast_expr_t;
 typedef struct symbol symbol_t;
@@ -57,6 +65,7 @@ typedef struct token token_t;
 struct ast_type
 {
     ast_type_kind_t kind;
+    bool traits[TRAIT_END];
 
     // Kind specific data
     union
@@ -133,6 +142,12 @@ ast_type_t* ast_type_invalid();
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_from_token(token_t* tok);
+
+void ast_type_set_trait(ast_type_t* type, ast_trait_t trait);
+
+void ast_type_clear_trait(ast_type_t* type, ast_trait_t trait);
+
+bool ast_type_has_trait(ast_type_t* type, ast_trait_t trait);
 
 bool ast_type_is_arithmetic(ast_type_t* type);
 

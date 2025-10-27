@@ -1083,7 +1083,7 @@ static ast_decl_t* parse_param_decl(parser_t* parser)
     return decl;
 }
 
-static ast_def_t* parse_fn_def(parser_t* parser, bool exported, bool external)
+static ast_def_t* parse_fn_def(parser_t* parser, bool exported, bool external, bool* trait_marker)
 {
     token_t* id = nullptr;
     vec_t params = VEC_INIT(ast_node_destroy);
@@ -1093,6 +1093,18 @@ static ast_def_t* parse_fn_def(parser_t* parser, bool exported, bool external)
     token_t* tok_fn = lexer_next_token_iff(parser->lexer, TOKEN_FN);
     if (!tok_fn)
         goto cleanup;
+
+    // Methods can be traits by having name start with '@'
+    if (trait_marker != nullptr)
+    {
+        if (lexer_peek_token(parser->lexer)->type == TOKEN_AT)
+        {
+            lexer_next_token(parser->lexer);
+            *trait_marker = true;
+        }
+        else
+            *trait_marker = false;
+    }
 
     id = lexer_next_token_iff(parser->lexer, TOKEN_IDENTIFIER);
     if (id == nullptr)
@@ -1161,12 +1173,14 @@ static ast_decl_t* parse_member_decl(parser_t* parser)
 static ast_def_t* parse_method_def(parser_t* parser)
 {
     token_t* tok_start = lexer_peek_token(parser->lexer);
-    ast_fn_def_t* fn_def = (ast_fn_def_t*)parse_fn_def(parser, false, false);
+    bool is_trait = false;
+    ast_fn_def_t* fn_def = (ast_fn_def_t*)parse_fn_def(parser, false, false, &is_trait);
     if (fn_def == nullptr)
         return nullptr;
-    ast_def_t* method = ast_method_def_create_from(fn_def);
+    ast_method_def_t* method = (ast_method_def_t*)ast_method_def_create_from(fn_def);
+    method->is_trait_impl = is_trait;
     parser_set_source_tok_to_current(parser, method, tok_start);
-    return method;
+    return (ast_def_t*)method;
 }
 
 static ast_def_t* parse_class_def(parser_t* parser, bool exported)
@@ -1263,7 +1277,7 @@ static ast_def_t* parse_extern_def(parser_t* parser)
     if (tok_abi == nullptr)
         return nullptr;
 
-    ast_fn_def_t* fn = (ast_fn_def_t*)parse_fn_def(parser, false, true);
+    ast_fn_def_t* fn = (ast_fn_def_t*)parse_fn_def(parser, false, true, nullptr);
     if (fn == nullptr)
         return nullptr;
 
@@ -1283,7 +1297,7 @@ parse:
     {
         case TOKEN_FN:
             parser->state = PARSER_STATE_REST;
-            return parse_fn_def(parser, export, false);
+            return parse_fn_def(parser, export, false, nullptr);
         case TOKEN_CLASS:
             parser->state = PARSER_STATE_REST;
             return parse_class_def(parser, export);

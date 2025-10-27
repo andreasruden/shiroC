@@ -85,6 +85,16 @@ static bool require_variable_initialized(semantic_analyzer_t* sema, symbol_t* sy
     return false;
 }
 
+static bool require_type_copyable(semantic_analyzer_t* sema, ast_type_t* type, void* node)
+{
+    if (!ast_type_has_trait(type, TRAIT_COPYABLE))
+    {
+        semantic_context_add_error(sema->ctx, node, ssprintf("cannot copy type '%s'", ast_type_string(type)));
+        return false;
+    }
+    return true;
+}
+
 // Check if from_expr can be coerced to to_type, considering expression properties like lvalue.
 // Returns the coercion kind and if the coercion kind is INVALID, adds an error to the semantic context.
 static ast_coercion_kind_t check_coercion_with_expr(semantic_analyzer_t* sema, void* node, ast_expr_t* from_expr,
@@ -269,6 +279,13 @@ static void* analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     {
         semantic_context_add_error(sema->ctx, var, ssprintf("cannot instantiate type '%s'",
             ast_type_string(actual_type)));
+        return var;
+    }
+
+    // Check copyability when initializing with an l-value (r-values can be moved)
+    if (var->init_expr != nullptr && var->init_expr->is_lvalue &&
+        !require_type_copyable(sema, var->init_expr->type, var->init_expr))
+    {
         return var;
     }
 
@@ -701,9 +718,6 @@ static void* analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* 
         }
     }
 
-    if (lhs_symbol != nullptr)
-        init_tracker_set_initialized(sema->init_tracker, lhs_symbol, true);
-
     bin_op->rhs = ast_transformer_transform(sema, bin_op->rhs, nullptr);
     if (bin_op->rhs->type == ast_type_invalid())
     {
@@ -736,6 +750,16 @@ static void* analyze_bin_op_assignment(semantic_analyzer_t* sema, ast_bin_op_t* 
 
     if (coercion == COERCION_ALWAYS)
         bin_op->rhs = ast_coercion_expr_create(bin_op->rhs, bin_op->lhs->type);
+
+    // Check copyability when assigning an l-value (r-values can be moved)
+    if (bin_op->rhs->is_lvalue && !require_type_copyable(sema, bin_op->rhs->type, bin_op))
+    {
+        bin_op->base.type = ast_type_invalid();
+        return bin_op;
+    }
+
+    if (lhs_symbol != nullptr)
+        init_tracker_set_initialized(sema->init_tracker, lhs_symbol, true);
 
     bin_op->base.is_lvalue = false;
     bin_op->base.type = bin_op->lhs->type;
@@ -939,6 +963,10 @@ static symbol_t* analyze_call_and_method_shared(semantic_analyzer_t* sema, void*
                     param_symb->name, ast_type_string(param_symb->type)));
             return nullptr;
         }
+
+        // Check copyability when passing an l-value argument (r-values can be moved)
+        if (arg_expr->is_lvalue && !require_type_copyable(sema, arg_expr->type, arg_expr))
+            return nullptr;
 
         if (coercion != COERCION_EQUAL)
         {
@@ -1442,6 +1470,13 @@ static void* analyze_member_init(void* self_, ast_member_init_t* init, void* out
         return init;
     }
 
+    // Check copyability when initializing with an l-value (r-values can be moved)
+    if (init->init_expr->is_lvalue && !require_type_copyable(sema, init->init_expr->type, init->init_expr))
+    {
+        *out = nullptr;
+        return init;
+    }
+
     *out = member_symb->name;
     return init;
 }
@@ -1792,6 +1827,14 @@ static void* analyze_return_stmt(void* self_, ast_return_stmt_t* ret_stmt, void*
     else if (coercion != COERCION_EQUAL)
     {
         semantic_context_add_error(sema->ctx, ret_stmt, "cannot coerce type without cast");
+        return ret_stmt;
+    }
+
+    // Check copyability when returning an l-value (can move r-value)
+    // TODO: Some l-values can also be optimized to not be copy via RVO
+    if (ret_stmt->value_expr->is_lvalue && !require_type_copyable(sema, ret_stmt->value_expr->type,
+        ret_stmt->value_expr))
+    {
         return ret_stmt;
     }
 

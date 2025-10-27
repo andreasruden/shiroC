@@ -92,6 +92,7 @@ typedef enum
     TOKEN_MODULO_ASSIGN,
 
     // Misc
+    TOKEN_AT,
     TOKEN_IDENTIFIER,
     TOKEN_EOF,
     TOKEN_UNKNOWN

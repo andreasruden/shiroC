@@ -421,7 +421,7 @@ bool module_compile(module_t* module)
 
     // Compile .ll to .o
     char* obj_path = join_path(module->builder->build_dir, ssprintf("%s.o", module->name));
-    const char* llc_cmd = ssprintf("llc -filetype=obj \"%s\" -o \"%s\"", ll_path, obj_path);
+    const char* llc_cmd = ssprintf("llc -filetype=obj -relocation-model=pic \"%s\" -o \"%s\"", ll_path, obj_path);
 
     printf("  Running: %s\n", llc_cmd);
     int ret = system(llc_cmd);

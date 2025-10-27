@@ -13,6 +13,10 @@ class Composite {
     var bPtr: BasicB*;
 }
 
+fn ret_rvalue() -> BasicA {
+    return BasicA{value = 20};
+}
+
 fn main() -> i32 {
     var a = BasicA{
         value = 10
@@ -43,6 +47,9 @@ fn main() -> i32 {
     printI32(b.value);  //! stdout: "30"
     printI32(comp.bPtr.value);  //! stdout: "30"
     printI32(comp2.bPtr.value);  //! stdout: "30"
+
+    var ret_comp = ret_rvalue();
+    printI32(ret_comp.value); //! stdout: "20"
 
     var arr = [1, 2, 3];
     var arr2 = arr;

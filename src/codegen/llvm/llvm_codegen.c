@@ -37,12 +37,27 @@
 
 typedef struct class_layout class_layout_t;
 typedef struct loop_context loop_context_t;
+typedef struct destructor_scope destructor_scope_t;
+typedef struct destructible_var destructible_var_t;
 
 struct loop_context
 {
     LLVMBasicBlockRef continue_block;  // Block to jump to for continue
     LLVMBasicBlockRef break_block;     // Block to jump to for break
     loop_context_t* parent;            // Parent loop context for nested loops
+};
+
+struct destructible_var
+{
+    char* name;               // Variable name (for debugging)
+    LLVMValueRef alloca;      // Pointer to the variable's alloca
+    ast_type_t* type;         // Type of the variable (to find destructor)
+};
+
+struct destructor_scope
+{
+    vec_t variables;          // vec<destructible_var_t*> - variables to destroy when scope ends
+    destructor_scope_t* parent;  // Parent scope for nested scopes
 };
 
 struct llvm_codegen
@@ -71,6 +86,9 @@ struct llvm_codegen
 
     // Loop context for break/continue
     loop_context_t* loop_context;
+
+    // Destructor scope tracking for automatic cleanup
+    destructor_scope_t* destructor_scope;
 
     bool lvalue;
     bool address_of_lvalue;
@@ -120,6 +138,124 @@ static void emit_bounds_check_trap(llvm_codegen_t* llvm, LLVMValueRef condition,
 
     // Continue with safe block
     LLVMPositionBuilderAtEnd(llvm->builder, safe_block);
+}
+
+// Destructor scope management functions
+static void destructible_var_destroy(destructible_var_t* var)
+{
+    if (var == nullptr)
+        return;
+    free(var->name);
+    free(var);
+}
+
+static void destructible_var_destroy_void(void* var)
+{
+    destructible_var_destroy((destructible_var_t*)var);
+}
+
+static void push_destructor_scope(llvm_codegen_t* llvm)
+{
+    destructor_scope_t* new_scope = malloc(sizeof(destructor_scope_t));
+    new_scope->variables = VEC_INIT(destructible_var_destroy_void);
+    new_scope->parent = llvm->destructor_scope;
+    llvm->destructor_scope = new_scope;
+}
+
+static void pop_destructor_scope(llvm_codegen_t* llvm)
+{
+    if (llvm->destructor_scope == nullptr)
+        return;
+
+    destructor_scope_t* current = llvm->destructor_scope;
+    llvm->destructor_scope = current->parent;
+
+    vec_deinit(&current->variables);
+    free(current);
+}
+
+static symbol_t* find_destructor_method(symbol_t* class_symbol)
+{
+    if (class_symbol == nullptr || class_symbol->kind != SYMBOL_CLASS)
+        return nullptr;
+
+    // Look for @destruct method in the class's symbol table
+    vec_t* methods = hash_table_find(&class_symbol->data.class.symbols->map, "@destruct");
+    if (methods == nullptr || vec_size(methods) == 0)
+        return nullptr;
+
+    // Return the first (and should be only) @destruct method
+    return vec_get(methods, 0);
+}
+
+static void emit_destructor_call(llvm_codegen_t* llvm, destructible_var_t* var)
+{
+    ast_type_t* type = var->type;
+
+    // Handle pointer types - get the pointee type
+    if (type->kind == AST_TYPE_POINTER)
+        type = type->data.pointer.pointee;
+
+    // Only user types (classes) can have destructors
+    if (type->kind != AST_TYPE_USER)
+        return;
+
+    symbol_t* class_symbol = type->data.user.class_symbol;
+    symbol_t* destructor = find_destructor_method(class_symbol);
+
+    if (destructor == nullptr)
+        return;
+
+    // Get the destructor function
+    const char* mangled_name = MANGLE_FUNCTION_NAME(destructor);
+    LLVMValueRef destructor_fn = LLVMGetNamedFunction(llvm->module, mangled_name);
+    if (destructor_fn == nullptr)
+        return;
+
+    // Call destructor with pointer to the variable
+    LLVMValueRef args[] = { var->alloca };
+    LLVMBuildCall2(llvm->builder, LLVMGlobalGetValueType(destructor_fn), destructor_fn, args, 1, "");
+}
+
+static void emit_scope_destructors(llvm_codegen_t* llvm, destructor_scope_t* scope)
+{
+    if (scope == nullptr)
+        return;
+
+    // Destroy in reverse order (LIFO)
+    for (size_t i = vec_size(&scope->variables); i > 0; --i)
+    {
+        destructible_var_t* var = vec_get(&scope->variables, i - 1);
+        emit_destructor_call(llvm, var);
+    }
+}
+
+static void emit_all_scope_destructors(llvm_codegen_t* llvm)
+{
+    // Emit destructors for all scopes (used before return)
+    destructor_scope_t* scope = llvm->destructor_scope;
+    while (scope != nullptr)
+    {
+        emit_scope_destructors(llvm, scope);
+        scope = scope->parent;
+    }
+}
+
+static void register_variable_for_destruction(llvm_codegen_t* llvm, const char* name, LLVMValueRef alloca,
+    ast_type_t* type)
+{
+    if (llvm->destructor_scope == nullptr)
+        return;
+
+    if (!ast_type_has_trait(type, TRAIT_EXPLICIT_DESTRUCTOR))
+        return;
+
+    destructible_var_t* var = malloc(sizeof(destructible_var_t));
+    var->name = strdup(name);
+    var->alloca = alloca;
+    var->type = type;
+
+    vec_push(&llvm->destructor_scope->variables, var);
 }
 
 // Register builtin functions that are implemented in the runtime
@@ -223,6 +359,7 @@ static void emit_param_decl(void* self_, ast_param_decl_t* param, void* out_)
     LLVMBuildStore(llvm->builder, original_param_ref, alloc_ref);
 
     hash_table_insert(llvm->symbols, param->name, alloc_ref);
+    register_variable_for_destruction(llvm, param->name, alloc_ref, param->type);
 }
 
 static void emit_var_decl(void* self_, ast_var_decl_t* var, void* out_)
@@ -243,6 +380,7 @@ static void emit_var_decl(void* self_, ast_var_decl_t* var, void* out_)
     }
 
     hash_table_insert(llvm->symbols, var->name, alloc_ref);
+    register_variable_for_destruction(llvm, var->name, alloc_ref, var->type);
     *out_ref = alloc_ref;
 }
 
@@ -301,7 +439,7 @@ static void declare_class_methods(llvm_codegen_t* llvm, symbol_t* class_symb)
         for (size_t i = 0; i < vec_size(overloads); ++i)
         {
             symbol_t* method_symb = vec_get(overloads, i);
-            if (method_symb->kind != SYMBOL_METHOD)
+            if (method_symb->kind != SYMBOL_METHOD && method_symb->kind != SYMBOL_TRAIT_IMPL)
                 continue;
 
             const char* mangled_name = MANGLE_FUNCTION_NAME(method_symb);
@@ -458,6 +596,9 @@ static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
     // Set debug location for function entry
     set_debug_location(llvm, AST_NODE(fn_def));
 
+    // Push destructor scope for function body (includes parameters)
+    push_destructor_scope(llvm);
+
     // Allocate space for all parameters
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
         ast_visitor_visit(llvm, vec_get(&fn_def->params, i), LLVMGetParam(fn_val, i));
@@ -465,8 +606,15 @@ static void define_function(llvm_codegen_t* llvm, ast_fn_def_t* fn_def)
     LLVMValueRef out_val;
     ast_visitor_visit(llvm, fn_def->body, &out_val);
 
+    // Add implicit return for void functions, with destructors
     if (fn_def->return_type == ast_type_builtin(TYPE_VOID))
+    {
+        emit_scope_destructors(llvm, llvm->destructor_scope);
         LLVMBuildRetVoid(llvm->builder);
+    }
+
+    // Pop destructor scope
+    pop_destructor_scope(llvm);
 
     // Clear current scope when leaving function
     llvm->current_di_scope = nullptr;
@@ -529,6 +677,9 @@ static void emit_method_def(void* self_, ast_method_def_t* method, void* out_)
 
     set_debug_location(llvm, AST_NODE(method));
 
+    // Push destructor scope for method body (includes parameters and self)
+    push_destructor_scope(llvm);
+
     // Allocate space for implicit 'self' parameter
     LLVMValueRef self_param = LLVMGetParam(fn_val, 0);
     LLVMValueRef self_alloc = LLVMBuildAlloca(llvm->builder, class_ptr_type, "self.addr");
@@ -543,8 +694,15 @@ static void emit_method_def(void* self_, ast_method_def_t* method, void* out_)
     LLVMValueRef out_val;
     ast_visitor_visit(llvm, method->base.body, &out_val);
 
+    // Add implicit return for void methods, with destructors
     if (method->base.return_type == ast_type_builtin(TYPE_VOID))
+    {
+        emit_scope_destructors(llvm, llvm->destructor_scope);
         LLVMBuildRetVoid(llvm->builder);
+    }
+
+    // Pop destructor scope
+    pop_destructor_scope(llvm);
 
     llvm->current_di_scope = nullptr;
 
@@ -1575,8 +1733,22 @@ static void emit_uninit_lit(void* self_, ast_uninit_lit_t* uninit, void* out_)
 
 static void emit_compound_stmt(void* self_, ast_compound_stmt_t* block, void* out_)
 {
+    llvm_codegen_t* llvm = self_;
+
+    // Push new destructor scope for this block
+    push_destructor_scope(llvm);
+
+    // Emit all statements in the block
     for (size_t i = 0; i < vec_size(&block->inner_stmts); ++i)
         ast_visitor_visit(self_, vec_get(&block->inner_stmts, i), out_);
+
+    // Emit destructors for variables declared in this block (if block doesn't have terminator)
+    LLVMBasicBlockRef current_block = LLVMGetInsertBlock(llvm->builder);
+    if (LLVMGetBasicBlockTerminator(current_block) == nullptr)
+        emit_scope_destructors(llvm, llvm->destructor_scope);
+
+    // Pop destructor scope
+    pop_destructor_scope(llvm);
 }
 
 static void emit_decl_stmt(void* self_, ast_decl_stmt_t* stmt, void* out_)
@@ -1658,6 +1830,9 @@ static void emit_return_stmt(void* self_, ast_return_stmt_t* stmt, void* out_)
 
     set_debug_location(llvm, AST_NODE(stmt));
 
+    // Emit destructors for all scopes before returning
+    emit_all_scope_destructors(llvm);
+
     if (stmt->value_expr != nullptr)
     {
         LLVMValueRef return_val = nullptr;
@@ -1677,6 +1852,9 @@ static void emit_break_stmt(void* self_, ast_break_stmt_t* stmt, void* out_)
 
     set_debug_location(llvm, AST_NODE(stmt));
 
+    // Emit destructors for all scopes before breaking out of loop
+    emit_all_scope_destructors(llvm);
+
     // Jump to the break block of the current loop
     LLVMBuildBr(llvm->builder, llvm->loop_context->break_block);
 }
@@ -1687,6 +1865,9 @@ static void emit_continue_stmt(void* self_, ast_continue_stmt_t* stmt, void* out
     (void)out_;
 
     set_debug_location(llvm, AST_NODE(stmt));
+
+    // Emit destructors for all scopes before continuing to next iteration
+    emit_all_scope_destructors(llvm);
 
     // Jump to the continue block of the current loop
     LLVMBuildBr(llvm->builder, llvm->loop_context->continue_block);
@@ -1743,6 +1924,9 @@ static void emit_for_stmt(void* self_, ast_for_stmt_t* stmt, void* out_)
 
     set_debug_location(llvm, AST_NODE(stmt));
 
+    // Push destructor scope for for-loop (includes init variables)
+    push_destructor_scope(llvm);
+
     // Emit init statement (if present) in current block
     if (stmt->init_stmt != nullptr)
         ast_visitor_visit(llvm, stmt->init_stmt, out_);
@@ -1797,6 +1981,12 @@ static void emit_for_stmt(void* self_, ast_for_stmt_t* stmt, void* out_)
 
     // Continue after for loop
     LLVMPositionBuilderAtEnd(llvm->builder, end_block);
+
+    // Destroy init variables when loop exits
+    emit_scope_destructors(llvm, llvm->destructor_scope);
+
+    // Pop destructor scope
+    pop_destructor_scope(llvm);
 }
 
 static void class_layout_destroy(void* layout_)

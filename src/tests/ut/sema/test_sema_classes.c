@@ -923,3 +923,116 @@ TEST(ut_sema_classes_fixture_t, arithmetic_assign_op_on_class_error)
 
     ast_node_destroy(root);
 }
+
+// Test that trait methods cannot be called externally
+TEST(ut_sema_classes_fixture_t, trait_method_cannot_be_called_externally)
+{
+    // Create class with trait method @destruct
+    ast_method_def_t* trait_method = (ast_method_def_t*)ast_method_def_create_va("destruct", nullptr,
+        ast_compound_stmt_create_empty(), nullptr);
+    trait_method->is_trait_impl = true;
+
+    ast_expr_t* error_node = ast_method_call_create_va(ast_ref_expr_create("obj"), "destruct", nullptr);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("MyType", trait_method, nullptr),
+        ast_fn_def_create_va("main", nullptr,
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(
+                    ast_var_decl_create("obj", ast_type_user_unresolved("MyType"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("MyType"), nullptr))),
+                ast_expr_stmt_create(error_node),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "has no method");
+
+    ast_node_destroy(root);
+}
+
+// Test that a regular method can shadow a trait method and be callable
+TEST(ut_sema_classes_fixture_t, regular_method_shadows_trait_method)
+{
+    // Create class with trait method @destruct AND regular method destruct
+    ast_method_def_t* trait_method = (ast_method_def_t*)ast_method_def_create_va("destruct", nullptr,
+        ast_compound_stmt_create_empty(), nullptr);
+    trait_method->is_trait_impl = true;
+
+    ast_method_def_t* regular_method = (ast_method_def_t*)ast_method_def_create_va("destruct", nullptr,
+        ast_compound_stmt_create_empty(), nullptr);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("MyType", trait_method, regular_method, nullptr),
+        ast_fn_def_create_va("main", nullptr,
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(
+                    ast_var_decl_create("obj", ast_type_user_unresolved("MyType"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("MyType"), nullptr))),
+                ast_expr_stmt_create(ast_method_call_create_va(ast_ref_expr_create("obj"), "destruct", nullptr)),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    ast_node_destroy(root);
+}
+
+// Test that trait methods cannot be called from within the class (via self)
+TEST(ut_sema_classes_fixture_t, trait_method_cannot_be_called_from_self)
+{
+    // Create class with trait method @destruct and another method that tries to call it
+    ast_method_def_t* trait_method = (ast_method_def_t*)ast_method_def_create_va("destruct", nullptr,
+        ast_compound_stmt_create_empty(), nullptr);
+    trait_method->is_trait_impl = true;
+
+    ast_expr_t* error_node = ast_method_call_create_va(ast_self_expr_create(false), "destruct", nullptr);
+
+    ast_method_def_t* some_fn = (ast_method_def_t*)ast_method_def_create_va("some_fn", nullptr,
+        ast_compound_stmt_create_va(
+            ast_expr_stmt_create(error_node),
+            nullptr),
+        nullptr);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("MyType", trait_method, some_fn, nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "has no method");
+
+    ast_node_destroy(root);
+}
+
+// Test that copying a class with a destructor produces an error
+TEST(ut_sema_classes_fixture_t, copy_class_with_destructor_error)
+{
+    // Create a class with @destruct trait method
+    ast_method_def_t* trait_method = (ast_method_def_t*)ast_method_def_create_va("destruct", nullptr,
+        ast_compound_stmt_create_empty(), nullptr);
+    trait_method->is_trait_impl = true;
+
+    // The error should occur on the assignment expression that copies the instance
+    ast_expr_t* error_node = ast_bin_op_create(TOKEN_ASSIGN,
+        ast_ref_expr_create("new_inst"),
+        ast_ref_expr_create("other_inst"));
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("NotCopyable", trait_method, nullptr),
+        ast_fn_def_create_va("main", nullptr,
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(
+                    ast_var_decl_create("other_inst", ast_type_user_unresolved("NotCopyable"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("NotCopyable"), nullptr))),
+                ast_decl_stmt_create(
+                    ast_var_decl_create("new_inst", ast_type_user_unresolved("NotCopyable"),
+                        ast_construct_expr_create_va(ast_type_user_unresolved("NotCopyable"), nullptr))),
+                ast_expr_stmt_create(error_node),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "cannot copy");
+
+    ast_node_destroy(root);
+}

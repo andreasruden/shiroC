@@ -60,6 +60,7 @@ symbol_t* symbol_clone(symbol_t* source, bool include_ast, symbol_t* parent_name
     {
         case SYMBOL_METHOD:
         case SYMBOL_FUNCTION:
+        case SYMBOL_TRAIT_IMPL:
             for (size_t i = 0; i < vec_size(&source->data.function.parameters); ++i)
             {
                 symbol_t* param = vec_get(&source->data.function.parameters, i);
