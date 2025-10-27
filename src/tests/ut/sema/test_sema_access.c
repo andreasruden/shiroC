@@ -655,3 +655,133 @@ TEST(ut_sema_access_fixture_t, namespace_chosen_over_function_in_ambiguous_acces
     ast_node_destroy(namespaced_func);
     symbol_destroy(namespaced_func_symb);
 }
+
+TEST(ut_sema_access_fixture_t, builtin_array_len_method)
+{
+    // Create: var arr: [i32, 5]; return arr.len();
+    ast_type_t* arr_type = ast_type_array(ast_type_builtin(TYPE_I32), 5);
+    ast_decl_t* var = ast_var_decl_create("arr", arr_type, nullptr);
+
+    ast_expr_t* arr_ref = ast_ref_expr_create("arr");
+    ast_expr_t* len_call = ast_method_call_create_va(arr_ref, "len", nullptr);
+    ast_stmt_t* return_stmt = ast_return_stmt_create(len_call);
+
+    ast_def_t* fn = ast_fn_def_create_va("test", ast_type_builtin(TYPE_USIZE),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(var),
+            return_stmt,
+            nullptr),
+        nullptr);
+
+    ast_root_t* root = ast_root_create_va(fn, nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    // Verify the method call is marked as builtin and has correct return type
+    ast_return_stmt_t* ret = (ast_return_stmt_t*)return_stmt;
+    ASSERT_NEQ(nullptr, ret->value_expr);
+    ASSERT_EQ(AST_EXPR_METHOD_CALL, AST_KIND(ret->value_expr));
+
+    ast_method_call_t* call = (ast_method_call_t*)ret->value_expr;
+    ASSERT_TRUE(call->is_builtin_method);
+    ASSERT_EQ(ast_type_builtin(TYPE_USIZE), call->base.type);
+
+    ast_node_destroy(root);
+}
+
+TEST(ut_sema_access_fixture_t, builtin_view_len_method)
+{
+    // Create: var v: [i32]; return v.len();
+    ast_type_t* view_type = ast_type_view(ast_type_builtin(TYPE_I32));
+    ast_decl_t* var = ast_var_decl_create("v", view_type, nullptr);
+
+    ast_expr_t* view_ref = ast_ref_expr_create("v");
+    ast_expr_t* len_call = ast_method_call_create_va(view_ref, "len", nullptr);
+    ast_stmt_t* return_stmt = ast_return_stmt_create(len_call);
+
+    ast_def_t* fn = ast_fn_def_create_va("test", ast_type_builtin(TYPE_USIZE),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(var),
+            return_stmt,
+            nullptr),
+        nullptr);
+
+    ast_root_t* root = ast_root_create_va(fn, nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    // Verify the method call is marked as builtin and has correct return type
+    ast_return_stmt_t* ret = (ast_return_stmt_t*)return_stmt;
+    ASSERT_NEQ(nullptr, ret->value_expr);
+    ASSERT_EQ(AST_EXPR_METHOD_CALL, AST_KIND(ret->value_expr));
+
+    ast_method_call_t* call = (ast_method_call_t*)ret->value_expr;
+    ASSERT_TRUE(call->is_builtin_method);
+    ASSERT_EQ(ast_type_builtin(TYPE_USIZE), call->base.type);
+
+    ast_node_destroy(root);
+}
+
+TEST(ut_sema_access_fixture_t, builtin_string_len_method)
+{
+    // Create: var s: string; return s.len();
+    ast_decl_t* var = ast_var_decl_create("s", ast_type_builtin(TYPE_STRING), nullptr);
+
+    ast_expr_t* str_ref = ast_ref_expr_create("s");
+    ast_expr_t* len_call = ast_method_call_create_va(str_ref, "len", nullptr);
+    ast_stmt_t* return_stmt = ast_return_stmt_create(len_call);
+
+    ast_def_t* fn = ast_fn_def_create_va("test", ast_type_builtin(TYPE_USIZE),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(var),
+            return_stmt,
+            nullptr),
+        nullptr);
+
+    ast_root_t* root = ast_root_create_va(fn, nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    // Verify the method call is marked as builtin and has correct return type
+    ast_return_stmt_t* ret = (ast_return_stmt_t*)return_stmt;
+    ASSERT_NEQ(nullptr, ret->value_expr);
+    ASSERT_EQ(AST_EXPR_METHOD_CALL, AST_KIND(ret->value_expr));
+
+    ast_method_call_t* call = (ast_method_call_t*)ret->value_expr;
+    ASSERT_TRUE(call->is_builtin_method);
+    ASSERT_EQ(ast_type_builtin(TYPE_USIZE), call->base.type);
+
+    ast_node_destroy(root);
+}
+
+TEST(ut_sema_access_fixture_t, builtin_string_raw_method)
+{
+    // Create: var s: string; return s.raw();
+    ast_decl_t* var = ast_var_decl_create("s", ast_type_builtin(TYPE_STRING), nullptr);
+
+    ast_expr_t* str_ref = ast_ref_expr_create("s");
+    ast_expr_t* raw_call = ast_method_call_create_va(str_ref, "raw", nullptr);
+    ast_stmt_t* return_stmt = ast_return_stmt_create(raw_call);
+
+    ast_def_t* fn = ast_fn_def_create_va("test", ast_type_pointer(ast_type_builtin(TYPE_U8)),
+        ast_compound_stmt_create_va(
+            ast_decl_stmt_create(var),
+            return_stmt,
+            nullptr),
+        nullptr);
+
+    ast_root_t* root = ast_root_create_va(fn, nullptr);
+
+    ASSERT_SEMA_SUCCESS_WITH_DECL_COLLECTOR(AST_NODE(root));
+
+    // Verify the method call is marked as builtin and has correct return type
+    ast_return_stmt_t* ret = (ast_return_stmt_t*)return_stmt;
+    ASSERT_NEQ(nullptr, ret->value_expr);
+    ASSERT_EQ(AST_EXPR_METHOD_CALL, AST_KIND(ret->value_expr));
+
+    ast_method_call_t* call = (ast_method_call_t*)ret->value_expr;
+    ASSERT_TRUE(call->is_builtin_method);
+    ASSERT_EQ(ast_type_pointer(ast_type_builtin(TYPE_U8)), call->base.type);
+
+    ast_node_destroy(root);
+}

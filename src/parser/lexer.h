@@ -32,6 +32,7 @@ typedef enum
     TOKEN_NULL,
     TOKEN_RETURN,
     TOKEN_SELF,
+    TOKEN_STRING,
     TOKEN_TRUE,
     TOKEN_U8,
     TOKEN_U16,
@@ -46,7 +47,7 @@ typedef enum
 
     // Literals
     TOKEN_INTEGER,
-    TOKEN_STRING,
+    TOKEN_STRING_LIT,
     TOKEN_FLOAT,
 
     // Delimiters

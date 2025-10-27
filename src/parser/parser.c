@@ -240,7 +240,7 @@ static ast_expr_t* parse_uninit_lit(parser_t* parser)
 
 static ast_expr_t* parse_str_lit(parser_t* parser)
 {
-    token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_STRING);
+    token_t* tok = lexer_next_token_iff(parser->lexer, TOKEN_STRING_LIT);
     if (tok == nullptr)
         return nullptr;
 
@@ -507,7 +507,7 @@ ast_expr_t* parser_parse_primary_expr(parser_t* parser)
         case TOKEN_TRUE:
         case TOKEN_FALSE:
             return parse_bool_lit(parser);
-        case TOKEN_STRING:
+        case TOKEN_STRING_LIT:
             return parse_str_lit(parser);
         case TOKEN_NULL:
             return parse_null_lit(parser);
@@ -1259,7 +1259,7 @@ static ast_def_t* parse_extern_def(parser_t* parser)
     if (!tok_extern)
         return nullptr;
 
-    token_t* tok_abi = lexer_next_token_iff(parser->lexer, TOKEN_STRING);
+    token_t* tok_abi = lexer_next_token_iff(parser->lexer, TOKEN_STRING_LIT);
     if (tok_abi == nullptr)
         return nullptr;
 

@@ -14,6 +14,7 @@ typedef struct ast_method_call
     char* method_name;
     vec_t arguments;          // ast_expr_t*
     size_t overload_index;    // set by SEMA during overload resolution
+    bool is_builtin_method;
 } ast_method_call_t;
 
 ast_expr_t* ast_method_call_create(ast_expr_t* instance, const char* method_name, vec_t* arguments);

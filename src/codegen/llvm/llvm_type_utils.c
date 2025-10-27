@@ -40,6 +40,14 @@ LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
                     return LLVMFloatTypeInContext(ctx);
                 case TYPE_F64:
                     return LLVMDoubleTypeInContext(ctx);
+                case TYPE_STRING:
+                {
+                    // string is a struct { u8* data, usize len }
+                    LLVMTypeRef ptr_type = LLVMPointerTypeInContext(ctx, 0);
+                    LLVMTypeRef size_type = LLVMInt64TypeInContext(ctx);
+                    LLVMTypeRef fields[] = { ptr_type, size_type };
+                    return LLVMStructTypeInContext(ctx, fields, 2, false);
+                }
                 case TYPE_NULL:
                     // TODO: Should SEMA output TYPE_NULL or the actual pointer type?
                     return LLVMPointerTypeInContext(ctx, 0);

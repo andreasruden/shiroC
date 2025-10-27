@@ -1329,9 +1329,9 @@ static void* analyze_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
     return lit;
 }
 
-// verify that in "instance".<expr> expression, the instance is a valid class instance
-// returns a symbol to the class the instance refers to
-static symbol_t* verify_class_instance(semantic_analyzer_t* sema, ast_expr_t** instance_inout, void* out_)
+// verify that in "instance".<expr> expression, the instance is a valid type with methods (or members)
+// returns the symbol table that contains the methods the type defines (for classes also members)
+static symbol_table_t* verify_method_instance(semantic_analyzer_t* sema, ast_expr_t** instance_inout, void* out_)
 {
     bool was_lvalue_ctx = sema->is_lvalue_context;
     sema->is_lvalue_context = true;
@@ -1343,50 +1343,55 @@ static symbol_t* verify_class_instance(semantic_analyzer_t* sema, ast_expr_t** i
     if (instance->type == ast_type_invalid())
         return nullptr;
 
-    // Expression before '.' must be a user-type or pointer to user type
-    if (instance->type->kind != AST_TYPE_USER &&
-        !(instance->type->kind == AST_TYPE_POINTER && instance->type->data.pointer.pointee->kind == AST_TYPE_USER))
+    // Expression before '.' must be a type with methods
+    symbol_table_t* builtin_methods = semantic_context_builtin_methods_for_type(sema->ctx, instance->type);
+    if (!(instance->type->kind == AST_TYPE_USER ||
+        (instance->type->kind == AST_TYPE_POINTER && instance->type->data.pointer.pointee->kind == AST_TYPE_USER) ||
+        builtin_methods != nullptr))
     {
-        semantic_context_add_error(sema->ctx, instance, "not class type or pointer to class type");
+        semantic_context_add_error(sema->ctx, instance, ssprintf("type '%s' has no methods or members",
+            ast_type_string(instance->type)));
         return nullptr;
     }
 
     // If instance is a class value (not a pointer), it must be an l-value.
     // If instance is a pointer to a class, the pointer can be an r-value because
     // dereferencing creates an l-value (e.g., getPtr().x is valid).
-    if (instance->type->kind == AST_TYPE_USER && !instance->is_lvalue)
+    if (instance->type->kind != AST_TYPE_POINTER && !instance->is_lvalue)
     {
         semantic_context_add_error(sema->ctx, instance, "not l-value");
         return nullptr;
     }
 
-    symbol_t* class_symb = instance->type->kind == AST_TYPE_USER ? instance->type->data.user.class_symbol :
-        instance->type->data.pointer.pointee->data.user.class_symbol;
-    panic_if(class_symb == nullptr || class_symb->kind != SYMBOL_CLASS);
+    symbol_table_t* table = builtin_methods;
+    if (instance->type->kind == AST_TYPE_USER)
+        table = instance->type->data.user.class_symbol->data.class.symbols;
+    else if (instance->type->kind == AST_TYPE_POINTER && instance->type->data.pointer.pointee->kind == AST_TYPE_USER)
+        table = instance->type->data.pointer.pointee->data.user.class_symbol->data.class.symbols;
 
-    return class_symb;
+    return table;
 }
 
 static void* analyze_member_access(void* self_, ast_member_access_t* access, void* out_)
 {
     semantic_analyzer_t* sema = self_;
 
-    symbol_t* class_symb = verify_class_instance(sema, &access->instance, out_);
-    if (class_symb == nullptr)
+    symbol_table_t* member_and_method_table = verify_method_instance(sema, &access->instance, out_);
+    if (member_and_method_table == nullptr)
     {
         access->base.type = ast_type_invalid();
         return access;
     }
 
     // Make sure class contains the specified name as a member
-    symbol_t* member_symb = symbol_table_lookup_local(class_symb->data.class.symbols, access->member_name);
+    symbol_t* member_symb = symbol_table_lookup_local(member_and_method_table, access->member_name);
     if (member_symb != nullptr && member_symb->kind != SYMBOL_MEMBER)
         member_symb = nullptr;
 
     if (member_symb == nullptr)
     {
         semantic_context_add_error(sema->ctx, access, ssprintf("type '%s' has no member '%s'",
-            access->instance->type->data.user.name, access->member_name));
+            ast_type_string(access->instance->type), access->member_name));
         access->base.type = ast_type_invalid();
         return access;
     }
@@ -1445,19 +1450,19 @@ static void* analyze_method_call(void* self_, ast_method_call_t* call, void* out
 {
     semantic_analyzer_t* sema = self_;
 
-    symbol_t* class_symb = verify_class_instance(sema, &call->instance, out_);
-    if (class_symb == nullptr)
+    symbol_table_t* method_table = verify_method_instance(sema, &call->instance, out_);
+    if (method_table == nullptr)
     {
         call->base.type = ast_type_invalid();
         return call;
     }
 
     // Make sure class contains the specified name as a method
-    vec_t* method_defs = symbol_table_overloads(class_symb->data.class.symbols, call->method_name);
+    vec_t* method_defs = symbol_table_overloads(method_table, call->method_name);
     if (method_defs == nullptr)
     {
         semantic_context_add_error(sema->ctx, call, ssprintf("type '%s' has no method '%s'",
-            call->instance->type->data.user.name, call->method_name));
+            ast_type_string(call->instance->type), call->method_name));
         call->base.type = ast_type_invalid();
         return call;
     }
@@ -1469,6 +1474,7 @@ static void* analyze_method_call(void* self_, ast_method_call_t* call, void* out
         return call;
     }
 
+    call->is_builtin_method = chosen_method->data.function.is_builtin;
     call->method_symbol = chosen_method;
     call->base.is_lvalue = false;
     call->base.type = chosen_method->data.function.return_type;
@@ -1564,7 +1570,8 @@ static void* analyze_str_lit(void* self_, ast_str_lit_t* lit, void* out_)
     (void)out_;
 
     lit->base.is_lvalue = false;
-    lit->base.type = ast_type_builtin(TYPE_VOID);  // FIXME: We don't have a string type yet
+    lit->base.type = ast_type_builtin(TYPE_STRING);
+
     return lit;
 }
 

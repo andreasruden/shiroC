@@ -36,6 +36,7 @@ typedef struct symbol
             ast_type_t* return_type;
             size_t overload_index;
             char* extern_abi;         // nullpt if function is not extern decl
+            bool is_builtin;
         } function;  // used by function & method
 
         struct

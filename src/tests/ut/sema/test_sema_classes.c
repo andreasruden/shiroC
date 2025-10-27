@@ -426,7 +426,7 @@ TEST(ut_sema_classes_fixture_t, member_access_on_non_class_type)
             nullptr),
         nullptr);
 
-    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "not class type");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "no methods or members");
 
     ast_node_destroy(root);
 }
@@ -785,7 +785,7 @@ TEST(ut_sema_classes_fixture_t, double_pointer_member_access_fails)
             nullptr),
         nullptr);
 
-    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "not class type");
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "no methods or members");
 
     ast_node_destroy(root);
 }

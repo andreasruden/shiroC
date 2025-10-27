@@ -1,0 +1,49 @@
+//! run
+
+extern "C" fn puts(str: u8*);
+
+fn test_array_len() -> i32 {
+    var arr = [1, 2, 3, 4, 5];
+    var len = arr.len() as i32;
+
+    if (len == 5) {
+        return 0;
+    }
+    return 1;
+}
+
+fn test_string_len() -> i32 {
+    var str = "hello world";
+
+    var str2: string;
+    str2 = str;
+
+    if (str2.len() == 11usize) {
+        return 0;
+    }
+    return 1;
+}
+
+fn test_view_len() -> i32 {
+    var arr = [1, 2, 3, 4, 5];
+    var v = arr[2..4];
+
+    if (v.len() == 2usize) {
+        return 0;
+    }
+    return 1;
+}
+
+fn print_my_str(str: string) {
+    puts(str.raw());
+}
+
+fn main() -> i32 {
+    var array_result = test_array_len();
+    var string_result = test_string_len();
+    var view_result = test_view_len();
+
+    print_my_str("hello there");  //! stdout: "hello there"
+
+    return array_result + string_result + view_result;
+}

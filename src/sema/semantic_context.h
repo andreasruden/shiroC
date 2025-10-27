@@ -17,6 +17,11 @@ typedef struct semantic_context
     vec_t error_nodes;    // vec<ast_node_t*>: nodes that have semantic errors, we do not own these nodes (AST does)
     vec_t warning_nodes;  // vec<ast_node_t*>: nodes that have semantic warnings, we do not own these nodes (AST does)
 
+    // Builtin type methods
+    symbol_table_t* builtin_methods[TYPE_END];  // For TYPE_STRING, etc.
+    symbol_table_t* array_methods;              // For AST_TYPE_ARRAY
+    symbol_table_t* view_methods;               // For AST_TYPE_VIEW
+
     vec_t builtin_ast_gc;     // AST that was injected with semantic_context_register_builtins
 } semantic_context_t;
 
@@ -40,5 +45,7 @@ void semantic_context_add_warning(semantic_context_t* ctx, void* ast_node, const
 // symbols: symbol_table to use as exports, or nullptr to create empty namespace
 symbol_t* semantic_context_register_namespace(semantic_context_t* ctx, symbol_t* parent_namespace, const char* name,
     symbol_table_t* symbols);
+
+symbol_table_t* semantic_context_builtin_methods_for_type(semantic_context_t* ctx, ast_type_t* type);
 
 #endif

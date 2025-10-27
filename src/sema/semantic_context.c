@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void register_builtin_methods(semantic_context_t* ctx);
+
 semantic_context_t* semantic_context_create(const char* project_name, const char* module_name)
 {
     semantic_context_t* ctx = malloc(sizeof(*ctx));
@@ -48,6 +50,8 @@ semantic_context_t* semantic_context_create(const char* project_name, const char
 
     vec_push(&ctx->scope_stack, global_scope);
 
+    register_builtin_methods(ctx);
+
     return ctx;
 }
 
@@ -67,6 +71,10 @@ void semantic_context_destroy(semantic_context_t* ctx)
     vec_deinit(&ctx->warning_nodes);
     vec_deinit(&ctx->builtin_ast_gc);
     vec_deinit(&ctx->imports);
+    for (size_t i = 0; i < TYPE_END; ++i)
+        symbol_table_destroy(ctx->builtin_methods[i]);
+    symbol_table_destroy(ctx->array_methods);
+    symbol_table_destroy(ctx->view_methods);
     free(ctx);
 }
 
@@ -161,4 +169,50 @@ symbol_t* semantic_context_register_namespace(semantic_context_t* ctx, symbol_t*
     symbol_table_insert(ctx->global, ns_symbol);
 
     return ns_symbol;
+}
+
+symbol_table_t* semantic_context_builtin_methods_for_type(semantic_context_t* ctx, ast_type_t* type)
+{
+    switch (type->kind)
+    {
+        case AST_TYPE_BUILTIN:
+            return ctx->builtin_methods[type->data.builtin.type];
+        case AST_TYPE_ARRAY:
+            return ctx->array_methods;
+        case AST_TYPE_VIEW:
+            return ctx->view_methods;
+        default:
+            return nullptr;
+    }
+}
+
+static void register_builtin_methods(semantic_context_t* ctx)
+{
+    // TYPE_STRING methods
+    symbol_table_t* string = symbol_table_create(nullptr, SCOPE_CLASS);
+    symbol_t* str_len_method = symbol_create("len", SYMBOL_METHOD, nullptr, nullptr);
+    str_len_method->data.function.return_type = ast_type_builtin(TYPE_USIZE);
+    str_len_method->data.function.is_builtin = true;
+    symbol_t* str_raw_method = symbol_create("raw", SYMBOL_METHOD, nullptr, nullptr);
+    str_raw_method->data.function.return_type = ast_type_pointer(ast_type_builtin(TYPE_U8));
+    str_raw_method->data.function.is_builtin = true;
+    symbol_table_insert(string, str_len_method);
+    symbol_table_insert(string, str_raw_method);
+    ctx->builtin_methods[TYPE_STRING] = string;
+
+    // ARRAY methods
+    symbol_table_t* array = symbol_table_create(nullptr, SCOPE_CLASS);
+    symbol_t* arr_len_method = symbol_create("len", SYMBOL_METHOD, nullptr, nullptr);
+    arr_len_method->data.function.return_type = ast_type_builtin(TYPE_USIZE);
+    arr_len_method->data.function.is_builtin = true;
+    symbol_table_insert(array, arr_len_method);
+    ctx->array_methods = array;
+
+    // VIEW methods
+    symbol_table_t* view = symbol_table_create(nullptr, SCOPE_CLASS);
+    symbol_t* view_len_method = symbol_create("len", SYMBOL_METHOD, nullptr, nullptr);
+    view_len_method->data.function.return_type = ast_type_builtin(TYPE_USIZE);
+    view_len_method->data.function.is_builtin = true;
+    symbol_table_insert(view, view_len_method);
+    ctx->view_methods = view;
 }

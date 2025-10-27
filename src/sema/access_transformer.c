@@ -108,6 +108,12 @@ static ast_expr_t* transform_ref_expr(semantic_analyzer_t* sema, ast_ref_expr_t*
             symbol_t* class_symbol = symb_type->data.user.class_symbol;
             *symbol_table = class_symbol->data.class.symbols;
         }
+        else
+        {
+            symbol_table_t* builtin_methods = semantic_context_builtin_methods_for_type(sema->ctx, symb_type);
+            if (builtin_methods != nullptr)
+                *symbol_table = builtin_methods;
+        }
 
         ref_expr->base.type = symb_type;
     }

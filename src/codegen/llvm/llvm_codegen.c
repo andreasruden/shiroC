@@ -8,8 +8,10 @@
 #include "ast/expr/coercion_expr.h"
 #include "ast/expr/construct_expr.h"
 #include "ast/expr/member_init.h"
+#include "ast/expr/method_call.h"
 #include "ast/expr/ref_expr.h"
 #include "ast/expr/self_expr.h"
+#include "ast/expr/str_lit.h"
 #include "ast/expr/uninit_lit.h"
 #include "ast/stmt/for_stmt.h"
 #include "ast/stmt/inc_dec_stmt.h"
@@ -575,6 +577,60 @@ static void emit_int_lit(void* self_, ast_int_lit_t* lit, void* out_)
         ast_type_is_signed(lit->base.type));
 }
 
+static void emit_str_lit(void* self_, ast_str_lit_t* lit, void* out_)
+{
+    llvm_codegen_t* llvm = self_;
+    LLVMValueRef* out_val = out_;
+    bool ret_lvalue = llvm->lvalue;
+
+    // Calculate string length (not including null terminator)
+    size_t str_len = strlen(lit->value);
+
+    // Create a global constant string for the character data
+    // LLVMConstStringInContext creates an array of i8 with null terminator if last param is false
+    LLVMTypeRef str_array_type = LLVMArrayType(LLVMInt8TypeInContext(llvm->context), (unsigned int)(str_len + 1));
+    LLVMValueRef str_const = LLVMConstStringInContext(llvm->context, lit->value, (unsigned int)str_len, false);
+
+    // Add global variable for the string data
+    LLVMValueRef global_str = LLVMAddGlobal(llvm->module, str_array_type, ".str");
+    LLVMSetInitializer(global_str, str_const);
+    LLVMSetGlobalConstant(global_str, true);
+    LLVMSetLinkage(global_str, LLVMPrivateLinkage);
+    LLVMSetUnnamedAddress(global_str, LLVMGlobalUnnamedAddr);
+
+    // Get pointer to the string data using GEP (cast array to pointer)
+    LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(llvm->context), 0, false);
+    LLVMValueRef indices[] = { zero, zero };
+    LLVMValueRef str_ptr = LLVMBuildInBoundsGEP2(llvm->builder, str_array_type, global_str, indices, 2, "str_ptr");
+
+    // Create the string struct { u8* data, usize len }
+    LLVMTypeRef string_type = llvm_type(llvm->context, lit->base.type);
+    LLVMValueRef string_alloc = LLVMBuildAlloca(llvm->builder, string_type, "string_lit");
+
+    // Store pointer to data in field 0
+    LLVMValueRef data_field_ptr = LLVMBuildStructGEP2(llvm->builder, string_type, string_alloc, 0, "data_field_ptr");
+    LLVMBuildStore(llvm->builder, str_ptr, data_field_ptr);
+
+    // Store length in field 1
+    LLVMValueRef len_value = LLVMConstInt(LLVMInt64TypeInContext(llvm->context), (unsigned long long)str_len, false);
+    LLVMValueRef len_field_ptr = LLVMBuildStructGEP2(llvm->builder, string_type, string_alloc, 1, "len_field_ptr");
+    LLVMBuildStore(llvm->builder, len_value, len_field_ptr);
+
+    // Return the string struct
+    if (out_val != nullptr)
+    {
+        if (ret_lvalue)
+        {
+            *out_val = string_alloc;
+        }
+        else
+        {
+            LLVMValueRef loaded_val = LLVMBuildLoad2(llvm->builder, string_type, string_alloc, "load_string");
+            *out_val = loaded_val;
+        }
+    }
+}
+
 static void emit_member_access(void* self_, ast_member_access_t* access, void* out_)
 {
     llvm_codegen_t* llvm = self_;
@@ -626,20 +682,91 @@ static void emit_member_init(void* self_, ast_member_init_t* init, void* out_)
     ast_visitor_visit(llvm, init->init_expr, out_);
 }
 
+static void emit_builtin_method_call(llvm_codegen_t* llvm, ast_method_call_t* call, LLVMValueRef* out_val)
+{
+    ast_type_t* instance_type = call->instance->type;
+    const char* method_name = call->method_name;
+
+    // Get the instance as an lvalue (address of the variable/expression)
+    llvm->lvalue = true;
+    LLVMValueRef instance_addr = nullptr;
+    ast_visitor_visit(llvm, call->instance, &instance_addr);
+    llvm->lvalue = false;
+    panic_if(instance_addr == nullptr);
+
+    LLVMValueRef result = nullptr;
+
+    // string.len() or string.raw()
+    if (instance_type == ast_type_builtin(TYPE_STRING))
+    {
+        if (strcmp(method_name, "len") == 0)
+        {
+            // Extract length field (field 1)
+            LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 0, false),
+                LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 1, false) };
+            LLVMValueRef len_ptr = LLVMBuildInBoundsGEP2(llvm->builder, llvm_type(llvm->context, instance_type),
+                instance_addr, indices, 2, "str_len_ptr");
+            result = LLVMBuildLoad2(llvm->builder, LLVMInt64TypeInContext(llvm->context), len_ptr, "str_len");
+        }
+        else if (strcmp(method_name, "raw") == 0)
+        {
+            // Extract raw pointer field (field 0)
+            LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 0, false),
+                LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 0, false) };
+            LLVMValueRef ptr_field = LLVMBuildInBoundsGEP2(llvm->builder, llvm_type(llvm->context, instance_type),
+                instance_addr, indices, 2, "str_raw_ptr");
+            result = LLVMBuildLoad2(llvm->builder, LLVMPointerTypeInContext(llvm->context, 0), ptr_field,
+                "str_raw");
+        }
+    }
+    // array.len()
+    else if (instance_type->kind == AST_TYPE_ARRAY)
+    {
+        if (strcmp(method_name, "len") == 0)
+            result = LLVMConstInt(LLVMInt64TypeInContext(llvm->context), instance_type->data.array.size, false);
+    }
+    // view.len()
+    else if (instance_type->kind == AST_TYPE_VIEW)
+    {
+        if (strcmp(method_name, "len") == 0)
+        {
+            // Extract length field (field 0 for view)
+            LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 0, false),
+                LLVMConstInt(LLVMInt32TypeInContext(llvm->context), 0, false) };
+            LLVMValueRef len_ptr = LLVMBuildInBoundsGEP2(llvm->builder, llvm_type(llvm->context, instance_type),
+                instance_addr, indices, 2, "view_len_ptr");
+            result = LLVMBuildLoad2(llvm->builder, LLVMInt64TypeInContext(llvm->context), len_ptr, "view_len");
+        }
+    }
+
+    panic_if(result == nullptr);
+
+    if (out_val != nullptr)
+        *out_val = result;
+
+    return;
+}
+
 static void emit_method_call(void* self_, ast_method_call_t* call, void* out_)
 {
     llvm_codegen_t* llvm = self_;
     LLVMValueRef* out_val = out_;
 
-    // Get the class type (handle both direct class and pointer to class)
+    set_debug_location(llvm, AST_NODE(call));
+
+    if (call->is_builtin_method)
+    {
+        emit_builtin_method_call(llvm, call, out_val);
+        return;
+    }
+
+    // Handle regular class method calls
     ast_type_t* instance_type = call->instance->type;
     ast_type_t* class_type = instance_type;
     if (instance_type->kind == AST_TYPE_POINTER)
         class_type = instance_type->data.pointer.pointee;
 
     panic_if(class_type->kind != AST_TYPE_USER);
-
-    set_debug_location(llvm, AST_NODE(call));
 
     symbol_t* method_symb = call->method_symbol;
     const char* mangled_name = MANGLE_FUNCTION_NAME(method_symb);
@@ -1732,7 +1859,7 @@ llvm_codegen_t* llvm_codegen_create(const char* project_name, const char* module
             .visit_self_expr = emit_self_expr,
             .visit_unary_op = emit_unary_op,
             .visit_uninit_lit = emit_uninit_lit,
-            // .visit_str_lit = emit_str_lit, FIXME:
+            .visit_str_lit = emit_str_lit,
             // Statements
             .visit_break_stmt = emit_break_stmt,
             .visit_compound_stmt = emit_compound_stmt,

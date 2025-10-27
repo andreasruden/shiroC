@@ -20,6 +20,7 @@ typedef enum type
     TYPE_USIZE,
     TYPE_F32,
     TYPE_F64,
+    TYPE_STRING,
     TYPE_NULL,
     TYPE_UNINIT,
 

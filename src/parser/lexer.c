@@ -44,6 +44,7 @@ static keyword_t lexer_keywords[] =
     {"null", TOKEN_NULL},
     {"return", TOKEN_RETURN},
     {"self", TOKEN_SELF},
+    {"string", TOKEN_STRING},
     {"true", TOKEN_TRUE},
     {"u8", TOKEN_U8},
     {"u16", TOKEN_U16},
@@ -79,7 +80,7 @@ string_t token_str(token_t* tok)
     switch (tok->type)
     {
         case TOKEN_IDENTIFIER:
-        case TOKEN_STRING:
+        case TOKEN_STRING_LIT:
         case TOKEN_INTEGER:
         case TOKEN_FLOAT:
             string_append_cstr(&out, ssprintf(" (%s)", tok->value));
@@ -94,6 +95,7 @@ const char* token_type_str(token_type_t type)
 {
     switch (type)
     {
+        case TOKEN_STRING: return "string";
         case TOKEN_AS: return "as";
         case TOKEN_EXTERN: return "extern";
         case TOKEN_EXPORT: return "export";
@@ -128,7 +130,7 @@ const char* token_type_str(token_type_t type)
         case TOKEN_RETURN: return "return";
         case TOKEN_IDENTIFIER: return "identifier";
         case TOKEN_INTEGER: return "number";
-        case TOKEN_STRING: return "string-literal";
+        case TOKEN_STRING_LIT: return "string-literal";
         case TOKEN_LPAREN: return "(";
         case TOKEN_RPAREN: return ")";
         case TOKEN_LBRACE: return "{";
@@ -432,7 +434,7 @@ static token_t* lex_string(lexer_t* lexer)
 
     lexer_advance(lexer); // Skip closing quote
 
-    token_t* tok = token_create(lexer, TOKEN_STRING, value, start_line, start_col);
+    token_t* tok = token_create(lexer, TOKEN_STRING_LIT, value, start_line, start_col);
     free(value);
     return tok;
 }

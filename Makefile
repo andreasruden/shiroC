@@ -247,7 +247,7 @@ valgrind-ut: $(UT_TARGETS)
 	done
 
 valgrind-st:  $(BIN_DIR)
-	python3 ./scripts/systemtester/tester.py --valgrind -c ./build/bin/shiro src/tests/st/
+	python3 ./scripts/systemtester/tester.py --valgrind -r -c ./build/bin/shiro src/tests/st/
 
 .PHONY: valgrind-tests
 valgrind-tests: valgrind-ut valgrind-st

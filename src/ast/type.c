@@ -195,21 +195,22 @@ ast_type_t* ast_type_from_token(token_t* tok)
     // Resolve token -> type
     switch (tok->type)
     {
-        case TOKEN_BOOL:  return ast_type_builtin(TYPE_BOOL);
-        case TOKEN_VOID:  return ast_type_builtin(TYPE_VOID);
-        case TOKEN_I8:    return ast_type_builtin(TYPE_I8);
-        case TOKEN_I16:   return ast_type_builtin(TYPE_I16);
-        case TOKEN_I32:   return ast_type_builtin(TYPE_I32);
-        case TOKEN_I64:   return ast_type_builtin(TYPE_I64);
-        case TOKEN_ISIZE: return ast_type_builtin(TYPE_ISIZE);
-        case TOKEN_U8:    return ast_type_builtin(TYPE_U8);
-        case TOKEN_U16:   return ast_type_builtin(TYPE_U16);
-        case TOKEN_U32:   return ast_type_builtin(TYPE_U32);
-        case TOKEN_U64:   return ast_type_builtin(TYPE_U64);
-        case TOKEN_USIZE: return ast_type_builtin(TYPE_USIZE);
-        case TOKEN_F32:   return ast_type_builtin(TYPE_F32);
-        case TOKEN_F64:   return ast_type_builtin(TYPE_F64);
-        case TOKEN_NULL:  return ast_type_builtin(TYPE_NULL);
+        case TOKEN_BOOL:   return ast_type_builtin(TYPE_BOOL);
+        case TOKEN_VOID:   return ast_type_builtin(TYPE_VOID);
+        case TOKEN_I8:     return ast_type_builtin(TYPE_I8);
+        case TOKEN_I16:    return ast_type_builtin(TYPE_I16);
+        case TOKEN_I32:    return ast_type_builtin(TYPE_I32);
+        case TOKEN_I64:    return ast_type_builtin(TYPE_I64);
+        case TOKEN_ISIZE:  return ast_type_builtin(TYPE_ISIZE);
+        case TOKEN_U8:     return ast_type_builtin(TYPE_U8);
+        case TOKEN_U16:    return ast_type_builtin(TYPE_U16);
+        case TOKEN_U32:    return ast_type_builtin(TYPE_U32);
+        case TOKEN_U64:    return ast_type_builtin(TYPE_U64);
+        case TOKEN_USIZE:  return ast_type_builtin(TYPE_USIZE);
+        case TOKEN_F32:    return ast_type_builtin(TYPE_F32);
+        case TOKEN_F64:    return ast_type_builtin(TYPE_F64);
+        case TOKEN_STRING: return ast_type_builtin(TYPE_STRING);
+        case TOKEN_NULL:   return ast_type_builtin(TYPE_NULL);
 
         case TOKEN_IDENTIFIER:
         return ast_type_user_unresolved(tok->value);
@@ -323,6 +324,7 @@ size_t ast_type_sizeof(ast_type_t* type)
                 case TYPE_USIZE: return sizeof(void*);
                 case TYPE_F32: return 4;
                 case TYPE_F64: return 8;
+                case TYPE_STRING: return 2 * sizeof(void*);
                 case TYPE_VOID:
                 case TYPE_NULL:
                 case TYPE_UNINIT:
@@ -349,7 +351,7 @@ size_t ast_type_sizeof(ast_type_t* type)
 bool ast_type_has_equality(ast_type_t* type)
 {
     if (type->kind == AST_TYPE_BUILTIN)
-        return type->data.builtin.type != TYPE_VOID;
+        return type->data.builtin.type != TYPE_VOID && type->data.builtin.type != TYPE_STRING;
     else if (type->kind == AST_TYPE_POINTER)
         return true;
     return false;
@@ -409,7 +411,12 @@ ast_coercion_kind_t ast_type_can_coerce(ast_type_t* from, ast_type_t* to)
     // Check floating point specific coercions
     if (ast_type_is_real(from) && ast_type_is_real(to))
     {
-
+        int from_sz = ast_type_sizeof(from);
+        int to_sz = ast_type_sizeof(to);
+        if (from_sz == to_sz)
+            return COERCION_EQUAL;
+        if (from_sz < to_sz)
+            return COERCION_WIDEN;
     }
 
     return COERCION_INVALID;
@@ -506,6 +513,7 @@ const char* type_to_str(type_t type)
         case TYPE_F32:    return "f32";
         case TYPE_F64:    return "f64";
         case TYPE_NULL:   return "null_t";
+        case TYPE_STRING: return "string";
         case TYPE_END:    panic("Not a valid value");
     }
 
