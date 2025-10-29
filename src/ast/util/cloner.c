@@ -23,7 +23,22 @@
 #include "ast/expr/str_lit.h"
 #include "ast/expr/unary_op.h"
 #include "ast/expr/uninit_lit.h"
+#include "ast/decl/member_decl.h"
+#include "ast/decl/param_decl.h"
+#include "ast/decl/type_param_decl.h"
+#include "ast/decl/var_decl.h"
+#include "ast/def/method_def.h"
+#include "ast/stmt/break_stmt.h"
+#include "ast/stmt/compound_stmt.h"
+#include "ast/stmt/continue_stmt.h"
+#include "ast/stmt/decl_stmt.h"
+#include "ast/stmt/expr_stmt.h"
+#include "ast/stmt/for_stmt.h"
+#include "ast/stmt/if_stmt.h"
+#include "ast/stmt/inc_dec_stmt.h"
+#include "ast/stmt/return_stmt.h"
 #include "ast/stmt/stmt.h"
+#include "ast/stmt/while_stmt.h"
 #include "ast/visitor.h"
 #include "common/containers/vec.h"
 #include "common/debug/panic.h"
@@ -254,33 +269,184 @@ ast_expr_t* ast_expr_clone(ast_expr_t* expr)
     return cloner.result;
 }
 
-// TODO: Implement full AST cloning for template instantiation
-// Stubs for now - return nullptr to indicate not yet implemented
-
-ast_fn_def_t* ast_fn_def_clone(ast_fn_def_t* fn)
-{
-    (void)fn;
-    // TODO: Implement full function cloning
-    return nullptr;
-}
-
-ast_class_def_t* ast_class_def_clone(ast_class_def_t* class_def)
-{
-    (void)class_def;
-    // TODO: Implement full class cloning
-    return nullptr;
-}
-
 ast_stmt_t* ast_stmt_clone(ast_stmt_t* stmt)
 {
-    (void)stmt;
-    // TODO: Implement full statement cloning
-    return nullptr;
+    if (stmt == nullptr)
+        return nullptr;
+
+    switch (AST_KIND(stmt))
+    {
+        case AST_STMT_COMPOUND:
+        {
+            ast_compound_stmt_t* compound = (ast_compound_stmt_t*)stmt;
+            vec_t cloned_stmts = VEC_INIT(ast_node_destroy);
+            for (size_t i = 0; i < vec_size(&compound->inner_stmts); ++i)
+            {
+                ast_stmt_t* inner = vec_get(&compound->inner_stmts, i);
+                vec_push(&cloned_stmts, ast_stmt_clone(inner));
+            }
+            return ast_compound_stmt_create(&cloned_stmts);
+        }
+        case AST_STMT_EXPR:
+        {
+            ast_expr_stmt_t* expr_stmt = (ast_expr_stmt_t*)stmt;
+            return ast_expr_stmt_create(ast_expr_clone(expr_stmt->expr));
+        }
+        case AST_STMT_DECL:
+        {
+            ast_decl_stmt_t* decl_stmt = (ast_decl_stmt_t*)stmt;
+            return ast_decl_stmt_create(ast_decl_clone(decl_stmt->decl));
+        }
+        case AST_STMT_RETURN:
+        {
+            ast_return_stmt_t* ret = (ast_return_stmt_t*)stmt;
+            ast_expr_t* cloned_expr = ret->value_expr != nullptr ? ast_expr_clone(ret->value_expr) : nullptr;
+            return ast_return_stmt_create(cloned_expr);
+        }
+        case AST_STMT_IF:
+        {
+            ast_if_stmt_t* if_stmt = (ast_if_stmt_t*)stmt;
+            ast_expr_t* cloned_cond = ast_expr_clone(if_stmt->condition);
+            ast_stmt_t* cloned_then = ast_stmt_clone(if_stmt->then_branch);
+            ast_stmt_t* cloned_else = if_stmt->else_branch != nullptr ? ast_stmt_clone(if_stmt->else_branch) : nullptr;
+            return ast_if_stmt_create(cloned_cond, cloned_then, cloned_else);
+        }
+        case AST_STMT_WHILE:
+        {
+            ast_while_stmt_t* while_stmt = (ast_while_stmt_t*)stmt;
+            return ast_while_stmt_create(ast_expr_clone(while_stmt->condition), ast_stmt_clone(while_stmt->body));
+        }
+        case AST_STMT_FOR:
+        {
+            ast_for_stmt_t* for_stmt = (ast_for_stmt_t*)stmt;
+            ast_stmt_t* cloned_init = for_stmt->init_stmt != nullptr ? ast_stmt_clone(for_stmt->init_stmt) : nullptr;
+            ast_expr_t* cloned_cond = for_stmt->cond_expr != nullptr ? ast_expr_clone(for_stmt->cond_expr) : nullptr;
+            ast_stmt_t* cloned_post = for_stmt->post_stmt != nullptr ? ast_stmt_clone(for_stmt->post_stmt) : nullptr;
+            return ast_for_stmt_create(cloned_init, cloned_cond, cloned_post, ast_stmt_clone(for_stmt->body));
+        }
+        case AST_STMT_BREAK:
+            return ast_break_stmt_create();
+        case AST_STMT_CONTINUE:
+            return ast_continue_stmt_create();
+        case AST_STMT_INC_DEC:
+        {
+            ast_inc_dec_stmt_t* inc_dec = (ast_inc_dec_stmt_t*)stmt;
+            return ast_inc_dec_stmt_create(ast_expr_clone(inc_dec->operand), inc_dec->increment);
+        }
+        default:
+            panic("Unsupported statement kind for cloning: %d", AST_KIND(stmt));
+    }
 }
 
 ast_decl_t* ast_decl_clone(ast_decl_t* decl)
 {
-    (void)decl;
-    // TODO: Implement full declaration cloning
-    return nullptr;
+    if (decl == nullptr)
+        return nullptr;
+
+    switch (AST_KIND(decl))
+    {
+        case AST_DECL_VAR:
+        {
+            ast_var_decl_t* var = (ast_var_decl_t*)decl;
+            ast_expr_t* cloned_init = var->init_expr != nullptr ? ast_expr_clone(var->init_expr) : nullptr;
+            return ast_var_decl_create(var->name, var->type, cloned_init);
+        }
+        case AST_DECL_PARAM:
+        {
+            ast_param_decl_t* param = (ast_param_decl_t*)decl;
+            return ast_param_decl_create(param->name, param->type);
+        }
+        case AST_DECL_MEMBER:
+        {
+            ast_member_decl_t* member = (ast_member_decl_t*)decl;
+            ast_expr_t* cloned_init = member->base.init_expr != nullptr ? ast_expr_clone(member->base.init_expr) : nullptr;
+            return ast_member_decl_create(member->base.name, member->base.type, cloned_init);
+        }
+        case AST_DECL_TYPE_PARAM:
+        {
+            ast_type_param_decl_t* type_param = (ast_type_param_decl_t*)decl;
+            return ast_type_param_decl_create(type_param->name);
+        }
+        default:
+            panic("Unsupported declaration kind for cloning: %d", AST_KIND(decl));
+    }
+}
+
+ast_fn_def_t* ast_fn_def_clone(ast_fn_def_t* fn)
+{
+    if (fn == nullptr)
+        return nullptr;
+
+    vec_t cloned_type_params = VEC_INIT(ast_node_destroy);
+    for (size_t i = 0; i < vec_size(&fn->type_params); ++i)
+    {
+        ast_type_param_decl_t* type_param = vec_get(&fn->type_params, i);
+        vec_push(&cloned_type_params, ast_decl_clone((ast_decl_t*)type_param));
+    }
+
+    vec_t cloned_params = VEC_INIT(ast_node_destroy);
+    for (size_t i = 0; i < vec_size(&fn->params); ++i)
+    {
+        ast_param_decl_t* param = vec_get(&fn->params, i);
+        vec_push(&cloned_params, ast_decl_clone((ast_decl_t*)param));
+    }
+
+    ast_stmt_t* cloned_body = fn->body != nullptr ? ast_stmt_clone(fn->body) : nullptr;
+
+    ast_fn_def_t* cloned = (ast_fn_def_t*)ast_fn_def_create(fn->base.name, &cloned_params, fn->return_type, cloned_body,
+        fn->exported);
+
+    cloned->type_params = cloned_type_params;
+    cloned->overload_index = fn->overload_index;
+    if (fn->extern_abi != nullptr)
+        cloned->extern_abi = strdup(fn->extern_abi);
+
+    return cloned;
+}
+
+ast_class_def_t* ast_class_def_clone(ast_class_def_t* class_def)
+{
+    if (class_def == nullptr)
+        return nullptr;
+
+    vec_t cloned_type_params = VEC_INIT(ast_node_destroy);
+    for (size_t i = 0; i < vec_size(&class_def->type_params); ++i)
+    {
+        ast_type_param_decl_t* type_param = vec_get(&class_def->type_params, i);
+        vec_push(&cloned_type_params, ast_decl_clone((ast_decl_t*)type_param));
+    }
+
+    vec_t cloned_members = VEC_INIT(ast_node_destroy);
+    for (size_t i = 0; i < vec_size(&class_def->members); ++i)
+    {
+        ast_member_decl_t* member = vec_get(&class_def->members, i);
+        vec_push(&cloned_members, ast_decl_clone((ast_decl_t*)member));
+    }
+
+    vec_t cloned_methods = VEC_INIT(ast_node_destroy);
+    for (size_t i = 0; i < vec_size(&class_def->methods); ++i)
+    {
+        ast_method_def_t* method = vec_get(&class_def->methods, i);
+
+        vec_t cloned_method_params = VEC_INIT(ast_node_destroy);
+        for (size_t j = 0; j < vec_size(&method->base.params); ++j)
+        {
+            ast_param_decl_t* param = vec_get(&method->base.params, j);
+            vec_push(&cloned_method_params, ast_decl_clone((ast_decl_t*)param));
+        }
+
+        ast_stmt_t* cloned_method_body = method->base.body != nullptr ? ast_stmt_clone(method->base.body) : nullptr;
+
+        ast_method_def_t* cloned_method = (ast_method_def_t*)ast_method_def_create(method->base.base.name,
+            &cloned_method_params, method->base.return_type, cloned_method_body);
+
+        vec_push(&cloned_methods, cloned_method);
+    }
+
+    ast_class_def_t* cloned = (ast_class_def_t*)ast_class_def_create(class_def->base.name, &cloned_members,
+        &cloned_methods, class_def->exported);
+
+    cloned->type_params = cloned_type_params;
+
+    return cloned;
 }

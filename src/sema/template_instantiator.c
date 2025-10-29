@@ -193,13 +193,6 @@ symbol_t* instantiate_template_function(semantic_context_t* ctx, symbol_t* templ
         return cached;
 
     // Clone the template AST
-    // TODO: Implement ast_fn_def_clone in ast/util/cloner.c
-    // For now, return error - full cloning implementation needed
-    semantic_context_add_error(ctx, template_symbol->ast,
-        ssprintf("Template instantiation not yet fully implemented for '%s'", template_symbol->name));
-    return nullptr;
-
-#if 0  // Disabled until AST cloning is fully implemented
     ast_fn_def_t* template_fn = (ast_fn_def_t*)template_symbol->ast;
     ast_fn_def_t* cloned_fn = ast_fn_def_clone(template_fn);
     if (cloned_fn == nullptr)
@@ -248,7 +241,6 @@ symbol_t* instantiate_template_function(semantic_context_t* ctx, symbol_t* templ
     vec_push(&template_symbol->data.template.instantiations, instance_symbol);
 
     return instance_symbol;
-#endif
 }
 
 symbol_t* instantiate_template_class(semantic_context_t* ctx, symbol_t* template_symbol,
@@ -272,13 +264,6 @@ symbol_t* instantiate_template_class(semantic_context_t* ctx, symbol_t* template
         return cached;
 
     // Clone the template AST
-    // TODO: Implement ast_class_def_clone in ast/util/cloner.c
-    // For now, return error - full cloning implementation needed
-    semantic_context_add_error(ctx, template_symbol->ast,
-        ssprintf("Template instantiation not yet fully implemented for '%s'", template_symbol->name));
-    return nullptr;
-
-#if 0  // Disabled until AST cloning is fully implemented
     ast_class_def_t* template_class = (ast_class_def_t*)template_symbol->ast;
     ast_class_def_t* cloned_class = ast_class_def_clone(template_class);
     if (cloned_class == nullptr)
@@ -325,5 +310,4 @@ symbol_t* instantiate_template_class(semantic_context_t* ctx, symbol_t* template
     vec_push(&template_symbol->data.template.instantiations, instance_symbol);
 
     return instance_symbol;
-#endif
 }
