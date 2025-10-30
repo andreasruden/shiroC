@@ -197,10 +197,10 @@ static void emit_destructor_call(llvm_codegen_t* llvm, destructible_var_t* var)
         type = type->data.pointer.pointee;
 
     // Only user types (classes) can have destructors
-    if (type->kind != AST_TYPE_USER)
+    if (type->kind != AST_TYPE_CLASS)
         return;
 
-    symbol_t* class_symbol = type->data.user.class_symbol;
+    symbol_t* class_symbol = type->data.class.class_symbol;
     symbol_t* destructor = find_destructor_method(class_symbol);
 
     if (destructor == nullptr)
@@ -801,8 +801,8 @@ static void emit_member_access(void* self_, ast_member_access_t* access, void* o
     if (instance_type->kind == AST_TYPE_POINTER)
         class_type = instance_type->data.pointer.pointee;
 
-    panic_if(class_type->kind != AST_TYPE_USER);
-    const char* fq_class_name = class_type->data.user.class_symbol->fully_qualified_name;
+    panic_if(class_type->kind != AST_TYPE_CLASS);
+    const char* fq_class_name = class_type->data.class.class_symbol->fully_qualified_name;
 
     // Get the instance as an lvalue (address of the variable/expression)
     llvm->lvalue = true;
@@ -924,7 +924,7 @@ static void emit_method_call(void* self_, ast_method_call_t* call, void* out_)
     if (instance_type->kind == AST_TYPE_POINTER)
         class_type = instance_type->data.pointer.pointee;
 
-    panic_if(class_type->kind != AST_TYPE_USER);
+    panic_if(class_type->kind != AST_TYPE_CLASS);
 
     symbol_t* method_symb = call->method_symbol;
     const char* mangled_name = MANGLE_FUNCTION_NAME(method_symb);
@@ -1583,7 +1583,7 @@ static void emit_construct_expr(void* self_, ast_construct_expr_t* construct, vo
     bool ret_lvalue = llvm->lvalue;
     panic_if(out == nullptr);
 
-    const char* fq_class_name = construct->class_type->data.user.class_symbol->fully_qualified_name;
+    const char* fq_class_name = construct->class_type->data.class.class_symbol->fully_qualified_name;
     class_layout_t* layout = hash_table_find(&llvm->class_layouts, fq_class_name);
     panic_if(layout == nullptr);
 

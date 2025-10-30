@@ -103,9 +103,9 @@ static ast_expr_t* transform_ref_expr(semantic_analyzer_t* sema, ast_ref_expr_t*
         if (symb_type->kind == AST_TYPE_POINTER)
             symb_type = symb_type->data.pointer.pointee;
 
-        if (symb_type->kind == AST_TYPE_USER)
+        if (symb_type->kind == AST_TYPE_CLASS)
         {
-            symbol_t* class_symbol = symb_type->data.user.class_symbol;
+            symbol_t* class_symbol = symb_type->data.class.class_symbol;
             *symbol_table = class_symbol->data.class.symbols;
         }
         else

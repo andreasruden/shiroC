@@ -39,10 +39,13 @@ static void ast_type_destroy(void* type_)
         return;
     }
 
-    if (type->kind == AST_TYPE_USER)
+    if (type->kind == AST_TYPE_CLASS || type->kind == AST_TYPE_TEMPLATE_INSTANCE)
     {
         // NOTE: class_symbol is owned by semantic_context, not by the type
-        free(type->data.user.name);
+        // Both AST_TYPE_CLASS and AST_TYPE_TEMPLATE_INSTANCE share the same data structure
+        free(type->data.class.name);
+        if (type->data.class.type_arguments != nullptr)
+            vec_destroy(type->data.class.type_arguments);
     }
     else if (type->kind == AST_TYPE_POINTER)
         free(type->data.pointer.str_repr);
@@ -58,11 +61,6 @@ static void ast_type_destroy(void* type_)
         free(type->data.view.str_repr);
     else if (type->kind == AST_TYPE_VARIABLE)
         free(type->data.type_variable.name);
-    else if (type->kind == AST_TYPE_TEMPLATE_INSTANCE)
-    {
-        free(type->data.template_instance.type_arguments);
-        free(type->data.template_instance.str_repr);
-    }
 
     free(type);
 }
@@ -84,8 +82,8 @@ ast_type_t* ast_type_user(symbol_t* class_symbol)
     panic_if(ast_type == nullptr);
 
     *ast_type = (ast_type_t){
-        .kind = AST_TYPE_USER,
-        .data.user.class_symbol = class_symbol,
+        .kind = AST_TYPE_CLASS,
+        .data.class.class_symbol = class_symbol,
     };
     set_default_traits(ast_type);
     hash_table_insert(user_cache, class_symbol->fully_qualified_name, ast_type);
@@ -103,10 +101,10 @@ ast_type_t* ast_type_user_unresolved(const char* type_name)
     panic_if(ast_type == nullptr);
 
     *ast_type = (ast_type_t){
-        .kind = AST_TYPE_USER,
-        .data.user.name = strdup(type_name),
-        .data.user.type_arguments = nullptr,
-        .data.user.num_type_arguments = 0,
+        .kind = AST_TYPE_CLASS,
+        .data.class.name = strdup(type_name),
+        .data.class.type_arguments = nullptr,
+        .data.class.template_symbol = nullptr,
     };
     set_default_traits(ast_type);
     hash_table_insert(user_unresolved_cache, type_name, ast_type);
@@ -130,15 +128,16 @@ ast_type_t* ast_type_user_unresolved_with_args(const char* type_name, ast_type_t
     ast_type = malloc(sizeof(ast_type_t));
     panic_if(ast_type == nullptr);
 
-    // Copy type arguments array
-    ast_type_t** args_copy = malloc(sizeof(ast_type_t*) * num_type_args);
-    memcpy(args_copy, type_args, sizeof(ast_type_t*) * num_type_args);
+    // Copy type arguments into vec
+    vec_t* args_vec = vec_create(nullptr);
+    for (size_t i = 0; i < num_type_args; ++i)
+        vec_push(args_vec, type_args[i]);
 
     *ast_type = (ast_type_t){
-        .kind = AST_TYPE_USER,
-        .data.user.name = strdup(type_name),
-        .data.user.type_arguments = args_copy,
-        .data.user.num_type_arguments = num_type_args,
+        .kind = AST_TYPE_CLASS,
+        .data.class.name = strdup(type_name),
+        .data.class.type_arguments = args_vec,
+        .data.class.template_symbol = nullptr,
     };
     set_default_traits(ast_type);
     hash_table_insert(user_unresolved_cache, key, ast_type);
@@ -254,13 +253,16 @@ ast_type_t* ast_type_variable(const char* name)
     return type_var;
 }
 
-ast_type_t* ast_type_template_instance(symbol_t* template_symbol, ast_type_t** type_args, size_t num_type_args)
+ast_type_t* ast_type_template_instance(symbol_t* template_symbol, vec_t* type_args)
 {
     // Generate cache key: template symbol address + type argument addresses
     string_t key_str = STRING_INIT;
     string_append_cstr(&key_str, ssprintf("%p", template_symbol));
-    for (size_t i = 0; i < num_type_args; ++i)
-        string_append_cstr(&key_str, ssprintf(",%p", type_args[i]));
+    for (size_t i = 0; i < vec_size(type_args); ++i)
+    {
+        ast_type_t* arg = vec_get(type_args, i);
+        string_append_cstr(&key_str, ssprintf(",%p", arg));
+    }
     const char* key = string_release(&key_str);
 
     ast_type_t* instance = hash_table_find(template_instance_cache, key);
@@ -269,15 +271,17 @@ ast_type_t* ast_type_template_instance(symbol_t* template_symbol, ast_type_t** t
 
     instance = malloc(sizeof(*instance));
 
-    // Copy type arguments array
-    ast_type_t** args_copy = malloc(sizeof(ast_type_t*) * num_type_args);
-    memcpy(args_copy, type_args, sizeof(ast_type_t*) * num_type_args);
+    // Copy type arguments into vec (shares data structure with class)
+    vec_t* args_vec = vec_create(nullptr);
+    for (size_t i = 0; i < vec_size(type_args); ++i)
+        vec_push(args_vec, vec_get(type_args, i));
 
     *instance = (ast_type_t){
         .kind = AST_TYPE_TEMPLATE_INSTANCE,
-        .data.template_instance.template_symbol = template_symbol,
-        .data.template_instance.type_arguments = args_copy,
-        .data.template_instance.num_type_arguments = num_type_args,
+        .data.class.name = nullptr,
+        .data.class.class_symbol = template_symbol,
+        .data.class.type_arguments = args_vec,
+        .data.class.template_symbol = template_symbol,
     };
     set_default_traits(instance);
     hash_table_insert(template_instance_cache, key, instance);
@@ -449,7 +453,7 @@ size_t ast_type_sizeof(ast_type_t* type)
         case AST_TYPE_POINTER:
             return sizeof(void*);
         case AST_TYPE_HEAP_ARRAY:
-        case AST_TYPE_USER:
+        case AST_TYPE_CLASS:
         case AST_TYPE_INVALID:
         case AST_TYPE_VARIABLE:
         case AST_TYPE_TEMPLATE_INSTANCE:
@@ -539,11 +543,11 @@ const char* ast_type_string(ast_type_t* type)
     {
         case AST_TYPE_BUILTIN:
             return type_to_str(type->data.builtin.type);
-        case AST_TYPE_USER:
+        case AST_TYPE_CLASS:
         {
-            if (type->data.user.class_symbol)
-                return type->data.user.class_symbol->fully_qualified_name;
-            return type->data.user.name;
+            if (type->data.class.class_symbol)
+                return type->data.class.class_symbol->fully_qualified_name;
+            return type->data.class.name;
         }
         case AST_TYPE_INVALID:
             return "INVALID";
@@ -603,21 +607,29 @@ const char* ast_type_string(ast_type_t* type)
             return type->data.type_variable.name;
         case AST_TYPE_TEMPLATE_INSTANCE:
         {
-            if (type->data.template_instance.str_repr == nullptr)
+            if (type->data.class.class_symbol)
+                return type->data.class.class_symbol->fully_qualified_name;
+
+            if (type->data.class.str_repr)
+                return type->data.class.str_repr;
+
+            // Generate string representation with type arguments
+            string_t tmp = STRING_INIT;
+            string_append_cstr(&tmp, type->data.class.name);
+            string_append_char(&tmp, '<');
+            if (type->data.class.type_arguments != nullptr)
             {
-                string_t tmp = STRING_INIT;
-                string_append_cstr(&tmp, type->data.template_instance.template_symbol->name);
-                string_append_char(&tmp, '<');
-                for (size_t i = 0; i < type->data.template_instance.num_type_arguments; ++i)
+                for (size_t i = 0; i < vec_size(type->data.class.type_arguments); ++i)
                 {
-                    string_append_cstr(&tmp, ast_type_string(type->data.template_instance.type_arguments[i]));
-                    if (i + 1 < type->data.template_instance.num_type_arguments)
+                    ast_type_t* arg = vec_get(type->data.class.type_arguments, i);
+                    string_append_cstr(&tmp, ast_type_string(arg));
+                    if (i + 1 < vec_size(type->data.class.type_arguments))
                         string_append_cstr(&tmp, ", ");
                 }
-                string_append_char(&tmp, '>');
-                type->data.template_instance.str_repr = string_release(&tmp);
             }
-            return type->data.template_instance.str_repr;
+            string_append_char(&tmp, '>');
+            type->data.class.str_repr = string_release(&tmp);
+            return type->data.class.str_repr;
         }
     }
 

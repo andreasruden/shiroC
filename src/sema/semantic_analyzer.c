@@ -2,6 +2,7 @@
 
 #include "ast/decl/member_decl.h"
 #include "ast/decl/param_decl.h"
+#include "ast/decl/type_param_decl.h"
 #include "ast/def/fn_def.h"
 #include "ast/def/import_def.h"
 #include "ast/def/method_def.h"
@@ -30,6 +31,7 @@
 #include "sema/semantic_context.h"
 #include "sema/symbol.h"
 #include "sema/symbol_table.h"
+#include "sema/template_instantiator.h"
 #include "sema/type_resolver.h"
 #include <math.h>
 #include <stdint.h>
@@ -305,14 +307,20 @@ static void* analyze_class_def(void* self_, ast_class_def_t* class_def, void* ou
     panic_if(class_symb == nullptr);
     panic_if(class_symb->ast != AST_NODE(class_def));
 
-    // Check if this is a template definition (not an instance)
-    bool is_template = vec_size(&class_def->type_params) > 0 && class_symb->kind == SYMBOL_TEMPLATE_CLASS;
-    bool was_in_template = sema->is_in_template_context;
-    if (is_template)
-        sema->is_in_template_context = true;
-
     semantic_context_push_scope(sema->ctx, SCOPE_CLASS);
     sema->current_class = class_symb;
+
+    // Check if this is a template definition (not an instance)
+    if (class_symb->kind == SYMBOL_TEMPLATE_CLASS)
+    {
+        sema->is_in_template_context = true;
+        // Add type parameters into class scope
+        for (size_t i = 0; i < vec_size(&class_def->type_params); ++i)
+        {
+            ast_type_param_decl_t* type_param = vec_get(&class_def->type_params, i);
+            symbol_table_insert(sema->ctx->current, symbol_clone(type_param->symbol, true, class_symb));
+        }
+    }
 
     // Add "self" to scope
     ast_decl_t* self_decl = ast_member_decl_create("self", ast_type_user(class_symb), nullptr);
@@ -337,10 +345,11 @@ static void* analyze_class_def(void* self_, ast_class_def_t* class_def, void* ou
 
     ast_node_destroy(self_decl);
     semantic_context_pop_scope(sema->ctx);
+    sema->is_in_template_context = false;
     sema->current_class = nullptr;
-    sema->is_in_template_context = was_in_template;
     return class_def;
 }
+
 static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
 {
     // TODO: This and method is very similar, should try to reuse their impl
@@ -352,15 +361,21 @@ static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     panic_if(fn->return_type == nullptr);  // solved by decl_collector
     panic_if(fn->symbol == nullptr);
 
-    // Check if this is a template definition (not an instance)
-    bool is_template = vec_size(&fn->type_params) > 0 && fn->symbol->kind == SYMBOL_TEMPLATE_FUNCTION;
-    bool was_in_template = sema->is_in_template_context;
-    if (is_template)
-        sema->is_in_template_context = true;
-
     semantic_context_push_scope(sema->ctx, SCOPE_FUNCTION);
     sema->current_function = fn->symbol;
     sema->current_function_scope = sema->ctx->current;
+
+    // If template definition (not an instance), add template parameters to function scope
+    bool is_template = fn->symbol->kind == SYMBOL_TEMPLATE_FN;
+    if (is_template)
+    {
+        sema->is_in_template_context = true;
+        for (size_t i = 0; i < vec_size(&fn->symbol->data.template_fn.type_parameters); ++i)
+        {
+            symbol_t* type_param_symb = vec_get(&fn->symbol->data.template_fn.type_parameters, i);
+            symbol_table_insert(sema->ctx->current, symbol_clone(type_param_symb, false, nullptr));
+        }
+    }
 
     for (size_t i = 0; i < vec_size(&fn->params); ++i)
         AST_TRANSFORMER_TRANSFORM_VEC(sema, &fn->params, i, out_);
@@ -380,7 +395,6 @@ static void* analyze_fn_def(void* self_, ast_fn_def_t* fn, void* out_)
     semantic_context_pop_scope(sema->ctx);
     sema->current_function = nullptr;
     sema->current_function_scope = nullptr;
-    sema->is_in_template_context = was_in_template;
     return fn;
 }
 
@@ -992,6 +1006,91 @@ static symbol_t* analyze_call_and_method_shared(semantic_analyzer_t* sema, void*
     return function;
 }
 
+// Helper function to infer type arguments and instantiate a template function
+// Returns the instantiated function symbol, or nullptr on error
+static symbol_t* infer_and_instantiate_template_function(semantic_analyzer_t* sema, symbol_t* template_symbol,
+    ast_call_expr_t* call)
+{
+    ast_fn_def_t* template_fn_def = (ast_fn_def_t*)template_symbol->data.template_fn.template_ast;
+    size_t num_type_params = vec_size(&template_symbol->data.template_fn.type_parameters);
+    vec_t inferred_types = VEC_INIT(nullptr);
+
+    for (size_t i = 0; i < num_type_params; ++i)
+        vec_push(&inferred_types, nullptr);
+
+    // FIXME: This ends up visiting the parameters twice (also later in call_expr analysis)
+    // Analyze arguments to get their types for inference
+    for (size_t i = 0; i < vec_size(&call->arguments); ++i)
+    {
+        ast_expr_t* arg = vec_get(&call->arguments, i);
+        arg = ast_transformer_transform(sema, arg, nullptr);
+        vec_replace(&call->arguments, i, arg);
+        if (arg->type == ast_type_invalid())
+            goto cleanup;
+    }
+
+    // Verify argument count
+    if (num_type_params != vec_size(&call->arguments))
+    {
+        semantic_context_add_error(sema->ctx, call, ssprintf("template function '%s' expects %zu argument%s, got %zu",
+            template_symbol->name, num_type_params, num_type_params == 1 ? "" : "s", vec_size(&call->arguments)));
+        goto cleanup;
+    }
+
+    // Match each argument to its parameter and infer type variables
+    for (size_t i = 0; i < vec_size(&call->arguments); ++i)
+    {
+        ast_expr_t* arg = vec_get(&call->arguments, i);
+        ast_param_decl_t* param = vec_get(&template_fn_def->params, i);
+
+        if (param->type->kind != AST_TYPE_VARIABLE)
+            continue;
+
+        // Find which type parameter this is
+        const char* type_var_name = param->type->data.type_variable.name;
+        for (size_t j = 0; j < num_type_params; ++j)
+        {
+            symbol_t* type_param = vec_get(&template_symbol->data.template_fn.type_parameters, j);
+            if (strcmp(type_param->name, type_var_name) != 0)
+                continue;
+
+            if (vec_get(&inferred_types, i) == nullptr)
+            {
+                vec_replace(&inferred_types, j, arg->type);
+            }
+            else if (vec_get(&inferred_types, i) != arg->type)
+            {
+                semantic_context_add_error(sema->ctx, call, ssprintf(
+                    "conflicting types for type parameter '%s': '%s' vs '%s'",
+                    type_var_name, ast_type_string(vec_get(&inferred_types, i)), ast_type_string(arg->type)));
+                goto cleanup;
+            }
+            break;
+        }
+        // TODO: Handle more complex cases like pointers to type variables, arrays, etc.
+    }
+
+    // Check that all type parameters were inferred
+    for (size_t i = 0; i < num_type_params; ++i)
+    {
+        if (vec_get(&inferred_types, i) == nullptr)
+        {
+            symbol_t* type_param = vec_get(&template_symbol->data.template_fn.type_parameters, i);
+            semantic_context_add_error(sema->ctx, call, ssprintf(
+                "cannot infer type parameter '%s' from function arguments", type_param->name));
+            goto cleanup;
+        }
+    }
+
+    // Instantiate the template function
+    symbol_t* instance = instantiate_template_function(sema->ctx, template_symbol, &inferred_types);
+    return instance;
+
+cleanup:
+    vec_deinit(&inferred_types);
+    return nullptr;
+}
+
 static void* analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
 {
     (void)out_;
@@ -1057,11 +1156,25 @@ static void* analyze_call_expr(void* self_, ast_call_expr_t* call, void* out_)
         return ast_transformer_transform(sema, replacement, out_);  // visit method call
     }
 
-    if (symbol->kind != SYMBOL_FUNCTION)
+    if (symbol->kind != SYMBOL_FUNCTION && symbol->kind != SYMBOL_TEMPLATE_FN)
     {
         semantic_context_add_error(sema->ctx, call->function, ssprintf("symbol '%s' is not callable", symbol->name));
         call->base.type = ast_type_invalid();
         return call;
+    }
+
+    // Handle template function: infer type arguments and instantiate
+    if (symbol->kind == SYMBOL_TEMPLATE_FN)
+    {
+        symbol_t* instance = infer_and_instantiate_template_function(sema, symbol, call);
+        if (instance == nullptr)
+        {
+            call->base.type = ast_type_invalid();
+            return call;
+        }
+        // Replace symbol with the instantiated function
+        symbol = instance;
+        symbol_table = sema->ctx->global;  // Instances are registered globally
     }
 
     vec_t* symbols = symbol_table_overloads(symbol_table, symbol->name);
@@ -1104,10 +1217,12 @@ static void* analyzer_cast_expr(void* self_, ast_cast_expr_t* cast, void* out_)
 
     switch (cast->expr->type->kind)
     {
-        case AST_TYPE_USER:
+        case AST_TYPE_CLASS:
         case AST_TYPE_ARRAY:
         case AST_TYPE_HEAP_ARRAY:
         case AST_TYPE_VIEW:
+        case AST_TYPE_VARIABLE:
+        case AST_TYPE_TEMPLATE_INSTANCE:
             semantic_context_add_error(sema->ctx, cast, ssprintf("cannot cast '%s' to anything",
                 ast_type_string(cast->expr->type)));
             cast->base.type = ast_type_invalid();
@@ -1173,7 +1288,7 @@ static void* analyze_construct_expr(void* self_, ast_construct_expr_t* construct
         goto cleanup;
 
     // Verify type is correct
-    if (construct->class_type->kind != AST_TYPE_USER)
+    if (construct->class_type->kind != AST_TYPE_CLASS)
     {
         semantic_context_add_error(sema->ctx, construct, ssprintf("cannot construct type '%s'",
             ast_type_string(construct->class_type)));
@@ -1181,7 +1296,7 @@ static void* analyze_construct_expr(void* self_, ast_construct_expr_t* construct
         goto cleanup;
     }
 
-    symbol_t* class_symbol = construct->class_type->data.user.class_symbol;
+    symbol_t* class_symbol = construct->class_type->data.class.class_symbol;
     panic_if(class_symbol == nullptr || class_symbol->kind != SYMBOL_CLASS);
 
     // Visit every member initialization
@@ -1388,8 +1503,8 @@ static symbol_table_t* verify_method_instance(semantic_analyzer_t* sema, ast_exp
 
     // Expression before '.' must be a type with methods
     symbol_table_t* builtin_methods = semantic_context_builtin_methods_for_type(sema->ctx, instance->type);
-    if (!(instance->type->kind == AST_TYPE_USER ||
-        (instance->type->kind == AST_TYPE_POINTER && instance->type->data.pointer.pointee->kind == AST_TYPE_USER) ||
+    if (!(instance->type->kind == AST_TYPE_CLASS ||
+        (instance->type->kind == AST_TYPE_POINTER && instance->type->data.pointer.pointee->kind == AST_TYPE_CLASS) ||
         builtin_methods != nullptr))
     {
         semantic_context_add_error(sema->ctx, instance, ssprintf("type '%s' has no methods or members",
@@ -1407,10 +1522,10 @@ static symbol_table_t* verify_method_instance(semantic_analyzer_t* sema, ast_exp
     }
 
     symbol_table_t* table = builtin_methods;
-    if (instance->type->kind == AST_TYPE_USER)
-        table = instance->type->data.user.class_symbol->data.class.symbols;
-    else if (instance->type->kind == AST_TYPE_POINTER && instance->type->data.pointer.pointee->kind == AST_TYPE_USER)
-        table = instance->type->data.pointer.pointee->data.user.class_symbol->data.class.symbols;
+    if (instance->type->kind == AST_TYPE_CLASS)
+        table = instance->type->data.class.class_symbol->data.class.symbols;
+    else if (instance->type->kind == AST_TYPE_POINTER && instance->type->data.pointer.pointee->kind == AST_TYPE_CLASS)
+        table = instance->type->data.pointer.pointee->data.class.class_symbol->data.class.symbols;
 
     return table;
 }
@@ -1450,7 +1565,7 @@ static void* analyze_member_init(void* self_, ast_member_init_t* init, void* out
     char** out = out_;
     panic_if(out == nullptr);
 
-    symbol_t* class_symb = init->class_type->data.user.class_symbol;
+    symbol_t* class_symb = init->class_type->data.class.class_symbol;
     panic_if(class_symb == nullptr || class_symb->kind != SYMBOL_CLASS);
 
     // Make sure member is defined in class

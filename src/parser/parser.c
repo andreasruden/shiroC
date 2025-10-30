@@ -860,7 +860,7 @@ static ast_type_t* parse_type_annotation(parser_t* parser)
         lexer_next_token(parser->lexer);
 
         // If this is a user type (identifier) and followed by '<', parse type arguments
-        if (type->kind == AST_TYPE_USER && lexer_peek_token(parser->lexer)->type == TOKEN_LT)
+        if (type->kind == AST_TYPE_CLASS && lexer_peek_token(parser->lexer)->type == TOKEN_LT)
         {
             vec_t type_args = VEC_INIT(nullptr);  // vec of ast_type_t*
             if (!parse_type_arguments(parser, &type_args))
@@ -872,7 +872,7 @@ static ast_type_t* parse_type_annotation(parser_t* parser)
             // Create user type with type arguments
             if (type_args.length > 0)
             {
-                type = ast_type_user_unresolved_with_args(type->data.user.name,
+                type = ast_type_user_unresolved_with_args(type->data.class.name,
                     (ast_type_t**)type_args.mem, type_args.length);
             }
             vec_deinit(&type_args);

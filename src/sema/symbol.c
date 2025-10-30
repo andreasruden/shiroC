@@ -39,17 +39,28 @@ symbol_t* symbol_create(const char* name, symbol_kind_t kind, void* ast, symbol_
             symbol->data.namespace.exports = symbol_table_create(nullptr, SCOPE_EXPORT);
             break;
         case SYMBOL_TEMPLATE_CLASS:
-            [[fallthrough]];
-        case SYMBOL_TEMPLATE_FUNCTION:
-            // Template data structures will be initialized by the caller
+            symbol->data.template_class.cls.symbols = symbol_table_create(nullptr, SCOPE_CLASS);
+            symbol->data.template_class.type_parameters = VEC_INIT(nullptr);
+            symbol->data.template_class.instantiations = VEC_INIT(nullptr);
+            symbol->data.template_class.template_ast = nullptr;
             break;
-        case SYMBOL_CLASS_INSTANCE:
-            symbol->data.template_instance.type_arguments = VEC_INIT(nullptr);
-            symbol->data.class.symbols = symbol_table_create(nullptr, SCOPE_CLASS);
+        case SYMBOL_TEMPLATE_FN:
+            symbol->data.template_fn.fn.parameters = VEC_INIT(symbol_destroy_void);
+            symbol->data.template_fn.type_parameters = VEC_INIT(nullptr);
+            symbol->data.template_fn.instantiations = VEC_INIT(nullptr);
+            symbol->data.template_fn.template_ast = nullptr;
             break;
-        case SYMBOL_FUNCTION_INSTANCE:
-            symbol->data.template_instance.type_arguments = VEC_INIT(nullptr);
-            symbol->data.function.parameters = VEC_INIT(symbol_destroy_void);
+        case SYMBOL_TEMPLATE_CLASS_INST:
+            symbol->data.template_class_inst.cls.symbols = symbol_table_create(nullptr, SCOPE_CLASS);
+            symbol->data.template_class_inst.template_symbol = nullptr;
+            symbol->data.template_class_inst.type_arguments = VEC_INIT(nullptr);
+            symbol->data.template_class_inst.instantiated_ast = nullptr;
+            break;
+        case SYMBOL_TEMPLATE_FN_INST:
+            symbol->data.template_fn_inst.fn.parameters = VEC_INIT(symbol_destroy_void);
+            symbol->data.template_fn_inst.template_symbol = nullptr;
+            symbol->data.template_fn_inst.type_arguments = VEC_INIT(nullptr);
+            symbol->data.template_fn_inst.instantiated_ast = nullptr;
             break;
         default:
             break;
@@ -139,19 +150,22 @@ void symbol_destroy(symbol_t* symbol)
             symbol_table_destroy(symbol->data.namespace.exports);
             break;
         case SYMBOL_TEMPLATE_CLASS:
-            [[fallthrough]];
-        case SYMBOL_TEMPLATE_FUNCTION:
-            vec_deinit(&symbol->data.template.type_parameters);
-            vec_deinit(&symbol->data.template.instantiations);
-            symbol_table_destroy(symbol->data.template.scope);
+            vec_deinit(&symbol->data.template_class.type_parameters);
+            vec_deinit(&symbol->data.template_class.instantiations);
+            symbol_table_destroy(symbol->data.template_class.cls.symbols);
             break;
-        case SYMBOL_CLASS_INSTANCE:
-            vec_deinit(&symbol->data.template_instance.type_arguments);
-            symbol_table_destroy(symbol->data.class.symbols);
+        case SYMBOL_TEMPLATE_FN:
+            vec_deinit(&symbol->data.template_fn.type_parameters);
+            vec_deinit(&symbol->data.template_fn.instantiations);
+            vec_deinit(&symbol->data.template_fn.fn.parameters);
             break;
-        case SYMBOL_FUNCTION_INSTANCE:
-            vec_deinit(&symbol->data.template_instance.type_arguments);
-            vec_deinit(&symbol->data.function.parameters);
+        case SYMBOL_TEMPLATE_CLASS_INST:
+            vec_deinit(&symbol->data.template_class_inst.type_arguments);
+            symbol_table_destroy(symbol->data.template_class_inst.cls.symbols);
+            break;
+        case SYMBOL_TEMPLATE_FN_INST:
+            vec_deinit(&symbol->data.template_fn_inst.type_arguments);
+            vec_deinit(&symbol->data.template_fn_inst.fn.parameters);
             break;
         default:
             break;
@@ -179,6 +193,8 @@ static void fill_in_fully_qualified_name(symbol_t* symbol)
         {
             case SYMBOL_NAMESPACE:
             case SYMBOL_CLASS:
+            case SYMBOL_TEMPLATE_CLASS:
+            case SYMBOL_TEMPLATE_CLASS_INST:
                 string_append_cstr(&str, symbol->parent_namespace->fully_qualified_name);
                 string_append_char(&str, '.');
                 break;

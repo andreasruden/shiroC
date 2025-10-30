@@ -62,22 +62,18 @@ static void register_class_symbol(decl_collector_t* collector, ast_class_def_t* 
     symbol_t* parent_namespace = class_def->exported ? collector->ctx->module_namespace : nullptr;
     class_def->symbol = symbol_create(class_def->base.name, symbol_kind, class_def, parent_namespace);
 
-    // If template, create scope for type parameters and register them
+    // If template, register type parameters
     if (is_template)
     {
-        class_def->symbol->data.template.scope = symbol_table_create(nullptr, SCOPE_TEMPLATE);
-        class_def->symbol->data.template.template_ast = AST_NODE(class_def);
-        // Type parameters are owned by the scope symbol table, not by these vectors
-        class_def->symbol->data.template.type_parameters = VEC_INIT(nullptr);
-        class_def->symbol->data.template.instantiations = VEC_INIT(nullptr);
+        class_def->symbol->data.template_class.template_ast = AST_NODE(class_def);
+        // Type parameters vector initialized in symbol_create
 
         for (size_t i = 0; i < vec_size(&class_def->type_params); ++i)
         {
             ast_type_param_decl_t* type_param = vec_get(&class_def->type_params, i);
             symbol_t* type_param_symbol = symbol_create(type_param->name, SYMBOL_TYPE_PARAMETER, type_param, nullptr);
             type_param_symbol->type = ast_type_variable(type_param->name);
-            vec_push(&class_def->symbol->data.template.type_parameters, type_param_symbol);
-            symbol_table_insert(class_def->symbol->data.template.scope, type_param_symbol);
+            vec_push(&class_def->symbol->data.template_class.type_parameters, type_param_symbol);
         }
     }
     else
@@ -99,6 +95,10 @@ static void collect_class_def(void* self_, ast_class_def_t* class_def, void* out
 
     collector->current_class = class_def->symbol;
 
+    // Push class scope so members are visible when resolving member types
+    vec_push(&collector->ctx->scope_stack, class_def->symbol->data.class.symbols);
+    collector->ctx->current = class_def->symbol->data.class.symbols;
+
     for (size_t i = 0; i < vec_size(&class_def->members); ++i)
         ast_visitor_visit(collector, vec_get(&class_def->members, i), nullptr);
 
@@ -108,6 +108,8 @@ static void collect_class_def(void* self_, ast_class_def_t* class_def, void* out
     if (class_def->exported)
         symbol_table_insert(collector->ctx->exports, class_def->symbol);
 
+    vec_pop(&collector->ctx->scope_stack);
+    collector->ctx->current = vec_last(&collector->ctx->scope_stack);
     collector->current_class = nullptr;
 }
 
@@ -152,35 +154,36 @@ static void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
 
     // Check if this is a template function
     bool is_template = vec_size(&fn_def->type_params) > 0;
-    symbol_kind_t symbol_kind = is_template ? SYMBOL_TEMPLATE_FUNCTION : SYMBOL_FUNCTION;
+    symbol_kind_t symbol_kind = is_template ? SYMBOL_TEMPLATE_FN : SYMBOL_FUNCTION;
 
     // Create symbol & resolve parameter types
     symbol_t* parent_namespace = fn_def->exported ? collector->ctx->module_namespace : nullptr;
     symbol_t* symbol = symbol_create(fn_def->base.name, symbol_kind, fn_def, parent_namespace);
 
-    // If template, create scope for type parameters and register them
+    // If template, we need a function scope for type parameters, and we need to register them
     if (is_template)
     {
-        symbol->data.template.scope = symbol_table_create(nullptr, SCOPE_TEMPLATE);
-        symbol->data.template.template_ast = AST_NODE(fn_def);
-        // Type parameters are owned by the scope symbol table, not by these vectors
-        symbol->data.template.type_parameters = VEC_INIT(nullptr);
-        symbol->data.template.instantiations = VEC_INIT(nullptr);
+        semantic_context_push_scope(collector->ctx, SCOPE_FUNCTION);
+        symbol->data.template_fn.template_ast = AST_NODE(fn_def);
 
         for (size_t i = 0; i < vec_size(&fn_def->type_params); ++i)
         {
             ast_type_param_decl_t* type_param = vec_get(&fn_def->type_params, i);
             symbol_t* type_param_symbol = symbol_create(type_param->name, SYMBOL_TYPE_PARAMETER, type_param, nullptr);
             type_param_symbol->type = ast_type_variable(type_param->name);
-            vec_push(&symbol->data.template.type_parameters, type_param_symbol);
-            symbol_table_insert(symbol->data.template.scope, type_param_symbol);
+            vec_push(&symbol->data.template_fn.type_parameters, type_param_symbol);
+            symbol_table_insert(collector->ctx->current, type_param_symbol);
         }
     }
 
     for (size_t i = 0; i < vec_size(&fn_def->params); ++i)
         ast_visitor_visit(collector, vec_get(&fn_def->params, i), is_template ? nullptr : symbol);
 
-    // Handle function clashes with overloading rules (skip for templates for now)
+    // Pop template scope
+    if (is_template)
+        semantic_context_pop_scope(collector->ctx);
+
+    // Handle function clashes with overloading rules (skip templates until instantiation)
     vec_t* symbols = symbol_table_overloads(collector->ctx->global, fn_def->base.name);
     size_t num_prev_defs = symbols ? vec_size(symbols) : 0;
     if (!is_template && symbols != nullptr && !is_valid_overload(symbols, &fn_def->params))
@@ -265,6 +268,8 @@ static void collect_member_decl(void* self_, ast_member_decl_t* member, void* ou
         return;
 
     // Verify class does not already contain member by given name
+    // Note: data.class.symbols works for both regular and template classes because
+    // data.template.symbols is the first field and aliases with data.class.symbols
     symbol_t* prev_def = symbol_table_lookup_local(collector->current_class->data.class.symbols, member->base.name);
     if (prev_def != nullptr)
     {

@@ -4,6 +4,7 @@
 #include "ast/def/fn_def.h"
 #include "ast/transformer.h"
 #include "ast/util/cloner.h"
+#include "common/containers/vec.h"
 #include "common/debug/panic.h"
 #include "common/util/ssprintf.h"
 #include "sema/semantic_analyzer.h"
@@ -144,21 +145,23 @@ static void type_substitutor_destroy(type_substitutor_t* sub)
 }
 
 // Check if an instantiation with the given type args already exists
-static symbol_t* find_cached_instantiation(symbol_t* template_symbol, ast_type_t** type_args, size_t num_type_args)
+static symbol_t* find_cached_instantiation_fn(symbol_t* template_symbol, vec_t* type_args)
 {
-    for (size_t i = 0; i < vec_size(&template_symbol->data.template.instantiations); ++i)
+    size_t num_type_args = vec_size(type_args);
+    for (size_t i = 0; i < vec_size(&template_symbol->data.template_fn.instantiations); ++i)
     {
-        symbol_t* instance = vec_get(&template_symbol->data.template.instantiations, i);
+        symbol_t* instance = vec_get(&template_symbol->data.template_fn.instantiations, i);
 
         // Check if type arguments match
-        if (vec_size(&instance->data.template_instance.type_arguments) != num_type_args)
+        if (vec_size(&instance->data.template_fn_inst.type_arguments) != num_type_args)
             continue;
 
         bool match = true;
         for (size_t j = 0; j < num_type_args; ++j)
         {
-            ast_type_t* cached_arg = vec_get(&instance->data.template_instance.type_arguments, j);
-            if (cached_arg != type_args[j])
+            ast_type_t* cached_arg = vec_get(&instance->data.template_fn_inst.type_arguments, j);
+            ast_type_t* arg = vec_get(type_args, j);
+            if (cached_arg != arg)
             {
                 match = false;
                 break;
@@ -172,25 +175,59 @@ static symbol_t* find_cached_instantiation(symbol_t* template_symbol, ast_type_t
     return nullptr;
 }
 
-symbol_t* instantiate_template_function(semantic_context_t* ctx, symbol_t* template_symbol,
-    ast_type_t** type_args, size_t num_type_args)
+static symbol_t* find_cached_instantiation_class(symbol_t* template_symbol, vec_t* type_args)
 {
-    panic_if(template_symbol->kind != SYMBOL_TEMPLATE_FUNCTION);
+    size_t num_type_args = vec_size(type_args);
+    for (size_t i = 0; i < vec_size(&template_symbol->data.template_class.instantiations); ++i)
+    {
+        symbol_t* instance = vec_get(&template_symbol->data.template_class.instantiations, i);
 
+        // Check if type arguments match
+        if (vec_size(&instance->data.template_class_inst.type_arguments) != num_type_args)
+            continue;
+
+        bool match = true;
+        for (size_t j = 0; j < num_type_args; ++j)
+        {
+            ast_type_t* cached_arg = vec_get(&instance->data.template_class_inst.type_arguments, j);
+            ast_type_t* arg = vec_get(type_args, j);
+            if (cached_arg != arg)
+            {
+                match = false;
+                break;
+            }
+        }
+
+        if (match)
+            return instance;
+    }
+
+    return nullptr;
+}
+
+symbol_t* instantiate_template_function(semantic_context_t* ctx, symbol_t* template_symbol, vec_t* type_args)
+{
+    panic_if(template_symbol->kind != SYMBOL_TEMPLATE_FN);
+
+    size_t num_type_args = vec_size(type_args);
     // Check type argument count
-    size_t num_type_params = vec_size(&template_symbol->data.template.type_parameters);
+    size_t num_type_params = vec_size(&template_symbol->data.template_fn.type_parameters);
     if (num_type_params != num_type_args)
     {
         semantic_context_add_error(ctx, template_symbol->ast,
             ssprintf("Template '%s' expects %zu type arguments, got %zu", template_symbol->name,
                 num_type_params, num_type_args));
+        vec_destroy(type_args);
         return nullptr;
     }
 
     // Check cache
-    symbol_t* cached = find_cached_instantiation(template_symbol, type_args, num_type_args);
+    symbol_t* cached = find_cached_instantiation_fn(template_symbol, type_args);
     if (cached != nullptr)
+    {
+        vec_destroy(type_args);
         return cached;
+    }
 
     // Clone the template AST
     ast_fn_def_t* template_fn = (ast_fn_def_t*)template_symbol->ast;
@@ -199,19 +236,26 @@ symbol_t* instantiate_template_function(semantic_context_t* ctx, symbol_t* templ
     {
         semantic_context_add_error(ctx, template_symbol->ast,
             ssprintf("Failed to clone template function '%s'", template_symbol->name));
+        vec_destroy(type_args);
         return nullptr;
     }
 
     // Create type parameter symbol array
     symbol_t** type_param_symbols = malloc(sizeof(symbol_t*) * num_type_params);
     for (size_t i = 0; i < num_type_params; ++i)
-        type_param_symbols[i] = vec_get(&template_symbol->data.template.type_parameters, i);
+        type_param_symbols[i] = vec_get(&template_symbol->data.template_fn.type_parameters, i);
+
+    // Create type args array for substitutor
+    ast_type_t** type_args_array = malloc(sizeof(ast_type_t*) * num_type_args);
+    for (size_t i = 0; i < num_type_args; ++i)
+        type_args_array[i] = vec_get(type_args, i);
 
     // Perform type substitution
-    type_substitutor_t* sub = type_substitutor_create(type_param_symbols, type_args, num_type_params);
+    type_substitutor_t* sub = type_substitutor_create(type_param_symbols, type_args_array, num_type_params);
     ast_transformer_transform(sub, cloned_fn, nullptr);
     type_substitutor_destroy(sub);
     free(type_param_symbols);
+    free(type_args_array);
 
     // Create mangled name using ast_type_string
     // TODO: Implement proper name mangling with ast_type_string for each type arg
@@ -219,15 +263,13 @@ symbol_t* instantiate_template_function(semantic_context_t* ctx, symbol_t* templ
     char* mangled_name = ssprintf("%s<...>", template_symbol->name);  // Placeholder
 
     // Create instance symbol
-    symbol_t* instance_symbol = symbol_create(mangled_name, SYMBOL_FUNCTION_INSTANCE,
+    symbol_t* instance_symbol = symbol_create(mangled_name, SYMBOL_TEMPLATE_FN_INST,
         cloned_fn, template_symbol->parent_namespace);
 
-    // Fill in template_instance data
-    instance_symbol->data.template_instance.template_symbol = template_symbol;
-    instance_symbol->data.template_instance.type_arguments = VEC_INIT(nullptr);
-    for (size_t i = 0; i < num_type_args; ++i)
-        vec_push(&instance_symbol->data.template_instance.type_arguments, type_args[i]);
-    instance_symbol->data.template_instance.instantiated_ast = (ast_node_t*)cloned_fn;
+    // Fill in template_fn_inst data
+    instance_symbol->data.template_fn_inst.template_symbol = template_symbol;
+    vec_move(&instance_symbol->data.template_fn_inst.type_arguments, type_args);
+    instance_symbol->data.template_fn_inst.instantiated_ast = (ast_node_t*)cloned_fn;
 
     // Set the symbol on the cloned AST
     cloned_fn->symbol = instance_symbol;
@@ -238,18 +280,18 @@ symbol_t* instantiate_template_function(semantic_context_t* ctx, symbol_t* templ
     semantic_analyzer_destroy(sema);
 
     // Cache the instantiation
-    vec_push(&template_symbol->data.template.instantiations, instance_symbol);
+    vec_push(&template_symbol->data.template_fn.instantiations, instance_symbol);
 
     return instance_symbol;
 }
 
-symbol_t* instantiate_template_class(semantic_context_t* ctx, symbol_t* template_symbol,
-    ast_type_t** type_args, size_t num_type_args)
+symbol_t* instantiate_template_class(semantic_context_t* ctx, symbol_t* template_symbol, vec_t* type_args)
 {
     panic_if(template_symbol->kind != SYMBOL_TEMPLATE_CLASS);
 
+    size_t num_type_args = vec_size(type_args);
     // Check type argument count
-    size_t num_type_params = vec_size(&template_symbol->data.template.type_parameters);
+    size_t num_type_params = vec_size(&template_symbol->data.template_class.type_parameters);
     if (num_type_params != num_type_args)
     {
         semantic_context_add_error(ctx, template_symbol->ast,
@@ -259,7 +301,7 @@ symbol_t* instantiate_template_class(semantic_context_t* ctx, symbol_t* template
     }
 
     // Check cache
-    symbol_t* cached = find_cached_instantiation(template_symbol, type_args, num_type_args);
+    symbol_t* cached = find_cached_instantiation_class(template_symbol, type_args);
     if (cached != nullptr)
         return cached;
 
@@ -276,27 +318,32 @@ symbol_t* instantiate_template_class(semantic_context_t* ctx, symbol_t* template
     // Create type parameter symbol array
     symbol_t** type_param_symbols = malloc(sizeof(symbol_t*) * num_type_params);
     for (size_t i = 0; i < num_type_params; ++i)
-        type_param_symbols[i] = vec_get(&template_symbol->data.template.type_parameters, i);
+        type_param_symbols[i] = vec_get(&template_symbol->data.template_class.type_parameters, i);
+
+    // Create type args array for substitutor
+    ast_type_t** type_args_array = malloc(sizeof(ast_type_t*) * num_type_args);
+    for (size_t i = 0; i < num_type_args; ++i)
+        type_args_array[i] = vec_get(type_args, i);
 
     // Perform type substitution
-    type_substitutor_t* sub = type_substitutor_create(type_param_symbols, type_args, num_type_params);
+    type_substitutor_t* sub = type_substitutor_create(type_param_symbols, type_args_array, num_type_params);
     ast_transformer_transform(sub, cloned_class, nullptr);
     type_substitutor_destroy(sub);
     free(type_param_symbols);
+    free(type_args_array);
 
     // Create mangled name
     char* mangled_name = ssprintf("%s<...>", template_symbol->name);  // Placeholder
 
     // Create instance symbol
-    symbol_t* instance_symbol = symbol_create(mangled_name, SYMBOL_CLASS_INSTANCE,
+    symbol_t* instance_symbol = symbol_create(mangled_name, SYMBOL_TEMPLATE_CLASS_INST,
         cloned_class, template_symbol->parent_namespace);
 
-    // Fill in template_instance data
-    instance_symbol->data.template_instance.template_symbol = template_symbol;
-    instance_symbol->data.template_instance.type_arguments = VEC_INIT(nullptr);
+    // Fill in template_class_inst data
+    instance_symbol->data.template_class_inst.template_symbol = template_symbol;
     for (size_t i = 0; i < num_type_args; ++i)
-        vec_push(&instance_symbol->data.template_instance.type_arguments, type_args[i]);
-    instance_symbol->data.template_instance.instantiated_ast = (ast_node_t*)cloned_class;
+        vec_push(&instance_symbol->data.template_class_inst.type_arguments, vec_get(type_args, i));
+    instance_symbol->data.template_class_inst.instantiated_ast = (ast_node_t*)cloned_class;
 
     // Set the symbol on the cloned AST
     cloned_class->symbol = instance_symbol;
@@ -307,7 +354,7 @@ symbol_t* instantiate_template_class(semantic_context_t* ctx, symbol_t* template
     semantic_analyzer_destroy(sema);
 
     // Cache the instantiation
-    vec_push(&template_symbol->data.template.instantiations, instance_symbol);
+    vec_push(&template_symbol->data.template_class.instantiations, instance_symbol);
 
     return instance_symbol;
 }

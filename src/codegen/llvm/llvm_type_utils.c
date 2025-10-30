@@ -74,9 +74,9 @@ LLVMTypeRef llvm_type(LLVMContextRef ctx, ast_type_t* type)
             LLVMTypeRef fields[] = { size_type, element_type };
             return LLVMStructTypeInContext(ctx, fields, 2, false);
         }
-        case AST_TYPE_USER:
+        case AST_TYPE_CLASS:
         {
-            LLVMTypeRef class_type = LLVMGetTypeByName2(ctx, type->data.user.class_symbol->fully_qualified_name);
+            LLVMTypeRef class_type = LLVMGetTypeByName2(ctx, type->data.class.class_symbol->fully_qualified_name);
             panic_if(class_type == nullptr);
             return class_type;
         }

@@ -1,6 +1,7 @@
 #ifndef AST_TYPE__H
 #define AST_TYPE__H
 
+#include "common/containers/vec.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -31,7 +32,7 @@ typedef enum ast_type_kind
 {
     AST_TYPE_INVALID,
     AST_TYPE_BUILTIN,
-    AST_TYPE_USER,              // unresolved until Semantic Analysis
+    AST_TYPE_CLASS,             // unresolved until Semantic Analysis
     AST_TYPE_POINTER,
     AST_TYPE_ARRAY,             // unresolved until Semantic Analysis
     AST_TYPE_HEAP_ARRAY,        // TODO: Dyn Array would probably be a better name (or flexible, ...?), heap gives wrong idea
@@ -83,11 +84,14 @@ struct ast_type
 
         struct
         {
-            char* name;              // nullptr if type is resolved
-            symbol_t* class_symbol;  // nullptr until decl_collector (symbol owned by semantic_context)
-            ast_type_t** type_arguments; // type arguments for templates (nullptr if not a template)
-            size_t num_type_arguments;   // number of type arguments
-        } user;
+            char* name;                 // nullptr if type is resolved
+            symbol_t* class_symbol;     // nullptr until decl_collector (symbol owned by semantic_context)
+
+            // Fields only used by AST_TYPE_TEMPLATE_INSTANCE:
+            vec_t* type_arguments;      // vec<ast_type_t*> array of type arguments (nullptr if not template)
+            symbol_t* template_symbol;  // nullptr if not template
+            char* str_repr;
+        } class;
 
         struct
         {
@@ -123,14 +127,6 @@ struct ast_type
         {
             char* name;  // type parameter name (e.g., "T")
         } type_variable;
-
-        struct
-        {
-            symbol_t* template_symbol;  // pointer to template (class/fn) symbol
-            ast_type_t** type_arguments; // array of type arguments
-            size_t num_type_arguments;
-            char* str_repr;
-        } template_instance;
     } data;
 };
 
@@ -169,7 +165,7 @@ ast_type_t* ast_type_invalid();
 ast_type_t* ast_type_variable(const char* name);
 
 // Returned instance should not be edited.
-ast_type_t* ast_type_template_instance(symbol_t* template_symbol, ast_type_t** type_args, size_t num_type_args);
+ast_type_t* ast_type_template_instance(symbol_t* template_symbol, vec_t* type_args);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_from_token(token_t* tok);

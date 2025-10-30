@@ -19,9 +19,9 @@ typedef enum symbol_kind
     SYMBOL_NAMESPACE,
     SYMBOL_TYPE_PARAMETER,
     SYMBOL_TEMPLATE_CLASS,
-    SYMBOL_TEMPLATE_FUNCTION,
-    SYMBOL_CLASS_INSTANCE,
-    SYMBOL_FUNCTION_INSTANCE,
+    SYMBOL_TEMPLATE_FN,
+    SYMBOL_TEMPLATE_CLASS_INST,
+    SYMBOL_TEMPLATE_FN_INST,
 } symbol_kind_t;
 
 typedef struct symbol
@@ -36,7 +36,7 @@ typedef struct symbol
     // Kind-specific data
     union
     {
-        struct
+        struct fn_dat
         {
             vec_t parameters;         // symbol_t*
             ast_type_t* return_type;
@@ -45,7 +45,7 @@ typedef struct symbol
             bool is_builtin;
         } function;  // used by function & method
 
-        struct
+        struct cls_dat
         {
             symbol_table_t* symbols;  // unified members & methods (distinguished by symbol->kind)
         } class;
@@ -62,18 +62,35 @@ typedef struct symbol
 
         struct
         {
+            struct fn_dat fn;          // MUST BE FIRST to align with data.function
             vec_t type_parameters;     // vec<symbol_t*> - type parameter symbols
             vec_t instantiations;      // vec<symbol_t*> - cache of instantiated symbols
             ast_node_t* template_ast;  // original template AST (not owned by symbol)
-            symbol_table_t* scope;     // scope containing type parameters (memory owned by us)
-        } template;
+        } template_fn;
 
         struct
         {
-            symbol_t* template_symbol;    // pointer to template symbol (not owned)
+            struct cls_dat cls;        // MUST BE FIRST to align with data.class
+            vec_t type_parameters;     // vec<symbol_t*> - type parameter symbols
+            vec_t instantiations;      // vec<symbol_t*> - cache of instantiated symbols
+            ast_node_t* template_ast;  // original template AST (not owned by symbol)
+        } template_class;
+
+        struct
+        {
+            struct fn_dat fn;             // MUST BE FIRST to align with data.function
+            symbol_t* template_symbol;    // pointer to template symbol
             vec_t type_arguments;         // vec<ast_type_t*> - concrete types
             ast_node_t* instantiated_ast; // cloned and specialized AST (not owned - owned by AST tree)
-        } template_instance;
+        } template_fn_inst;
+
+        struct
+        {
+            struct cls_dat cls;           // MUST BE FIRST to align with data.class
+            symbol_t* template_symbol;    // pointer to template symbol
+            vec_t type_arguments;         // vec<ast_type_t*> - concrete types
+            ast_node_t* instantiated_ast; // cloned and specialized AST (not owned - owned by AST tree)
+        } template_class_inst;
     } data;
 } symbol_t;
 
