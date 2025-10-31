@@ -1,5 +1,6 @@
 #include "class_def.h"
 
+#include "ast/decl/type_param_decl.h"
 #include "ast/node.h"
 #include "ast/transformer.h"
 #include "ast/visitor.h"
@@ -82,4 +83,35 @@ static void ast_class_def_destroy(void* self_)
     vec_deinit(&self->members);
     vec_deinit(&self->methods);
     free(self);
+}
+
+ast_def_t* ast_class_def_create_templated_va(const char* name, ...)
+{
+    va_list args;
+    va_start(args, name);
+
+    // First, collect type parameter names (char*) until nullptr
+    vec_t type_params = VEC_INIT(ast_node_destroy);
+    char* type_param_name;
+    while ((type_param_name = va_arg(args, char*)) != nullptr) {
+        vec_push(&type_params, ast_type_param_decl_create(type_param_name));
+    }
+
+    // Then collect members and methods until nullptr
+    vec_t members = VEC_INIT(ast_node_destroy);
+    vec_t methods = VEC_INIT(ast_node_destroy);
+    ast_node_t* def;
+    while ((def = va_arg(args, ast_node_t*)) != nullptr) {
+        if (AST_KIND(def) == AST_DEF_METHOD)
+            vec_push(&methods, def);
+        else if (AST_KIND(def) == AST_DECL_MEMBER)
+            vec_push(&members, def);
+        else
+            panic("Bad type %d", AST_KIND(def));
+    }
+    va_end(args);
+
+    ast_class_def_t* class_def = (ast_class_def_t*)ast_class_def_create(name, &members, &methods, false);
+    vec_move(&class_def->type_params, &type_params);
+    return (ast_def_t*)class_def;
 }

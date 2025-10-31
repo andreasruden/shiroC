@@ -22,4 +22,10 @@ ast_def_t* ast_class_def_create(const char* name, vec_t* members, vec_t* methods
 __attribute__((sentinel))
 ast_def_t* ast_class_def_create_va(const char* name, ...);
 
+// Create a templated class with type parameters (for testing)
+// First arguments are type parameter names (char*), terminated by nullptr
+// Then members/methods follow, terminated by nullptr
+__attribute__((sentinel))
+ast_def_t* ast_class_def_create_templated_va(const char* name, ...);
+
 #endif

@@ -1,5 +1,6 @@
 #include "fn_def.h"
 
+#include "ast/decl/type_param_decl.h"
 #include "ast/node.h"
 #include "ast/transformer.h"
 #include "ast/type.h"
@@ -77,4 +78,29 @@ static void ast_fn_def_destroy(void* self_)
     ast_node_destroy(self->body);
     free(self->extern_abi);
     free(self);
+}
+
+ast_def_t* ast_fn_def_create_templated_va(const char* name, ast_type_t* ret_type, ast_stmt_t* body, ...)
+{
+    va_list args;
+    va_start(args, body);
+
+    // First, collect type parameter names (char*) until nullptr
+    vec_t type_params = VEC_INIT(ast_node_destroy);
+    char* type_param_name;
+    while ((type_param_name = va_arg(args, char*)) != nullptr) {
+        vec_push(&type_params, ast_type_param_decl_create(type_param_name));
+    }
+
+    // Then collect parameters until nullptr
+    vec_t params = VEC_INIT(ast_node_destroy);
+    ast_param_decl_t* param;
+    while ((param = va_arg(args, ast_param_decl_t*)) != nullptr) {
+        vec_push(&params, param);
+    }
+    va_end(args);
+
+    ast_fn_def_t* fn_def = (ast_fn_def_t*)ast_fn_def_create(name, &params, ret_type, body, false);
+    vec_move(&fn_def->type_params, &type_params);
+    return (ast_def_t*)fn_def;
 }

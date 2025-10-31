@@ -88,7 +88,7 @@ struct ast_type
             symbol_t* class_symbol;     // nullptr until decl_collector (symbol owned by semantic_context)
 
             // Fields only used by AST_TYPE_TEMPLATE_INSTANCE:
-            vec_t* type_arguments;      // vec<ast_type_t*> array of type arguments (nullptr if not template)
+            vec_t type_arguments;       // vec<ast_type_t*> array of type arguments (nullptr if not template)
             symbol_t* template_symbol;  // nullptr if not template
             char* str_repr;
         } class;
@@ -140,8 +140,9 @@ ast_type_t* ast_type_user(symbol_t* class_symbol);
 ast_type_t* ast_type_user_unresolved(const char* type_name);
 
 // Create unresolved user type with type arguments (for template instantiation during parsing)
+// NOTE: The ownership of type_args is transferred
 // Returned instance should not be edited.
-ast_type_t* ast_type_user_unresolved_with_args(const char* type_name, ast_type_t** type_args, size_t num_type_args);
+ast_type_t* ast_type_user_unresolved_with_args(const char* type_name, vec_t* type_args);
 
 // Returned instance should not be edited.
 ast_type_t* ast_type_pointer(ast_type_t* pointee);
@@ -164,6 +165,7 @@ ast_type_t* ast_type_invalid();
 // Returned instance should not be edited.
 ast_type_t* ast_type_variable(const char* name);
 
+// NOTE: Ownership of type_args is transferred
 // Returned instance should not be edited.
 ast_type_t* ast_type_template_instance(symbol_t* template_symbol, vec_t* type_args);
 

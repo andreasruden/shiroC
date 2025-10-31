@@ -118,15 +118,15 @@ ast_type_t* type_resolver_solve(semantic_context_t* ctx, ast_type_t* type, void*
                     return ast_type_invalid();
 
                 // Handle template instantiation
-                if (type->data.class.type_arguments != nullptr && vec_size(type->data.class.type_arguments) > 0)
+                if (vec_size(&type->data.class.type_arguments) > 0)
                 {
-                    size_t num_type_args = vec_size(type->data.class.type_arguments);
+                    size_t num_type_args = vec_size(&type->data.class.type_arguments);
 
                     // First, resolve all type arguments
                     vec_t resolved_args = VEC_INIT(nullptr);
                     for (size_t i = 0; i < num_type_args; ++i)
                     {
-                        ast_type_t* arg = vec_get(type->data.class.type_arguments, i);
+                        ast_type_t* arg = vec_get(&type->data.class.type_arguments, i);
                         ast_type_t* resolved = type_resolver_solve(ctx, arg, node);
                         if (resolved == ast_type_invalid())
                         {

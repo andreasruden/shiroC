@@ -869,13 +869,8 @@ static ast_type_t* parse_type_annotation(parser_t* parser)
                 return ast_type_invalid();
             }
 
-            // Create user type with type arguments
-            if (type_args.length > 0)
-            {
-                type = ast_type_user_unresolved_with_args(type->data.class.name,
-                    (ast_type_t**)type_args.mem, type_args.length);
-            }
-            vec_deinit(&type_args);
+            panic_if(type_args.length == 0);
+            type = ast_type_user_unresolved_with_args(type->data.class.name, &type_args);
         }
     }
 
@@ -1149,14 +1144,10 @@ static bool try_parse_type_params(parser_t* parser, vec_t* type_params)
     return true;
 }
 
-// Returns false if parsing failed, true otherwise (including if there are none)
-// If successful, type_args vec contains ast_type_t* (ownership transferred to vec)
 static bool parse_type_arguments(parser_t* parser, vec_t* type_args)
 {
-    if (lexer_peek_token(parser->lexer)->type != TOKEN_LT)
-        return true;  // No type arguments is valid
-
-    lexer_next_token(parser->lexer);  // consume '<'
+    if (!lexer_next_token_iff(parser->lexer, TOKEN_LT))
+        return false;
 
     while (true)
     {

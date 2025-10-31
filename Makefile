@@ -129,6 +129,7 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/parser/test_parser_misc.c \
 	$(UT_SRC_DIR)/parser/test_parser_pointers.c \
 	$(UT_SRC_DIR)/parser/test_parser_statements.c \
+	$(UT_SRC_DIR)/parser/test_parser_templates.c \
 	$(UT_SRC_DIR)/parser/test_lexer_speculative.c \
 	$(UT_SRC_DIR)/sema/test_sema_access.c \
 	$(UT_SRC_DIR)/sema/test_sema_arrays.c \

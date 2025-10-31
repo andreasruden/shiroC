@@ -26,4 +26,10 @@ ast_def_t* ast_fn_def_create(const char* name, vec_t* params, ast_type_t* ret_ty
 __attribute__((sentinel))
 ast_def_t* ast_fn_def_create_va(const char* name, ast_type_t* ret_type, ast_stmt_t* body, ...);
 
+// Create a templated function with type parameters (for testing)
+// First arguments are type parameter names (char*), terminated by nullptr
+// Then parameters follow, terminated by nullptr
+__attribute__((sentinel))
+ast_def_t* ast_fn_def_create_templated_va(const char* name, ast_type_t* ret_type, ast_stmt_t* body, ...);
+
 #endif
