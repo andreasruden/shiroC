@@ -119,6 +119,7 @@ symbol_t* symbol_clone(symbol_t* source, bool include_ast, symbol_t* parent_name
             break;
         case SYMBOL_PARAMETER:
         case SYMBOL_VARIABLE:
+        case SYMBOL_TYPE_PARAMETER:
             break;  // nothing to do, normal clone enough
         default:
             panic("symbol kind %d cloning not implemented", source->kind);

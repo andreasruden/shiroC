@@ -1036,3 +1036,58 @@ TEST(ut_sema_classes_fixture_t, copy_class_with_destructor_error)
 
     ast_node_destroy(root);
 }
+
+// Test that var_decl with non-existent class type produces an error
+TEST(ut_sema_classes_fixture_t, var_decl_undefined_class_error)
+{
+    ast_decl_t* error_node = ast_var_decl_create("obj", ast_type_user_unresolved("UndefinedClass"), nullptr);
+
+    ast_root_t* root = ast_root_create_va(
+        ast_fn_def_create_va("main", nullptr,
+            ast_compound_stmt_create_va(
+                ast_decl_stmt_create(error_node),
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "undefined");
+
+    ast_node_destroy(root);
+}
+
+// Test that param_decl with non-existent class type produces an error
+TEST(ut_sema_classes_fixture_t, param_decl_undefined_class_error)
+{
+    ast_decl_t* error_node = ast_param_decl_create("obj", ast_type_user_unresolved("UndefinedClass"));
+
+    ast_root_t* root = ast_root_create_va(
+        ast_fn_def_create_va("processObject", nullptr,
+            ast_compound_stmt_create_empty(),
+            error_node,
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "undefined");
+
+    ast_node_destroy(root);
+}
+
+// Test that param_decl with non-existent class type in method produces an error
+TEST(ut_sema_classes_fixture_t, method_param_decl_undefined_class_error)
+{
+    ast_decl_t* error_node = ast_param_decl_create("other", ast_type_user_unresolved("UndefinedClass"));
+
+    ast_root_t* root = ast_root_create_va(
+        ast_class_def_create_va("MyClass",
+            ast_member_decl_create("x", ast_type_builtin(TYPE_I32), nullptr),
+            ast_method_def_create_va("processOther", nullptr,
+                ast_compound_stmt_create_empty(),
+                error_node,
+                nullptr),
+            nullptr),
+        nullptr);
+
+    ASSERT_SEMA_ERROR_WITH_DECL_COLLECTOR(AST_NODE(root), error_node, "undefined");
+
+    ast_node_destroy(root);
+}

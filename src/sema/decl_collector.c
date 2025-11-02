@@ -66,14 +66,13 @@ static void register_class_symbol(decl_collector_t* collector, ast_class_def_t* 
     if (is_template)
     {
         class_def->symbol->data.template_class.template_ast = AST_NODE(class_def);
-        // Type parameters vector initialized in symbol_create
-
         for (size_t i = 0; i < vec_size(&class_def->type_params); ++i)
         {
             ast_type_param_decl_t* type_param = vec_get(&class_def->type_params, i);
             symbol_t* type_param_symbol = symbol_create(type_param->name, SYMBOL_TYPE_PARAMETER, type_param, nullptr);
             type_param_symbol->type = ast_type_variable(type_param->name);
             vec_push(&class_def->symbol->data.template_class.type_parameters, type_param_symbol);
+            type_param->symbol = type_param_symbol;
         }
     }
     else
@@ -98,6 +97,17 @@ static void collect_class_def(void* self_, ast_class_def_t* class_def, void* out
     // Push class scope so members are visible when resolving member types
     vec_push(&collector->ctx->scope_stack, class_def->symbol->data.class.symbols);
     collector->ctx->current = class_def->symbol->data.class.symbols;
+
+    // For template classes, add type parameters to the class scope
+    if (class_def->symbol->kind == SYMBOL_TEMPLATE_CLASS)
+    {
+        vec_t* type_params = &class_def->symbol->data.template_class.type_parameters;
+        for (size_t i = 0; i < vec_size(type_params); ++i)
+        {
+            symbol_t* type_param = vec_get(type_params, i);
+            symbol_table_insert(class_def->symbol->data.class.symbols, type_param);
+        }
+    }
 
     for (size_t i = 0; i < vec_size(&class_def->members); ++i)
         ast_visitor_visit(collector, vec_get(&class_def->members, i), nullptr);
@@ -173,6 +183,7 @@ static void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
             type_param_symbol->type = ast_type_variable(type_param->name);
             vec_push(&symbol->data.template_fn.type_parameters, type_param_symbol);
             symbol_table_insert(collector->ctx->current, type_param_symbol);
+            type_param->symbol = type_param_symbol;
         }
     }
 
@@ -202,7 +213,7 @@ static void collect_fn_def(void* self_, ast_fn_def_t* fn_def, void* out_)
         fn_def->return_type = ast_type_builtin(TYPE_VOID);
     else
     {
-        fn_def->return_type = type_resolver_solve(collector->ctx, fn_def->return_type, fn_def);
+        fn_def->return_type = type_resolver_solve(collector->ctx, fn_def->return_type, fn_def, false);
         if (fn_def->return_type == ast_type_invalid())
         {
             symbol_destroy(symbol);
@@ -263,7 +274,7 @@ static void collect_member_decl(void* self_, ast_member_decl_t* member, void* ou
         return;
     }
 
-    member->base.type = type_resolver_solve(collector->ctx, member->base.type, member);
+    member->base.type = type_resolver_solve(collector->ctx, member->base.type, member, true);
     if (member->base.type == ast_type_invalid())
         return;
 
@@ -364,7 +375,7 @@ static void collect_method_def(void* self_, ast_method_def_t* method, void* out_
         method->base.return_type = ast_type_builtin(TYPE_VOID);
     else
     {
-        method->base.return_type = type_resolver_solve(collector->ctx, method->base.return_type, method);
+        method->base.return_type = type_resolver_solve(collector->ctx, method->base.return_type, method, false);
         if (method->base.return_type == ast_type_invalid())
             return;
     }
@@ -399,7 +410,7 @@ static void collect_param_decl(void* self_, ast_param_decl_t* param_decl, void* 
     decl_collector_t* collector = self_;
     symbol_t* fn = out_;
 
-    param_decl->type = type_resolver_solve(collector->ctx, param_decl->type, param_decl);
+    param_decl->type = type_resolver_solve(collector->ctx, param_decl->type, param_decl, false);
     if (param_decl->type == ast_type_invalid())
         return;
 

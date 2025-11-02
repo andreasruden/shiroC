@@ -32,12 +32,13 @@ static ast_type_t* solve_array_size(semantic_context_t* ctx, ast_type_t* type, a
     return ast_type_array(inner_type, size);
 }
 
-static symbol_t* lookup_class_symbol(semantic_context_t* ctx, const char* name, void* node)
+static symbol_t* lookup_class_symbol(semantic_context_t* ctx, const char* name, void* node, bool emit_errors)
 {
     vec_t* overloads = symbol_table_overloads(ctx->global, name);
     if (overloads == nullptr || vec_size(overloads) == 0)
     {
-        semantic_context_add_error(ctx, node, ssprintf("undefined type '%s'", name));
+        if (emit_errors)
+            semantic_context_add_error(ctx, node, ssprintf("undefined type '%s'", name));
         return nullptr;
     }
 
@@ -60,14 +61,15 @@ static symbol_t* lookup_class_symbol(semantic_context_t* ctx, const char* name, 
         }
         else
         {
-            semantic_context_add_error(ctx, node, "ambiguous name resolution");
+            if (emit_errors)
+                semantic_context_add_error(ctx, node, "ambiguous name resolution");
             break;
         }
     }
     return selected_class;
 }
 
-ast_type_t* type_resolver_solve(semantic_context_t* ctx, ast_type_t* type, void* node)
+ast_type_t* type_resolver_solve(semantic_context_t* ctx, ast_type_t* type, void* node, bool emit_errors)
 {
     // TODO: We could consider cleaning up the no-longer used types already (when the inner type had expressions
     //       that needed resolving, the previous type is replaced and no longer referenced anywhere: the unresolved
@@ -77,29 +79,41 @@ ast_type_t* type_resolver_solve(semantic_context_t* ctx, ast_type_t* type, void*
     switch (type->kind)
     {
         case AST_TYPE_ARRAY:
-            inner_type = type_resolver_solve(ctx, type->data.array.element_type, node);
+            inner_type = type_resolver_solve(ctx, type->data.array.element_type, node, emit_errors);
             if (!type->data.array.size_known)
                 return solve_array_size(ctx, type, inner_type, node);
             if (inner_type == type->data.array.element_type)
                 return type;  // no changes
             return ast_type_array(inner_type, type->data.array.size_known);
         case AST_TYPE_HEAP_ARRAY:
-            inner_type = type_resolver_solve(ctx, type->data.heap_array.element_type, node);
+            inner_type = type_resolver_solve(ctx, type->data.heap_array.element_type, node, emit_errors);
             if (inner_type == type->data.heap_array.element_type)
                 return type;  // no changes
             return ast_type_heap_array(inner_type);
         case AST_TYPE_VIEW:
-            inner_type = type_resolver_solve(ctx, type->data.view.element_type, node);
+            inner_type = type_resolver_solve(ctx, type->data.view.element_type, node, emit_errors);
             if (inner_type == type->data.heap_array.element_type)
                 return type;  // no changes
             return ast_type_view(inner_type);
         case AST_TYPE_POINTER:
-            inner_type = type_resolver_solve(ctx, type->data.pointer.pointee, node);
+            inner_type = type_resolver_solve(ctx, type->data.pointer.pointee, node, emit_errors);
             if (inner_type == type->data.heap_array.element_type)
                 return type;  // no changes
             return ast_type_pointer(inner_type);
         case AST_TYPE_VARIABLE:
-            // Type variables are already resolved, just return them
+            // Type variables are used in template contexts
+            // During decl_collector, type parameters might not be in scope yet, so skip validation
+            // During semantic_analyzer, validate that the type parameter exists in scope
+            if (emit_errors)
+            {
+                symbol_t* type_param = symbol_table_lookup(ctx->current, type->data.type_variable.name);
+                if (type_param == nullptr || type_param->kind != SYMBOL_TYPE_PARAMETER)
+                {
+                    semantic_context_add_error(ctx, node, ssprintf("undefined type parameter '%s'",
+                        type->data.type_variable.name));
+                    return ast_type_invalid();
+                }
+            }
             return type;
         case AST_TYPE_TEMPLATE_INSTANCE:
             // Template instances are already fully resolved
@@ -113,7 +127,7 @@ ast_type_t* type_resolver_solve(semantic_context_t* ctx, ast_type_t* type, void*
                 if (type_param != nullptr && type_param->kind == SYMBOL_TYPE_PARAMETER)
                     return type_param->type;  // Return the AST_TYPE_VARIABLE
 
-                symbol_t* class_symb = lookup_class_symbol(ctx, type->data.class.name, node);
+                symbol_t* class_symb = lookup_class_symbol(ctx, type->data.class.name, node, emit_errors);
                 if (class_symb == nullptr)
                     return ast_type_invalid();
 
@@ -127,7 +141,7 @@ ast_type_t* type_resolver_solve(semantic_context_t* ctx, ast_type_t* type, void*
                     for (size_t i = 0; i < num_type_args; ++i)
                     {
                         ast_type_t* arg = vec_get(&type->data.class.type_arguments, i);
-                        ast_type_t* resolved = type_resolver_solve(ctx, arg, node);
+                        ast_type_t* resolved = type_resolver_solve(ctx, arg, node, emit_errors);
                         if (resolved == ast_type_invalid())
                         {
                             vec_deinit(&resolved_args);

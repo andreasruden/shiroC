@@ -138,6 +138,7 @@ UT_SRCS = \
 	$(UT_SRC_DIR)/sema/test_sema_control_flow.c \
 	$(UT_SRC_DIR)/sema/test_sema_expressions.c \
 	$(UT_SRC_DIR)/sema/test_sema_functions.c \
+	$(UT_SRC_DIR)/sema/test_sema_templates.c \
 	$(UT_SRC_DIR)/sema/test_sema_types.c \
 	$(UT_SRC_DIR)/sema/test_sema_variables.c
 

@@ -182,9 +182,15 @@ static void* analyze_param_decl(void* self_, ast_param_decl_t* param, void* out_
     (void)out_;
     semantic_analyzer_t* sema = self_;
 
-    // NOTE: Type has been resolved by decl collector
+    // NOTE: Type resolution was attempted by decl collector, but errors are emitted here
     if (param->type == ast_type_invalid())
-        return param;  // don't propagate errors
+    {
+        // Type resolution failed during decl collection - emit error now
+        // We need to attempt resolution again with emit_errors=true
+        // The original unresolved type is not stored, so we just emit a generic error
+        semantic_context_add_error(sema->ctx, param, "undefined type");
+        return param;
+    }
 
     if (!ast_type_is_instantiable(param->type))
     {
@@ -209,7 +215,7 @@ static void* analyze_var_decl(void* self_, ast_var_decl_t* var, void* out_)
 
     if (var->type != nullptr)
     {
-        var->type = type_resolver_solve(sema->ctx, var->type, var);
+        var->type = type_resolver_solve(sema->ctx, var->type, var, true);
         if (var->type == ast_type_invalid())
             return var;  // don't propagate errors
     }
@@ -1208,7 +1214,7 @@ static void* analyzer_cast_expr(void* self_, ast_cast_expr_t* cast, void* out_)
         return cast;
     }
 
-    cast->target = type_resolver_solve(sema->ctx, cast->target, cast);
+    cast->target = type_resolver_solve(sema->ctx, cast->target, cast, true);
     if (cast->target == ast_type_invalid())
     {
         cast->base.type = ast_type_invalid();
@@ -1283,7 +1289,7 @@ static void* analyze_construct_expr(void* self_, ast_construct_expr_t* construct
     hash_table_t initialized_members = HASH_TABLE_INIT(nullptr);
 
     // Resolve type to make it is complete
-    construct->class_type = type_resolver_solve(sema->ctx, construct->class_type, construct);
+    construct->class_type = type_resolver_solve(sema->ctx, construct->class_type, construct, true);
     if (construct->class_type == ast_type_invalid())
         goto cleanup;
 
